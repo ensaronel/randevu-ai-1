@@ -49,6 +49,7 @@ export default function GunSonuClient({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
   const [reconciling, setReconciling] = useState(false);
   const [reconciledAt, setReconciledAt] = useState(initialReconciledAt);
   const [actualRevenue, setActualRevenue] = useState(initialActualRevenue);
@@ -76,10 +77,11 @@ export default function GunSonuClient({
       const res = await fetch(`/api/appointment-services/${serviceRowId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ final_price: value }),
+        body: JSON.stringify({ final_price: value, adjustment_note: noteDraft.trim() || null }),
       });
       if (res.ok) {
         setEditingServiceId(null);
+        setNoteDraft("");
         router.refresh();
       }
     } finally {
@@ -130,36 +132,51 @@ export default function GunSonuClient({
                   const isEditing = editingServiceId === svc.id;
                   const currentPrice = svc.final_price ?? svc.planned_price;
                   return (
-                    <div key={svc.id} className="flex items-center justify-between text-[13px]">
-                      <span className="text-ink-muted">
-                        {service?.name} · {staff?.full_name}
-                      </span>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            autoFocus
-                            value={priceDraft}
-                            onChange={(e) => setPriceDraft(e.target.value)}
-                            className="w-16 border border-border rounded px-1.5 py-0.5 text-right text-[13px]"
-                          />
+                    <div key={svc.id} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[13px]">
+                        <span className="text-ink-muted">
+                          {service?.name} · {staff?.full_name}
+                        </span>
+                        {isEditing ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={priceDraft}
+                              onChange={(e) => setPriceDraft(e.target.value)}
+                              className="w-16 border border-border rounded px-1.5 py-0.5 text-right text-[13px]"
+                            />
+                            <button
+                              onClick={() => savePrice(svc.id)}
+                              disabled={savingId === svc.id}
+                              className="text-accent font-semibold text-[12.5px]"
+                            >
+                              Kaydet
+                            </button>
+                          </div>
+                        ) : (
                           <button
-                            onClick={() => savePrice(svc.id)}
-                            disabled={savingId === svc.id}
-                            className="text-accent font-semibold text-[12.5px]"
+                            onClick={() => {
+                              setEditingServiceId(svc.id);
+                              setPriceDraft(String(currentPrice));
+                              setNoteDraft(svc.adjustment_note ?? "");
+                            }}
+                            className="font-semibold underline decoration-dotted"
                           >
-                            Kaydet
+                            {formatTL(currentPrice)}
                           </button>
-                        </div>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <input
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          placeholder="Düzeltme notu (örn. 30 TL indirim)"
+                          className="border border-border rounded px-1.5 py-0.5 text-[12px] w-full"
+                        />
                       ) : (
-                        <button
-                          onClick={() => {
-                            setEditingServiceId(svc.id);
-                            setPriceDraft(String(currentPrice));
-                          }}
-                          className="font-semibold underline decoration-dotted"
-                        >
-                          {formatTL(currentPrice)}
-                        </button>
+                        svc.adjustment_note && (
+                          <span className="text-[11.5px] text-ink-muted italic">{svc.adjustment_note}</span>
+                        )
                       )}
                     </div>
                   );

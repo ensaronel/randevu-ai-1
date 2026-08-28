@@ -61,9 +61,11 @@ export async function PATCH(
       const wasNoShow = NO_SHOW_VALUES.includes(before.attendance ?? "");
       const isNoShow = NO_SHOW_VALUES.includes(body.attendance ?? "");
       if (isNoShow && !wasNoShow) {
-        await supabase.rpc("increment_no_show_count", { p_customer_id: before.customer_id });
+        const { error: rpcError } = await supabase.rpc("increment_no_show_count", { p_customer_id: before.customer_id });
+        if (rpcError) throw rpcError;
       } else if (!isNoShow && wasNoShow) {
-        await supabase.rpc("decrement_no_show_count", { p_customer_id: before.customer_id });
+        const { error: rpcError } = await supabase.rpc("decrement_no_show_count", { p_customer_id: before.customer_id });
+        if (rpcError) throw rpcError;
       }
     }
 
