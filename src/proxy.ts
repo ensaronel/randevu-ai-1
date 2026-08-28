@@ -35,7 +35,8 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isLoginPage = pathname.startsWith("/login");
   const isApiRoute = pathname.startsWith("/api");
-  const isPublicApi = pathname.startsWith("/api/whatsapp"); // webhook, Meta'dan geliyor
+  // webhook (Meta'dan) ve cron (Vercel'den) - ikisi de kendi secret/imza kontrolünü kendi içinde yapar
+  const isPublicApi = pathname.startsWith("/api/whatsapp") || pathname.startsWith("/api/cron");
 
   if (!user && isApiRoute && !isPublicApi) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

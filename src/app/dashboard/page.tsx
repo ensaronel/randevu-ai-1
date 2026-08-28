@@ -4,6 +4,24 @@ import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity
 import BottomNav from "@/components/BottomNav";
 import type { Staff } from "@/types/database";
 
+async function loadTodaysFinanceNote(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { startUtc, endUtc } = dayRangeUtcISO(0);
+  const { data } = await supabase
+    .from("action_objects")
+    .select("suggestion")
+    .eq("business_id", businessId)
+    .eq("type", "finance_note")
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.suggestion ?? null;
+}
+
 type ApptServiceRow = {
   planned_price: number;
   staff_id: string;
@@ -62,10 +80,11 @@ async function loadDayTotals(
 export default async function DashboardPage() {
   const { owner, business, supabase } = await getBusinessOwnerForPage();
 
-  const [today, yesterday, lastWeekSameDay] = await Promise.all([
+  const [today, yesterday, lastWeekSameDay, financeNote] = await Promise.all([
     loadDayTotals(supabase, business.id, 0),
     loadDayTotals(supabase, business.id, -1),
     loadDayTotals(supabase, business.id, -7),
+    loadTodaysFinanceNote(supabase, business.id),
   ]);
 
   const { data: staffData } = await supabase
@@ -124,8 +143,15 @@ export default async function DashboardPage() {
           )}
         </div>
 
+        {financeNote && (
+          <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 flex flex-col gap-1.5">
+            <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
+            <p className="text-[13.5px] text-ink">{financeNote}</p>
+          </div>
+        )}
+
         <p className="text-xs text-ink-muted text-center pt-2">
-          AI önerileri Hafta 8-9&apos;da burada olacak — bu ekran şimdilik ham veriyi gösteriyor.
+          Boşluk doldurma ve risk uyarıları Hafta 9&apos;da burada olacak.
         </p>
       </div>
 
