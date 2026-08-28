@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #faf6f1;
+  --surface: #ffffff;
+  --border: oklch(90% 0.012 70);
+  --ink: oklch(24% 0.02 50);
+  --ink-muted: oklch(50% 0.02 55);
+  --accent: oklch(62% 0.14 45);
+  --accent-ink: oklch(32% 0.1 45);
+  --accent-soft: oklch(94% 0.035 50);
+  --good: oklch(56% 0.12 150);
+  --good-soft: oklch(94% 0.045 150);
+  --good-ink: oklch(34% 0.09 150);
+  --bad: oklch(55% 0.15 25);
+  --bad-soft: oklch(95% 0.045 25);
+  --bad-ink: oklch(40% 0.12 25);
+  --warn: oklch(68% 0.13 75);
+  --warn-soft: oklch(95% 0.05 80);
+  --warn-ink: oklch(40% 0.09 70);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-good-ink: var(--good-ink);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-ink: var(--bad-ink);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-ink: var(--warn-ink);
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-lora);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-lora), Georgia, serif;
+}
