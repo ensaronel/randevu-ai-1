@@ -64,3 +64,10 @@ export const reconcileDaySchema = z.object({
 export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });
+
+const dayShiftSchema = z.tuple([z.string(), z.string()]);
+export const businessUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  working_hours: z.record(z.string(), dayShiftSchema).optional(),
+  closed_dates: z.array(z.string()).optional(),
+});

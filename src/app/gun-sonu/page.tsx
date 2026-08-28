@@ -1,51 +1,22 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, monthRangeUtcISO, dateKeyTR, formatDateTR, formatTL } from "@/lib/date";
+import { dayRangeUtcISO, dateKeyTR, formatDateTR, formatTL } from "@/lib/date";
+import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
 import BottomNav from "@/components/BottomNav";
 import GunSonuClient, { type GunSonuAppointment } from "@/app/gun-sonu/GunSonuClient";
-
-type CommissionRow = {
-  attendance: string | null;
-  appointment_services: {
-    planned_price: number;
-    final_price: number | null;
-    staff_id: string;
-    staff: { full_name: string; commission_rate: number } | { full_name: string; commission_rate: number }[] | null;
-  }[];
-};
-
-function one<T>(value: T | T[] | null): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
+import type { Business, Staff } from "@/types/database";
 
 async function loadMonthlyCommissions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  businessId: string
+  business: Business
 ) {
-  const { startUtc, endUtc } = monthRangeUtcISO();
-  const { data } = await supabase
-    .from("appointments")
-    .select("attendance, appointment_services(planned_price, final_price, staff_id, staff:staff(full_name, commission_rate))")
-    .eq("business_id", businessId)
-    .eq("attendance", "came")
-    .gte("starts_at", startUtc)
-    .lt("starts_at", endUtc);
+  const { data: staffData } = await supabase.from("staff").select("*").eq("business_id", business.id).eq("status", "active");
+  const staffList = (staffData ?? []) as Staff[];
+  const metrics = await loadStaffMonthlyMetrics(supabase, business, staffList);
 
-  const rows = (data ?? []) as unknown as CommissionRow[];
-  const totals = new Map<string, { name: string; amount: number }>();
-
-  for (const row of rows) {
-    for (const svc of row.appointment_services) {
-      const staff = one(svc.staff);
-      if (!staff) continue;
-      const price = Number(svc.final_price ?? svc.planned_price);
-      const commission = price * (Number(staff.commission_rate) / 100);
-      const existing = totals.get(svc.staff_id);
-      totals.set(svc.staff_id, { name: staff.full_name, amount: (existing?.amount ?? 0) + commission });
-    }
-  }
-
-  return Array.from(totals.values()).sort((a, b) => b.amount - a.amount);
+  return metrics
+    .map((m) => ({ name: staffList.find((s) => s.id === m.staffId)?.full_name ?? "?", amount: m.commission }))
+    .filter((c) => c.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
 }
 
 export default async function GunSonuPage() {
@@ -70,7 +41,7 @@ export default async function GunSonuPage() {
       .eq("business_id", business.id)
       .eq("summary_date", todayKey)
       .maybeSingle(),
-    loadMonthlyCommissions(supabase, business.id),
+    loadMonthlyCommissions(supabase, business),
   ]);
 
   const appointments = (apptData ?? []) as unknown as GunSonuAppointment[];

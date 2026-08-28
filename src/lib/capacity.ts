@@ -1,6 +1,6 @@
 import type { Staff } from "@/types/database";
 
-function parseTimeToMinutes(value: string): number {
+export function parseTimeToMinutes(value: string): number {
   const [h, m] = value.split(":").map(Number);
   return h * 60 + (m || 0);
 }
