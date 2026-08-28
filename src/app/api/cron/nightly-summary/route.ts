@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runNightlySummaryForAllBusinesses } from "@/lib/nightlySummary";
+import { runProactiveInsightsForAllBusinesses } from "@/lib/proactive";
 
 /**
  * Vercel Cron her gün bunu tetikler (bkz. vercel.json). Vercel, projede
@@ -13,8 +14,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await runNightlySummaryForAllBusinesses();
-    return NextResponse.json({ results });
+    const financeResults = await runNightlySummaryForAllBusinesses();
+    const proactiveResults = await runProactiveInsightsForAllBusinesses();
+    return NextResponse.json({ financeResults, proactiveResults });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

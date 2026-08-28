@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { appointmentUpdateSchema } from "@/lib/validation";
+import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
 
 export async function GET(
   _request: NextRequest,
@@ -39,7 +40,7 @@ export async function PATCH(
 
     const { data: before, error: beforeError } = await supabase
       .from("appointments")
-      .select("attendance, customer_id")
+      .select("attendance, customer_id, status")
       .eq("business_id", owner.business_id)
       .eq("id", id)
       .single();
@@ -67,6 +68,12 @@ export async function PATCH(
         const { error: rpcError } = await supabase.rpc("decrement_no_show_count", { p_customer_id: before.customer_id });
         if (rpcError) throw rpcError;
       }
+    }
+
+    if (body.status === "cancelled" && before.status !== "cancelled") {
+      await matchWaitlistForCancelledAppointment(owner.business_id, id).catch((err) =>
+        console.error("waitlist match failed", err)
+      );
     }
 
     return NextResponse.json({ data });

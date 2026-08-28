@@ -1,6 +1,7 @@
 import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { findAvailableSlots } from "@/lib/ai/availability";
+import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
 import type { Appointment, AppointmentService } from "@/types/database";
@@ -74,6 +75,27 @@ export const AI_TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "join_waitlist",
+    description:
+      "check_availability istenen tarihte uygun saat bulamadığında, müşteri başka bir gün/saat " +
+      "boşaldığında haber verilmesini isterse çağır. Müşteriden hangi gün(ler) ve saat aralığını " +
+      "istediğini mutlaka sor, tahmin etme.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        service_name: { type: "string", description: "İstenen hizmet adı (sistemdeki tam adıyla)" },
+        days: {
+          type: "array",
+          items: { type: "string", enum: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+          description: "Müşterinin uygun olduğu gün(ler)",
+        },
+        from: { type: "string", description: "Uygun saat aralığının başlangıcı, HH:MM" },
+        to: { type: "string", description: "Uygun saat aralığının bitişi, HH:MM" },
+      },
+      required: ["service_name", "days", "from", "to"],
+    },
+  },
+  {
     name: "escalate",
     description:
       "Müşterinin ne istediğini anlayamıyorsan, sistemin karşılayamayacağı bir talep ise " +
@@ -110,6 +132,9 @@ export async function executeAiTool(
   }
   if (name === "cancel_appointment") {
     return { result: await runCancelAppointment(input, exec), escalated: false };
+  }
+  if (name === "join_waitlist") {
+    return { result: await runJoinWaitlist(input, exec), escalated: false };
   }
   if (name === "escalate") {
     const reason = String(input.reason ?? "belirtilmedi");
@@ -280,5 +305,38 @@ async function runCancelAppointment(input: Record<string, unknown>, exec: ToolEx
     return JSON.stringify({ error: "İptal edilemedi, lütfen tekrar dene." });
   }
 
+  await matchWaitlistForCancelledAppointment(exec.ctx.business.id, appointment.id).catch((err) =>
+    console.error("waitlist match failed", err)
+  );
+
+  return JSON.stringify({ success: true });
+}
+
+async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
+  const serviceName = String(input.service_name ?? "");
+  const days = (input.days as string[] | undefined) ?? [];
+  const from = String(input.from ?? "");
+  const to = String(input.to ?? "");
+
+  const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === serviceName.trim().toLowerCase());
+  if (!service) {
+    const known = exec.ctx.services.map((s) => s.name).join(", ");
+    return JSON.stringify({ error: `Hizmet tanınmadı. Sistemdeki hizmetler: ${known}` });
+  }
+  if (days.length === 0 || !/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)) {
+    return JSON.stringify({ error: "Gün(ler) ve saat aralığı (HH:MM) eksik veya hatalı." });
+  }
+
+  const admin = createAdminSupabaseClient();
+  const { error } = await admin.from("waitlist_entries").insert({
+    business_id: exec.ctx.business.id,
+    customer_id: exec.customerId,
+    desired_service_id: service.id,
+    desired_time_range: { from, to, days },
+  });
+
+  if (error) {
+    return JSON.stringify({ error: "Bekleme listesine eklenemedi, lütfen tekrar dene." });
+  }
   return JSON.stringify({ success: true });
 }

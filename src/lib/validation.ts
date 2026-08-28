@@ -60,3 +60,7 @@ export const appointmentServiceUpdateSchema = z.object({
 export const reconcileDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
+
+export const actionObjectUpdateSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+});

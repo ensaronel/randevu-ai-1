@@ -2,7 +2,22 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import BottomNav from "@/components/BottomNav";
+import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import type { Staff } from "@/types/database";
+
+async function loadPendingSuggestions(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { data } = await supabase
+    .from("action_objects")
+    .select("id, type, suggestion, reasoning")
+    .eq("business_id", businessId)
+    .eq("status", "pending")
+    .in("type", ["fill_gap", "retention_risk", "rhythm_invite"])
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
 
 async function loadTodaysFinanceNote(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
@@ -80,11 +95,12 @@ async function loadDayTotals(
 export default async function DashboardPage() {
   const { owner, business, supabase } = await getBusinessOwnerForPage();
 
-  const [today, yesterday, lastWeekSameDay, financeNote] = await Promise.all([
+  const [today, yesterday, lastWeekSameDay, financeNote, suggestions] = await Promise.all([
     loadDayTotals(supabase, business.id, 0),
     loadDayTotals(supabase, business.id, -1),
     loadDayTotals(supabase, business.id, -7),
     loadTodaysFinanceNote(supabase, business.id),
+    loadPendingSuggestions(supabase, business.id),
   ]);
 
   const { data: staffData } = await supabase
@@ -150,9 +166,7 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        <p className="text-xs text-ink-muted text-center pt-2">
-          Boşluk doldurma ve risk uyarıları Hafta 9&apos;da burada olacak.
-        </p>
+        <SuggestionsClient items={suggestions} />
       </div>
 
       <BottomNav />
