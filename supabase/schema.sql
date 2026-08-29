@@ -102,6 +102,8 @@ create table appointments (
     check (attendance in ('came','no_show_notified','no_show_silent') or attendance is null),
   -- gün sonu mutabakatında doldurulur: geldi / haber verdi / haber vermeden gelmedi
   source text not null default 'whatsapp_ai' check (source in ('whatsapp_ai','manual','phone_ai')),
+  reminder_24h_sent_at timestamptz, -- 24 saat önce hatırlatma gönderildi mi (tekrar göndermeyi önler)
+  reminder_1h_sent_at timestamptz,  -- 1 saat önce hatırlatma gönderildi mi
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -382,3 +384,29 @@ $$;
 grant usage on schema public to authenticated, service_role;
 grant all on all tables in schema public to service_role;
 grant select, insert, update, delete on all tables in schema public to authenticated;
+
+-- ============================================================
+-- Randevu hatırlatma zamanlayıcısı (24 saat + 1 saat önce, sadece mesaj).
+-- Vercel Cron'un ücretsiz (Hobby) katmanı günde 1 kere ile sınırlı — 1 saat
+-- öncesi hatırlatma için yeterli hassasiyette değil. Bunun yerine Supabase'in
+-- kendi zamanlayıcısı (pg_cron + pg_net) kullanılıyor, ikisi de ücretsiz
+-- katmanda mevcut ve dakika hassasiyetinde çalışabiliyor.
+--
+-- BU BLOĞU SADECE UYGULAMA GERÇEKTEN DEPLOY EDİLDİKTEN SONRA ÇALIŞTIR —
+-- <UYGULAMA_URL> yerine gerçek deploy adresini, <CRON_SECRET> yerine
+-- .env'deki CRON_SECRET değerini yaz. Localhost'a işaret eden bir URL ile
+-- çalıştırırsan Supabase'in sunucusu ona erişemez, hiçbir şey göndermez.
+-- ============================================================
+-- create extension if not exists pg_cron;
+-- create extension if not exists pg_net;
+--
+-- select cron.schedule(
+--   'randevu-hatirlatmalari',
+--   '*/10 * * * *', -- her 10 dakikada bir
+--   $$
+--   select net.http_get(
+--     url := '<UYGULAMA_URL>/api/cron/reminders',
+--     headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+--   );
+--   $$
+-- );
