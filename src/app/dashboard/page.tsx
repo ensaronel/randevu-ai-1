@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
@@ -165,6 +166,19 @@ export default async function DashboardPage() {
             <p className="text-[13.5px] text-ink">{financeNote}</p>
           </div>
         )}
+
+        <Link
+          href="/asistan"
+          className="bg-surface border border-border rounded-2xl p-4 flex items-center justify-between"
+        >
+          <div>
+            <p className="text-sm font-semibold">AI Asistana Sor</p>
+            <p className="text-[12.5px] text-ink-muted">&quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor</p>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </Link>
 
         <SuggestionsClient items={suggestions} />
       </div>

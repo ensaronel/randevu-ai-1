@@ -65,6 +65,14 @@ export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });
 
+export const assistantQuestionSchema = z.object({
+  question: z.string().trim().min(1).max(500),
+  history: z
+    .array(z.object({ role: z.enum(["user", "model"]), text: z.string() }))
+    .max(20)
+    .optional(),
+});
+
 const dayShiftSchema = z.tuple([z.string(), z.string()]);
 export const businessUpdateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
