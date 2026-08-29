@@ -28,7 +28,7 @@ export default async function GunSonuPage() {
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, attendance, customer:customers(full_name), appointment_services(id, planned_price, final_price, adjustment_note, service:services(name), staff:staff(full_name))"
+        "id, starts_at, status, attendance, customer:customers(full_name, phone), appointment_services(id, planned_price, final_price, adjustment_note, service:services(name), staff:staff(full_name))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)

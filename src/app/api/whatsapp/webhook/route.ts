@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
       const value = change.value ?? {};
       const phoneNumberId: string | undefined = value.metadata?.phone_number_id;
       const messages: WhatsappWebhookMessage[] = value.messages ?? [];
+      const contacts: { wa_id?: string; profile?: { name?: string } }[] = value.contacts ?? [];
 
       if (!phoneNumberId || messages.length === 0) continue;
 
@@ -108,9 +109,13 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
           if (!customer) {
+            // WhatsApp'ın kendi kişi bilgisinde genelde müşterinin profil adı gelir
+            // (contacts[].profile.name) — bulunursa gerçek isim olarak kullanılır,
+            // yoksa (nadiren, gizlilik ayarına göre) telefon numarasına düşülür.
+            const waProfileName = contacts.find((c) => c.wa_id === message.from)?.profile?.name;
             const { data: newCustomer } = await admin
               .from("customers")
-              .insert({ business_id: business.id, full_name: message.from, phone: message.from })
+              .insert({ business_id: business.id, full_name: waProfileName || message.from, phone: message.from })
               .select()
               .single();
             customer = newCustomer;

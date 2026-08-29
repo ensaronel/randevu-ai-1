@@ -12,7 +12,7 @@ export interface GunSonuAppointment {
   starts_at: string;
   status: string;
   attendance: Attendance;
-  customer: OneOrMany<{ full_name: string }>;
+  customer: OneOrMany<{ full_name: string; phone: string }>;
   appointment_services: {
     id: string;
     planned_price: number;
@@ -121,7 +121,10 @@ export default function GunSonuClient({
           return (
             <div key={appt.id} className="bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-sm">{customer?.full_name ?? "Müşteri"}</span>
+                <div className="flex flex-col">
+                  <span className="font-semibold text-sm">{customer?.full_name ?? "Müşteri"}</span>
+                  {customer?.phone && <span className="text-[11.5px] text-ink-muted">{customer.phone}</span>}
+                </div>
                 <span className="text-[12.5px] text-ink-muted">{formatTimeTR(appt.starts_at)}</span>
               </div>
 

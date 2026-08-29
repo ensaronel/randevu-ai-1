@@ -18,7 +18,7 @@ type ApptRow = {
   id: string;
   starts_at: string;
   status: string;
-  customer: { full_name: string } | { full_name: string }[] | null;
+  customer: { full_name: string; phone: string } | { full_name: string; phone: string }[] | null;
   appointment_services: ApptServiceRow[];
 };
 
@@ -41,7 +41,7 @@ export default async function TakvimPage() {
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, customer:customers(full_name), appointment_services(staff_id, service:services(name, duration_minutes, category))"
+        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(staff_id, service:services(name, duration_minutes, category))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)
@@ -150,6 +150,9 @@ export default async function TakvimPage() {
                                 {customer?.full_name ?? "Müşteri"}
                               </span>
                               <span className="block truncate opacity-85">{service.name}</span>
+                              {customer?.phone && (
+                                <span className="block truncate opacity-70 text-[10px]">{customer.phone}</span>
+                              )}
                             </div>
                           );
                         });
