@@ -2,7 +2,7 @@
 
 Randevu bazlı işletmeler (önce güzellik salonu/kuaför) için AI destekli yönetim sistemi. WhatsApp üzerinden gerçek randevu alan bir AI + dashboard'da tek-tık aksiyon alan bir "AI işletme yöneticisi".
 
-Yol haritası: `C:\Users\Muhammed Ensar Önel\.claude\plans\enchanted-painting-waffle.md`
+Yol haritası: `docs/PLAN.md`. Güncel durum, kararlar ve açık işler için: `docs/PROJE_DURUMU.md` — **yeni bir oturuma (özellikle bulut oturumuna) başlarken önce bu ikisini oku.**
 
 ## Tech stack
 
