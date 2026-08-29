@@ -282,6 +282,11 @@ create policy "own whatsapp_message_log" on whatsapp_message_log
 -- Randevu oluşturma — çakışma kontrolü + randevu + hizmet satırlarını
 -- tek bir atomik işlemde yapar (yarım kalmış/çakışan randevu riski olmasın diye).
 -- ============================================================
+-- "create or replace" farklı parametre listesiyle eski fonksiyonun YANINA yeni
+-- bir overload ekler, onu değiştirmez — PostgREST iki uyumlu overload arasında
+-- seçim yapamayıp PGRST203 hatası verir. Eski 5 parametreli imzayı önce silmek gerekiyor.
+drop function if exists create_appointment_with_services(uuid, timestamptz, timestamptz, text, jsonb);
+
 create or replace function create_appointment_with_services(
   p_customer_id uuid,
   p_starts_at timestamptz,
