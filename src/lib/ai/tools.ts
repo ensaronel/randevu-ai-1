@@ -143,21 +143,19 @@ export async function executeAiTool(
   return { result: `Bilinmeyen araç: ${name}`, escalated: false };
 }
 
-async function runCheckAvailability(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
-  const serviceNames = (input.service_names as string[] | undefined) ?? [];
-  const dateKey = String(input.date ?? "");
+// İstenen günde boş yoksa, müşteriyi hemen bekleme listesine yönlendirmek yerine
+// önce haftanın geri kalanında en yakın uygun günü arıyoruz — "pazartesi dolu,
+// pazar 12:00 olur mu?" gibi somut bir alternatif sunmak, "boşluk çıkarsa haber
+// veririm" demekten her zaman daha iyi bir ilk tekliftir.
+const LOOKAHEAD_DAYS = 6;
 
-  const normalizedRequested = serviceNames.map((n) => n.trim().toLowerCase());
-  const requestedServices = exec.ctx.services.filter((s) => normalizedRequested.includes(s.name.trim().toLowerCase()));
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + days));
+  return next.toISOString().slice(0, 10);
+}
 
-  if (requestedServices.length !== serviceNames.length) {
-    const known = exec.ctx.services.map((s) => s.name).join(", ");
-    return JSON.stringify({ error: `Bazı hizmet adları tanınmadı. Sistemdeki hizmetler: ${known}` });
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
-    return JSON.stringify({ error: "Tarih YYYY-MM-DD formatında olmalı." });
-  }
-
+async function findSlotsForDate(dateKey: string, requestedServices: AiBusinessContext["services"], exec: ToolExecContext) {
   const admin = createAdminSupabaseClient();
   const { data: appointments } = await admin
     .from("appointments")
@@ -166,7 +164,7 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
     .gte("starts_at", `${dateKey}T00:00:00+03:00`)
     .lt("starts_at", `${dateKey}T23:59:59+03:00`);
 
-  const slots = findAvailableSlots({
+  return findAvailableSlots({
     business: exec.ctx.business,
     requestedServices,
     staff: exec.ctx.staff,
@@ -174,18 +172,44 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
     existingAppointments: (appointments ?? []) as (Appointment & { appointment_services: AppointmentService[] })[],
     dateKey,
   });
+}
 
-  if (slots.length === 0) {
-    return JSON.stringify({ slots: [], message: "O tarihte uygun saat bulunamadı." });
+async function runCheckAvailability(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
+  const serviceNames = (input.service_names as string[] | undefined) ?? [];
+  const requestedDateKey = String(input.date ?? "");
+
+  const normalizedRequested = serviceNames.map((n) => n.trim().toLowerCase());
+  const requestedServices = exec.ctx.services.filter((s) => normalizedRequested.includes(s.name.trim().toLowerCase()));
+
+  if (requestedServices.length !== serviceNames.length) {
+    const known = exec.ctx.services.map((s) => s.name).join(", ");
+    return JSON.stringify({ error: `Bazı hizmet adları tanınmadı. Sistemdeki hizmetler: ${known}` });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDateKey)) {
+    return JSON.stringify({ error: "Tarih YYYY-MM-DD formatında olmalı." });
+  }
+
+  for (let offset = 0; offset <= LOOKAHEAD_DAYS; offset++) {
+    const dateKey = offset === 0 ? requestedDateKey : addDaysToDateKey(requestedDateKey, offset);
+    const slots = await findSlotsForDate(dateKey, requestedServices, exec);
+
+    if (slots.length > 0) {
+      return JSON.stringify({
+        date: dateKey,
+        is_alternate_date: offset > 0,
+        slots: slots.map((slot) => ({
+          starts_at: slot.startsAt,
+          ends_at: slot.endsAt,
+          display: `${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
+          assignments: slot.assignments.map((a) => ({ service_name: a.serviceName, staff_name: a.staffName })),
+        })),
+      });
+    }
   }
 
   return JSON.stringify({
-    slots: slots.map((slot) => ({
-      starts_at: slot.startsAt,
-      ends_at: slot.endsAt,
-      display: `${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
-      assignments: slot.assignments.map((a) => ({ service_name: a.serviceName, staff_name: a.staffName })),
-    })),
+    slots: [],
+    message: `İstenen tarihten itibaren ${LOOKAHEAD_DAYS + 1} gün boyunca uygun saat bulunamadı.`,
   });
 }
 
