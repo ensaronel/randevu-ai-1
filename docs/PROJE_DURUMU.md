@@ -12,8 +12,9 @@ Bu dosya, yerel makinedeki Claude oturumunun hafızasında olup **repoya işlenm
 - **Hafta 10**: Hizmetler/Çalışanlar/Ayarlar self-servis ekranları + personel performansı.
 - **Hafta 11**: Serbest doğal dil soru-cevap AI asistanı (`/asistan`).
 - **Ek özellikler**: AI boş günde en yakın uygun günü öneriyor; müşteri adı WhatsApp profilinden alınıyor; randevu oluşturmada AI/owner çakışma kontrolü birleştirildi (kritik bug fix); randevu hatırlatması (24 saat + 1 saat önce, sadece mesaj, `pg_cron`+`pg_net` ile).
+- **Hafta 12 (kod tamamlandı, gerçek veriyle uçtan uca DOĞRULANMADI)**: Müşteri profili (CRM) — `/musteriler` liste (arama, yeni müşteri ekleme) + `/musteriler/[id]` detay ekranı (notlar/tercih edilen personel düzenleme, aktif/pasif, toplam harcama, ziyaret sayısı, son ziyaret, randevu geçmişi, AI uyarı rozetleri). Öneri geçmişi (önerildi→onaylandı/reddedildi→sonuç) için yeni tablo gerekmedi — Hafta 9'da eklenen `action_objects` şeması zaten bunu tutuyordu, bu hafta sadece müşteri bazlı görünüme bağlandı. **Bu oturum bulutta, gerçek Supabase kimlik bilgileri olmadan çalıştı** — sadece `npm run build` ile doğrulandı, kullanıcı yerel/gerçek ortamda gerçek veriyle test etmeli.
 
-**Sıradaki**: Hafta 12 — Müşteri profili (CRM) + aksiyon geçmişi.
+**Sıradaki**: Hafta 12'nin gerçek veriyle testi, sonra Hafta 13 — Pilot kurulumu + baseline ölçüm.
 
 ## Önemli kararlar (repoda yazılı değildi)
 
