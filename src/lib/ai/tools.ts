@@ -230,48 +230,31 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
 
   const admin = createAdminSupabaseClient();
 
-  // Son anda çakışma oluşmuş mu diye tekrar kontrol (iki mesaj arasında başka bir randevu girilmiş olabilir).
-  for (const { staff } of resolved) {
-    const { data: conflicts } = await admin
-      .from("appointment_services")
-      .select("appointment_id, appointments!inner(starts_at, ends_at, status, business_id)")
-      .eq("staff_id", staff!.id)
-      .eq("appointments.business_id", exec.ctx.business.id)
-      .neq("appointments.status", "cancelled")
-      .lt("appointments.starts_at", endsAt)
-      .gt("appointments.ends_at", startsAt);
-
-    if (conflicts && conflicts.length > 0) {
-      return JSON.stringify({ error: "Bu saat az önce başka bir randevuyla doldu, lütfen tekrar check_availability çağır." });
-    }
-  }
-
-  const { data: appointment, error: apptError } = await admin
-    .from("appointments")
-    .insert({
-      business_id: exec.ctx.business.id,
-      customer_id: exec.customerId,
-      starts_at: startsAt,
-      ends_at: endsAt,
-      source: "whatsapp_ai",
-    })
-    .select()
-    .single();
-
-  if (apptError || !appointment) {
-    return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
-  }
-
-  const { error: servicesError } = await admin.from("appointment_services").insert(
-    resolved.map((r) => ({
-      appointment_id: appointment.id,
+  // Owner'ın manuel randevu oluşturma yolu (/api/appointments POST) ile AYNI
+  // atomik çakışma-kontrolü + insert RPC'si — iki farklı kod yolunun farklı
+  // davranıp birbiriyle çelişen (çift rezervasyon gibi) sonuçlar üretmesini
+  // önlemek için tek gerçek kaynak burası. p_business_id burada service-role
+  // çağrısı olduğu için gerekli (bkz. schema.sql'deki current_business_id() notu).
+  const { data: appointmentId, error } = await admin.rpc("create_appointment_with_services", {
+    p_customer_id: exec.customerId,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_source: "whatsapp_ai",
+    p_services: resolved.map((r) => ({
       service_id: r.service!.id,
       staff_id: r.staff!.id,
       planned_price: r.service!.price,
-    }))
-  );
+    })),
+    p_business_id: exec.ctx.business.id,
+  });
 
-  if (servicesError) {
+  if (error) {
+    if (error.message?.includes("staff_conflict")) {
+      return JSON.stringify({ error: "Bu saat az önce başka bir randevuyla doldu, lütfen tekrar check_availability çağır." });
+    }
+    return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
+  }
+  if (!appointmentId) {
     return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
   }
 

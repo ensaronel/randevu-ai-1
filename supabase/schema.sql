@@ -287,14 +287,20 @@ create or replace function create_appointment_with_services(
   p_starts_at timestamptz,
   p_ends_at timestamptz,
   p_source text,
-  p_services jsonb -- [{ "service_id": "...", "staff_id": "...", "planned_price": 100 }, ...]
+  p_services jsonb, -- [{ "service_id": "...", "staff_id": "...", "planned_price": 100 }, ...]
+  p_business_id uuid default null -- sadece service-role (AI/webhook) çağrılarında geçilir
 )
 returns uuid
 language plpgsql
 security invoker
 as $$
 declare
-  v_business_id uuid := current_business_id();
+  -- p_business_id verilmişse onu kullanır (service role RLS'yi zaten atlar,
+  -- gerçek işletme sahibi oturumu için ise aşağıdaki insert'teki RLS "with
+  -- check" politikası current_business_id()'e göre kontrol ettiği için
+  -- yanlış bir p_business_id gönderilse bile reddedilir — bkz. schema
+  -- yorumu). Owner oturumu p_business_id göndermez, current_business_id()'e düşer.
+  v_business_id uuid := coalesce(p_business_id, current_business_id());
   v_appointment_id uuid;
   v_conflict_count int;
   v_service jsonb;
