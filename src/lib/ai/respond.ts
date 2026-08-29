@@ -6,9 +6,11 @@ import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business, Customer } from "@/types/database";
 
 // Bütçe kısıtı nedeniyle şimdilik Gemini'nin ücretsiz katmanı kullanılıyor
-// (kart gerektirmiyor) — pilot/canlıya geçerken plandaki Claude Haiku'ya
-// dönülebilir, mimari (tools.ts/availability.ts) sağlayıcıdan bağımsız.
-const MODEL = "gemini-3.6-flash";
+// (kart gerektirmiyor) — flash-lite'ın ücretsiz katmanı günde 1000 istek
+// destekliyor (eski gemini-3.6-flash'ın günlük 20 istek sınırına takılmıştık).
+// Gerekirse plandaki Claude Haiku'ya dönülebilir, mimari (tools.ts/availability.ts)
+// sağlayıcıdan bağımsız.
+const MODEL = "gemini-3.5-flash-lite";
 const MAX_TOOL_ITERATIONS = 6;
 const HISTORY_LIMIT = 20;
 

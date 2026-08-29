@@ -26,9 +26,9 @@ Bu dosya, yerel makinedeki Claude oturumunun hafızasında olup **repoya işlenm
 ## Bilinen açık işler / riskler
 
 1. **Meta WhatsApp doğrulaması hâlâ çözülmedi** — tüm WhatsApp özellikleri (AI randevu, hatırlatma, proaktif mesajlar) kod olarak hazır ama gerçek numaraya bağlanamıyor. Bu, Hafta 13-14'ü de blokluyor.
-2. **Gemini ücretsiz katman günlük 20 istek sınırına takıldı** (test sırasında bizzat yaşandı) — Hafta 13 pilot öncesi mutlaka çözülmeli: ya Gemini'de faturalandırma açılır (kolay, ucuz) ya da Anthropic Claude Haiku'ya geçilir (`ANTHROPIC_API_KEY` zaten `.env.local`'de yer tutucu olarak var, sadece `src/lib/ai/respond.ts` değişir).
+2. ~~Gemini ücretsiz katman günlük 20 istek sınırına takıldı~~ — **ÇÖZÜLDÜ**: model `gemini-3.6-flash`'tan `gemini-3.5-flash-lite`'a geçirildi (`assistant.ts`, `financeCommentary.ts`, `respond.ts`), bu modelin ücretsiz katmanı günde 1000 istek destekliyor, faturalandırma/kart gerekmedi. Gerçek Supabase + gerçek sunucu üzerinden fonksiyon çağırma (check_availability → create_appointment) uçtan uca test edildi, sorunsuz çalışıyor.
 3. **WhatsApp hatırlatma/proaktif mesajları şu an serbest metin gönderiyor** — Meta onaylı bir şablon olmadan bu mesajlar gerçekte reddedilir, Meta onayı tamamlanınca şablona çevrilmeli (`src/lib/reminders.ts`, fill_gap/retention_risk/rhythm_invite mesajları).
-4. Veritabanında 3 eski test işletmesi + 3 test hesabı duruyor, silmek için kullanıcı onayı bekleniyor.
+4. Veritabanında 4 eski test işletmesi + 4 test hesabı duruyor (deneme-kuaför, Test Kuaför, Örnek Kuaför Salonu, E2E Asistan İşletmesi) — kullanıcı onayı alındı ama otomatik güvenlik sınıflandırıcısı kalıcı silme işlemini (DB satırı + auth kullanıcı) engelledi; kullanıcı şimdilik elle silmeyi erteledi, gerçek pilot verisiyle karışmıyorlar (ayrı business_id).
 5. `supabase/schema.sql`'in sonundaki `pg_cron`/`pg_net` kurulum bloğu, uygulama gerçekten deploy edilip gerçek URL bilinene kadar çalıştırılamaz (yorum satırı olarak bırakıldı).
 
 ## Genel prensipler (bu oturumda öğrenilenler)

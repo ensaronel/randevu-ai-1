@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Diğer AI dosyalarıyla aynı sağlayıcı kararı — bkz. respond.ts üstündeki not.
-const MODEL = "gemini-3.6-flash";
+const MODEL = "gemini-3.5-flash-lite";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 

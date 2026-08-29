@@ -4,7 +4,7 @@ import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business } from "@/types/database";
 
 // Diğer AI dosyalarıyla aynı sağlayıcı — bkz. respond.ts üstündeki not.
-const MODEL = "gemini-3.6-flash";
+const MODEL = "gemini-3.5-flash-lite";
 const MAX_TOOL_ITERATIONS = 6;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
