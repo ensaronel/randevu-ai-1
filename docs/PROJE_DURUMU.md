@@ -21,7 +21,7 @@ Bu dosya, yerel makinedeki Claude oturumunun hafızasında olup **repoya işlenm
 - **Fiyatlandırma**: Aylık abonelik, **2.000 TL/ay**, tüm özellikler dahil (kademeli paket yok — ilk müşterilerde basitlik için).
 - **Telefon AI (Faz 2)**: WhatsApp kanıtlanınca eklenecek, ayrı bir üst paket olarak **+1.500-2.500 TL/ay** (gerçek dakika-başı maliyeti olduğu için ayrı ücretlendirilmeli).
 - **Pilot işletme**: Kullanıcının evinin aşağısındaki bir **erkek kuaförü** — henüz kuaförle kesin anlaşma/görüşme durumu netleşmedi.
-- **Tasarım beyin fırtınası**: 5 ekranlık bir Claude Design canvas'ı hazırlandı (Ana Sayfa, Takvim, Randevu Oluştur, Çalışanlar, 1 masaüstü örneği) — https://claude.ai/code/artifact/a50f2221-e174-4451-8e7a-fc550c217c24 . Masaüstü responsive hâle getirme kodu henüz yazılmadı, sadece 1 örnek ekran tasarlandı.
+- **Tasarım beyin fırtınası**: 5 ekranlık bir Claude Design canvas'ı hazırlandı (Ana Sayfa, Takvim, Randevu Oluştur, Çalışanlar, 1 masaüstü örneği) — https://claude.ai/code/artifact/a50f2221-e174-4451-8e7a-fc550c217c24 . **Kısmen koda işlendi** (bkz. açık işler #6): ortak masaüstü+mobil kabuk (`AppShell`/`Sidebar`) ve Dashboard/Çalışanlar'ın halka grafikli görünümü tamamlandı; Takvim'in gün-şeridi/personel-doluluk-yüzdesi detayları ve "Randevu Oluştur" ekranı (owner'ın manuel randevu oluşturabileceği bir sayfa hiç yoktu, sadece API/AI üzerinden oluşuyor) henüz uygulanmadı.
 
 ## Bilinen açık işler / riskler
 
@@ -30,6 +30,7 @@ Bu dosya, yerel makinedeki Claude oturumunun hafızasında olup **repoya işlenm
 3. **WhatsApp hatırlatma/proaktif mesajları şu an serbest metin gönderiyor** — Meta onaylı bir şablon olmadan bu mesajlar gerçekte reddedilir, Meta onayı tamamlanınca şablona çevrilmeli (`src/lib/reminders.ts`, fill_gap/retention_risk/rhythm_invite mesajları).
 4. Veritabanında 4 eski test işletmesi + 4 test hesabı duruyor (deneme-kuaför, Test Kuaför, Örnek Kuaför Salonu, E2E Asistan İşletmesi) — kullanıcı onayı alındı ama otomatik güvenlik sınıflandırıcısı kalıcı silme işlemini (DB satırı + auth kullanıcı) engelledi; kullanıcı şimdilik elle silmeyi erteledi, gerçek pilot verisiyle karışmıyorlar (ayrı business_id).
 5. ~~`pg_cron`/`pg_net` kurulum bloğu deploy bekliyor~~ — **ÇÖZÜLDÜ**: gerçek Vercel URL'i (`https://randevu-ai-1.vercel.app`) hazır olduğu için Supabase SQL Editor'de çalıştırıldı. `cron.job` tablosunda doğrulandı: jobid 1, jobname `randevu-hatirlatmalari`, `*/10 * * * *` (her 10 dakikada bir) `/api/cron/reminders`'ı tetikliyor. `schema.sql`'deki blok hâlâ yorum satırı olarak duruyor (gerçek secret içerdiği için commit edilmedi), gerçek SQL Supabase projesinde canlı.
+6. **Tasarım implementasyonu kısmi** — `AppShell`/`Sidebar` (masaüstünde sol menü, mobilde alt menü) tüm sayfalara uygulandı, Dashboard ve Çalışanlar sayfaları halka grafikle (doluluk %) yenilendi; gerçek bir test hesabıyla Playwright üzerinden mobil (390px) ve masaüstü (1440px) genişliklerde ekran görüntüsüyle doğrulandı. Takvim sadece kabuğa bağlandı, mockup'taki gün-şeridi/kaydırmalı personel doluluk yüzdesi eklenmedi. Mockup'taki "Randevu Oluştur" ekranı hiç yapılmadı — owner'ın elle randevu oluşturabileceği bir sayfa şu an yok (sadece AI/WhatsApp üzerinden veya doğrudan API'den oluşuyor), bu ayrı bir özellik olarak ele alınmalı.
 
 ## Genel prensipler (bu oturumda öğrenilenler)
 
