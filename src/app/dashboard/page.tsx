@@ -151,7 +151,7 @@ export default async function DashboardPage() {
           </h1>
         </div>
         <Link
-          href="/takvim"
+          href="/randevu-olustur"
           className="hidden lg:flex items-center gap-2 bg-accent text-white rounded-full px-5 py-2.5 text-sm font-semibold shrink-0"
         >
           + Yeni Randevu

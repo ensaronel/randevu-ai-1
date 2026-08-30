@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, formatDateTR } from "@/lib/date";
 import { colorForCategory } from "@/lib/serviceColors";
@@ -60,9 +61,17 @@ export default async function TakvimPage() {
 
   return (
     <AppShell businessName={business.name}>
-        <div>
-          <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
-          <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
+            <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
+          </div>
+          <Link
+            href="/randevu-olustur"
+            className="bg-accent text-white rounded-full px-4 py-2 text-[13px] font-semibold shrink-0"
+          >
+            + Randevu
+          </Link>
         </div>
 
         {staffList.length === 0 ? (
