@@ -99,7 +99,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
         </button>
       </div>
 
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 lg:gap-4">
         {staff.map((member) => {
           const expanded = expandedId === member.id;
           return (
@@ -109,29 +109,37 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
                 member.status === "inactive" ? "opacity-50" : ""
               }`}
             >
-              <div className="flex items-center justify-between">
-                <button onClick={() => setExpandedId(expanded ? null : member.id)} className="text-left">
-                  <p className="font-semibold text-sm">{member.full_name}</p>
-                  <p className="text-[12.5px] text-ink-muted">Prim %{member.commission_rate}</p>
-                </button>
-                <button
-                  onClick={() => updateStaff(member.id, { status: member.status === "active" ? "inactive" : "active" })}
-                  disabled={busyId === member.id}
-                  className="text-[12.5px] font-semibold text-accent"
-                >
-                  {member.status === "active" ? "Pasifleştir" : "Aktifleştir"}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border">
-                <Metric label="Doluluk" value={`%${member.occupancyPercent}`} warn={member.occupancyPercent < 30} />
-                <Metric label="Bu ay ciro" value={formatTL(member.revenue)} />
-                <Metric label="No-show/iptal" value={`%${member.noShowRatePercent}`} warn={member.noShowRatePercent > 25} />
+              <div className="flex items-center gap-4">
+                <OccupancyRing percent={member.occupancyPercent} />
+                <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <button onClick={() => setExpandedId(expanded ? null : member.id)} className="text-left min-w-0">
+                      <p className="font-semibold text-sm truncate">{member.full_name}</p>
+                    </button>
+                    <button
+                      onClick={() => updateStaff(member.id, { status: member.status === "active" ? "inactive" : "active" })}
+                      disabled={busyId === member.id}
+                      className="text-[11px] font-bold text-accent shrink-0"
+                    >
+                      {member.status === "active" ? "Pasifleştir" : "Aktifleştir"}
+                    </button>
+                  </div>
+                  <div className="flex gap-4">
+                    <Metric label="Bu ay ciro" value={formatTL(member.revenue)} />
+                    <Metric
+                      label="No-show/iptal"
+                      value={`%${member.noShowRatePercent}`}
+                      warn={member.noShowRatePercent > 25}
+                    />
+                  </div>
+                  <span className="text-[11.5px] text-ink-muted">
+                    Bu ay prim: {formatTL(member.commission)} (%{member.commission_rate})
+                  </span>
+                </div>
               </div>
 
               {expanded && (
                 <div className="flex flex-col gap-2 pt-2 border-t border-border">
-                  <p className="text-[12px] text-ink-muted">Bu ay prim: {formatTL(member.commission)}</p>
                   <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">İzin Günleri</p>
                   {member.leave_dates.length === 0 && (
                     <p className="text-[12px] text-ink-muted">Tanımlı izin günü yok.</p>
@@ -169,6 +177,33 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function OccupancyRing({ percent }: { percent: number }) {
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const dashoffset = circumference * (1 - Math.min(100, percent) / 100);
+
+  return (
+    <div className="relative w-16 h-16 shrink-0">
+      <svg width="64" height="64" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="var(--accent-soft)" strokeWidth="8" />
+        <circle
+          cx="32"
+          cy="32"
+          r={radius}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashoffset}
+          transform="rotate(-90 32 32)"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-[13px] font-bold">%{percent}</div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import CalisanlarClient, { type StaffItem } from "@/app/ayarlar/calisanlar/CalisanlarClient";
 import type { Staff } from "@/types/database";
 
@@ -34,12 +34,9 @@ export default async function CalisanlarPage() {
   });
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <h1 className="text-2xl font-semibold">Çalışanlar</h1>
         <CalisanlarClient staff={items} />
-      </div>
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

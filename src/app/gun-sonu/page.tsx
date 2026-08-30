@@ -1,7 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, dateKeyTR, formatDateTR, formatTL } from "@/lib/date";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import GunSonuClient, { type GunSonuAppointment } from "@/app/gun-sonu/GunSonuClient";
 import type { Business, Staff } from "@/types/database";
 
@@ -47,8 +47,7 @@ export default async function GunSonuPage() {
   const appointments = (apptData ?? []) as unknown as GunSonuAppointment[];
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <div>
           <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Gün Sonu Mutabakat</p>
           <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
@@ -72,9 +71,6 @@ export default async function GunSonuPage() {
             ))}
           </div>
         )}
-      </div>
-
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

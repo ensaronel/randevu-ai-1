@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import MusteriDetayClient, {
   type AppointmentHistoryItem,
   type ActionHistoryItem,
@@ -97,8 +97,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
   const hasPendingRhythmInvite = actionHistory.some((a) => a.type === "rhythm_invite" && a.status === "pending");
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <MusteriDetayClient
           customer={customer}
           staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name }))}
@@ -113,8 +112,6 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
           appointments={appointmentHistory}
           actionHistory={actionHistory}
         />
-      </div>
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

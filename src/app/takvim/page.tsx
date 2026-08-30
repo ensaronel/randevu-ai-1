@@ -1,7 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, formatDateTR } from "@/lib/date";
 import { colorForCategory } from "@/lib/serviceColors";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import type { Staff } from "@/types/database";
 
 const GRID_START_HOUR = 9;
@@ -59,8 +59,7 @@ export default async function TakvimPage() {
   );
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-3xl mx-auto w-full">
+    <AppShell businessName={business.name}>
         <div>
           <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
           <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
@@ -163,9 +162,6 @@ export default async function TakvimPage() {
             </div>
           </div>
         )}
-      </div>
-
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

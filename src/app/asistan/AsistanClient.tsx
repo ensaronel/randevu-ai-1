@@ -42,7 +42,7 @@ export default function AsistanClient() {
   }
 
   return (
-    <div className="flex-1 flex flex-col px-4 py-5 max-w-md mx-auto w-full gap-4">
+    <div className="flex-1 flex flex-col gap-4 min-h-0">
       <div>
         <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">AI Asistan</p>
         <h1 className="text-xl font-semibold">Sorularını sor</h1>

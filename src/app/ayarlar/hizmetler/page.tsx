@@ -1,5 +1,5 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import HizmetlerClient from "@/app/ayarlar/hizmetler/HizmetlerClient";
 
 export default async function HizmetlerPage() {
@@ -13,12 +13,9 @@ export default async function HizmetlerPage() {
     .order("name", { ascending: true });
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <h1 className="text-2xl font-semibold">Hizmetler</h1>
         <HizmetlerClient services={data ?? []} />
-      </div>
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 
 const LINKS = [
   { href: "/ayarlar/hizmetler", label: "Hizmetler", desc: "Fiyat, süre ve hizmet listesi" },
@@ -12,14 +12,13 @@ export default async function AyarlarPage() {
   const { business } = await getBusinessOwnerForPage();
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <div>
           <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">{business.name}</p>
           <h1 className="text-2xl font-semibold">Ayarlar</h1>
         </div>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-3 lg:gap-4">
           {LINKS.map((link) => (
             <Link
               key={link.href}
@@ -31,9 +30,6 @@ export default async function AyarlarPage() {
             </Link>
           ))}
         </div>
-      </div>
-
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

@@ -1,14 +1,13 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import AsistanClient from "@/app/asistan/AsistanClient";
 
 export default async function AsistanPage() {
-  await getBusinessOwnerForPage();
+  const { business } = await getBusinessOwnerForPage();
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
+    <AppShell businessName={business.name}>
       <AsistanClient />
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }

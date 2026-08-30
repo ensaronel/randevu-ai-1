@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import type { Staff } from "@/types/database";
 
@@ -121,24 +121,52 @@ export default async function DashboardPage() {
       ? Math.round(((yesterday.revenue - lastWeekSameDay.revenue) / lastWeekSameDay.revenue) * 100)
       : null;
 
+  const totalCapacityMinutes = isClosedToday
+    ? 0
+    : staffList.reduce((sum, staff) => {
+        if (staff.leave_dates?.includes(dateKeyTR(0))) return sum;
+        const hours = staff.working_hours?.[weekdayKeyTR(0)];
+        if (!hours) return sum;
+        const [start, end] = hours;
+        const parse = (v: string) => {
+          const [h, m] = v.split(":").map(Number);
+          return h * 60 + (m || 0);
+        };
+        return sum + Math.max(0, parse(end) - parse(start));
+      }, 0);
+  const occupancyPercent =
+    totalCapacityMinutes > 0
+      ? Math.round(((totalCapacityMinutes - freeMinutes) / totalCapacityMinutes) * 100)
+      : 0;
+
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-5 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
+      <div className="flex items-center justify-between">
         <div>
           <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">
             {business.name}
           </p>
-          <h1 className="text-2xl font-semibold">Merhaba, {owner.full_name.split(" ")[0]}</h1>
+          <h1 className="text-2xl lg:text-[26px] font-semibold font-display">
+            Merhaba, {owner.full_name.split(" ")[0]}
+          </h1>
         </div>
+        <Link
+          href="/takvim"
+          className="hidden lg:flex items-center gap-2 bg-accent text-white rounded-full px-5 py-2.5 text-sm font-semibold shrink-0"
+        >
+          + Yeni Randevu
+        </Link>
+      </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_1fr] gap-3 lg:gap-5">
+        <OccupancyCard percent={occupancyPercent} freeMinutes={freeMinutes} />
+
+        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2.5 lg:gap-5">
           <StatCard label="Bugünkü randevu" value={String(today.appointmentCount)} />
-          <StatCard label="Tahmini ciro" value={formatTL(today.revenue)} />
-          <StatCard label="Boş kapasite" value={formatMinutesAsHours(freeMinutes)} />
           <StatCard label="İptal" value={String(today.cancelledCount)} warn={today.cancelledCount > 0} />
         </div>
 
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
+        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5 lg:justify-center">
           <div className="flex items-center justify-between">
             <span className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">
               Dün (tahmini)
@@ -159,31 +187,68 @@ export default async function DashboardPage() {
             <p className="text-[13.5px] text-ink-muted">Geçen haftanın aynı gününe göre.</p>
           )}
         </div>
+      </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-3 lg:gap-5 items-start">
         {financeNote && (
-          <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 flex flex-col gap-1.5">
+          <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5">
             <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
-            <p className="text-[13.5px] text-ink">{financeNote}</p>
+            <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
           </div>
         )}
 
-        <Link
-          href="/asistan"
-          className="bg-surface border border-border rounded-2xl p-4 flex items-center justify-between"
-        >
-          <div>
-            <p className="text-sm font-semibold">AI Asistana Sor</p>
-            <p className="text-[12.5px] text-ink-muted">&quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor</p>
-          </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </Link>
+        <div className="flex flex-col gap-2.5 lg:gap-3.5">
+          <Link
+            href="/asistan"
+            className="bg-surface border border-border rounded-2xl p-4 flex items-center justify-between"
+          >
+            <div>
+              <p className="text-sm font-semibold">AI Asistana Sor</p>
+              <p className="text-[12.5px] text-ink-muted">&quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor</p>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </Link>
 
-        <SuggestionsClient items={suggestions} />
+          <SuggestionsClient items={suggestions} />
+        </div>
       </div>
+    </AppShell>
+  );
+}
 
-      <BottomNav />
+function OccupancyCard({ percent, freeMinutes }: { percent: number; freeMinutes: number }) {
+  const radius = 63;
+  const circumference = 2 * Math.PI * radius;
+  const dashoffset = circumference * (1 - percent / 100);
+
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-6 flex flex-col items-center gap-3 pt-5 lg:pt-6">
+      <div className="relative w-[140px] h-[140px] lg:w-[160px] lg:h-[160px]">
+        <svg width="100%" height="100%" viewBox="0 0 140 140">
+          <circle cx="70" cy="70" r={radius} fill="none" stroke="var(--accent-soft)" strokeWidth="14" />
+          <circle
+            cx="70"
+            cy="70"
+            r={radius}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="14"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={dashoffset}
+            transform="rotate(-90 70 70)"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="font-display text-[32px] lg:text-[34px] font-bold leading-none">%{percent}</span>
+          <span className="text-ink-muted text-[11.5px] font-bold uppercase tracking-wide mt-1">Doluluk</span>
+        </div>
+      </div>
+      <span className="text-ink-muted text-[13px] text-center">
+        Bugün için {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
+      </span>
     </div>
   );
 }
@@ -198,8 +263,8 @@ function StatCard({
   warn?: boolean;
 }) {
   return (
-    <div className="bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-2">
-      <p className={`text-[21px] font-semibold font-display ${warn ? "text-bad" : ""}`}>{value}</p>
+    <div className="bg-surface border border-border rounded-2xl p-3.5 lg:p-5 flex flex-col gap-2 lg:flex-1 lg:justify-center">
+      <p className={`text-[21px] lg:text-[26px] font-semibold font-display ${warn ? "text-bad" : ""}`}>{value}</p>
       <p className="text-[12.5px] text-ink-muted">{label}</p>
     </div>
   );

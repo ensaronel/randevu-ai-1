@@ -1,5 +1,5 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import BottomNav from "@/components/BottomNav";
+import AppShell from "@/components/AppShell";
 import MusterilerClient, { type CustomerListItem } from "@/app/musteriler/MusterilerClient";
 import type { Customer } from "@/types/database";
 
@@ -63,12 +63,9 @@ export default async function MusterilerPage() {
   });
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 px-4 py-5 flex flex-col gap-4 max-w-md mx-auto w-full">
+    <AppShell businessName={business.name}>
         <h1 className="text-2xl font-semibold">Müşteriler</h1>
         <MusterilerClient customers={items} />
-      </div>
-      <BottomNav />
-    </div>
+    </AppShell>
   );
 }
