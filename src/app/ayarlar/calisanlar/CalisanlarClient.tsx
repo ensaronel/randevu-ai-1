@@ -28,6 +28,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
   const [commissionRate, setCommissionRate] = useState("20");
   const [workingHours, setWorkingHours] = useState<WorkingHours>(DEFAULT_HOURS);
   const [saving, setSaving] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
         setName("");
         setCommissionRate("20");
         setWorkingHours(DEFAULT_HOURS);
+        setShowAddForm(false);
         router.refresh();
       }
     } finally {
@@ -74,30 +76,47 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
-        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Personel</p>
-        <input
-          placeholder="Ad Soyad"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="border border-border rounded-lg px-3 py-2 text-sm"
-        />
-        <input
-          placeholder="Prim oranı (%)"
-          inputMode="numeric"
-          value={commissionRate}
-          onChange={(e) => setCommissionRate(e.target.value)}
-          className="border border-border rounded-lg px-3 py-2 text-sm"
-        />
-        <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />
+      {showAddForm ? (
+        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+          <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Personel</p>
+          <input
+            placeholder="Ad Soyad"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="Prim oranı (%)"
+            inputMode="numeric"
+            value={commissionRate}
+            onChange={(e) => setCommissionRate(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 text-sm"
+          />
+          <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />
+          <div className="flex gap-2">
+            <button
+              onClick={addStaff}
+              disabled={saving}
+              className="flex-1 bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+            >
+              {saving ? "Ekleniyor..." : "Personeli Ekle"}
+            </button>
+            <button
+              onClick={() => setShowAddForm(false)}
+              className="flex-1 border border-border rounded-lg py-2.5 text-sm font-semibold text-ink-muted"
+            >
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      ) : (
         <button
-          onClick={addStaff}
-          disabled={saving}
-          className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+          onClick={() => setShowAddForm(true)}
+          className="border border-dashed border-border rounded-2xl py-3 text-sm font-semibold text-accent"
         >
-          {saving ? "Ekleniyor..." : "Personeli Ekle"}
+          + Personel Ekle
         </button>
-      </div>
+      )}
 
       <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 lg:gap-4">
         {staff.map((member) => {

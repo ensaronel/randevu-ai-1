@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, formatDateTR } from "@/lib/date";
+import { dateKeyTR, formatDateTR } from "@/lib/date";
+import { dayRangeUtcISOForDate } from "@/lib/ai/availability";
 import { colorForCategory } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
 import type { Staff } from "@/types/database";
@@ -9,6 +10,17 @@ const GRID_START_HOUR = 9;
 const GRID_END_HOUR = 19;
 const COLUMN_WIDTH = 108;
 const HOUR_HEIGHT = 60; // 1px = 1dk
+const WEEKDAY_LABELS = ["PAZ", "PZT", "SAL", "ÇAR", "PER", "CUM", "CTS"];
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function weekdayLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return WEEKDAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
 
 type ServiceInfo = { name: string; duration_minutes: number; category: string | null };
 type ApptServiceRow = {
@@ -28,9 +40,17 @@ function one<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-export default async function TakvimPage() {
+export default async function TakvimPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
   const { business, supabase } = await getBusinessOwnerForPage();
-  const { startUtc, endUtc } = dayRangeUtcISO(0);
+  const sp = await searchParams;
+  const dateKey = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : dateKeyTR(0);
+  const { startUtc, endUtc } = dayRangeUtcISOForDate(dateKey);
+
+  const dayChips = Array.from({ length: 7 }, (_, i) => shiftDateKey(dateKey, i - 3));
 
   const [{ data: staffData }, { data: apptData }] = await Promise.all([
     supabase
@@ -62,9 +82,29 @@ export default async function TakvimPage() {
   return (
     <AppShell businessName={business.name}>
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
-            <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
+          <div className="flex items-center gap-2.5">
+            <Link
+              href={`/takvim?date=${shiftDateKey(dateKey, -1)}`}
+              className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
+              aria-label="Önceki gün"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </Link>
+            <div>
+              <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
+              <h1 className="text-xl font-semibold capitalize">{formatDateTR(`${dateKey}T12:00:00+03:00`)}</h1>
+            </div>
+            <Link
+              href={`/takvim?date=${shiftDateKey(dateKey, 1)}`}
+              className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
+              aria-label="Sonraki gün"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </Link>
           </div>
           <Link
             href="/randevu-olustur"
@@ -72,6 +112,23 @@ export default async function TakvimPage() {
           >
             + Randevu
           </Link>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {dayChips.map((chipDateKey) => (
+            <Link
+              key={chipDateKey}
+              href={`/takvim?date=${chipDateKey}`}
+              className={`w-[42px] h-[54px] rounded-xl flex flex-col items-center justify-center gap-0.5 shrink-0 ${
+                chipDateKey === dateKey
+                  ? "bg-accent text-white"
+                  : "bg-surface border border-border text-ink-muted"
+              }`}
+            >
+              <span className="text-[9.5px] font-bold">{weekdayLabel(chipDateKey)}</span>
+              <span className="text-[13px] font-bold">{Number(chipDateKey.split("-")[2])}</span>
+            </Link>
+          ))}
         </div>
 
         {staffList.length === 0 ? (
