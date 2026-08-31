@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dateKeyTR, formatDateTR } from "@/lib/date";
-import { dayRangeUtcISOForDate } from "@/lib/ai/availability";
+import { dayRangeUtcISOForDate, weekdayKeyForDate } from "@/lib/ai/availability";
+import { parseTimeToMinutes } from "@/lib/capacity";
 import { colorForCategory } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
 import type { Staff } from "@/types/database";
@@ -73,6 +74,32 @@ export default async function TakvimPage({
   const staffList = (staffData ?? []) as Staff[];
   const appointments = (apptData ?? []) as unknown as ApptRow[];
   const gridMinutes = (GRID_END_HOUR - GRID_START_HOUR) * 60;
+  const weekdayKey = weekdayKeyForDate(dateKey);
+
+  function serviceDuration(service: ServiceInfo | ServiceInfo[] | null): number {
+    if (!service) return 0;
+    return Array.isArray(service) ? service[0]?.duration_minutes ?? 0 : service.duration_minutes;
+  }
+
+  function occupancyForStaff(staff: Staff): { percent: number; working: boolean } {
+    if (staff.leave_dates?.includes(dateKey)) return { percent: 0, working: false };
+    const shift = staff.working_hours?.[weekdayKey];
+    if (!shift) return { percent: 0, working: false };
+
+    const capacityMinutes = Math.max(0, parseTimeToMinutes(shift[1]) - parseTimeToMinutes(shift[0]));
+    if (capacityMinutes === 0) return { percent: 0, working: false };
+
+    const bookedMinutes = appointments.reduce((sum, appt) => {
+      return (
+        sum +
+        appt.appointment_services
+          .filter((svc) => svc.staff_id === staff.id)
+          .reduce((s, svc) => s + serviceDuration(svc.service), 0)
+      );
+    }, 0);
+
+    return { percent: Math.round((bookedMinutes / capacityMinutes) * 100), working: true };
+  }
 
   const hourMarks = Array.from(
     { length: GRID_END_HOUR - GRID_START_HOUR + 1 },
@@ -139,15 +166,21 @@ export default async function TakvimPage({
           <div className="overflow-x-auto">
             <div className="flex" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
               <div style={{ width: 42 }} />
-              {staffList.map((s) => (
-                <div
-                  key={s.id}
-                  className="text-center text-[12.5px] font-bold"
-                  style={{ width: COLUMN_WIDTH, marginRight: 8 }}
-                >
-                  {s.full_name}
-                </div>
-              ))}
+              {staffList.map((s) => {
+                const occupancy = occupancyForStaff(s);
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-col items-center gap-0.5"
+                    style={{ width: COLUMN_WIDTH, marginRight: 8 }}
+                  >
+                    <span className="text-center text-[12.5px] font-bold">{s.full_name}</span>
+                    <span className="text-[10.5px] text-ink-muted">
+                      {occupancy.working ? `%${occupancy.percent} dolu` : "Bugün kapalı"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex relative" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
