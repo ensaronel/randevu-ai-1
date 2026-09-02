@@ -2,8 +2,17 @@ import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseTimeToMinutes } from "@/lib/capacity";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
+import { findAvailableSlots } from "@/lib/ai/availability";
+import { loadBusinessContext } from "@/lib/ai/context";
+import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
+import type { Appointment, AppointmentService } from "@/types/database";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+
+function one<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
   {
@@ -62,6 +71,94 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
       required: ["from", "to"],
     },
   },
+  {
+    name: "find_customer_appointments",
+    description:
+      "Bir müşterinin yaklaşan (henüz gerçekleşmemiş) randevularını bulur, her birinin appointment_id'siyle " +
+      "birlikte döner. Bir randevuyu İPTAL ETMEDEN veya ERTELEMEDEN ÖNCE mutlaka bunu çağırıp doğru " +
+      "appointment_id'yi bul — asla tahmin etme.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        customer_query: { type: "string", description: "Müşteri adı (tam veya kısmi) ya da telefon numarası" },
+      },
+      required: ["customer_query"],
+    },
+  },
+  {
+    name: "cancel_appointment_action",
+    description:
+      "find_customer_appointments'ın döndürdüğü bir appointment_id'yi iptal eder. Owner AÇIKÇA onaylamadan " +
+      "(ör. 'evet iptal et' demeden) ASLA çağırma — önce hangi randevudan bahsettiğini ve iptal etmek " +
+      "istediğini owner'a net bir cümleyle teyit ettir.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "string", description: "find_customer_appointments'tan dönen appointment_id" },
+      },
+      required: ["appointment_id"],
+    },
+  },
+  {
+    name: "check_availability_for_owner",
+    description:
+      "Belirli bir tarihte, istenen hizmet(ler) için uygun randevu saatlerini bulur — owner'ın kendisi " +
+      "manuel randevu oluşturmak istediğinde kullan. Asla saat uydurma.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        service_names: {
+          type: "array",
+          items: { type: "string" },
+          description: "İstenen hizmet adları (sistemdeki tam adlarıyla)",
+        },
+        date: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["service_names", "date"],
+    },
+  },
+  {
+    name: "create_appointment_action",
+    description:
+      "check_availability_for_owner'ın önerdiği bir saati owner AÇIKÇA onayladıktan SONRA çağrılır — gerçek " +
+      "randevuyu oluşturur. starts_at/ends_at/assignments değerlerini check_availability_for_owner'ın " +
+      "döndürdüğü değerlerle BİREBİR aynı gönder.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        customer_query: { type: "string", description: "Randevu kime açılacak — müşteri adı veya telefonu" },
+        starts_at: { type: "string", description: "check_availability_for_owner'dan dönen starts_at (ISO)" },
+        ends_at: { type: "string", description: "check_availability_for_owner'dan dönen ends_at (ISO)" },
+        assignments: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              service_name: { type: "string" },
+              staff_name: { type: "string" },
+            },
+            required: ["service_name", "staff_name"],
+          },
+        },
+      },
+      required: ["customer_query", "starts_at", "ends_at", "assignments"],
+    },
+  },
+  {
+    name: "reschedule_appointment_action",
+    description:
+      "find_customer_appointments ile bulunan bir randevuyu, check_availability_for_owner'ın önerdiği yeni " +
+      "bir saate taşır. Owner AÇIKÇA onaylamadan ASLA çağırma.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "string", description: "find_customer_appointments'tan dönen appointment_id" },
+        starts_at: { type: "string", description: "check_availability_for_owner'dan dönen yeni starts_at (ISO)" },
+        ends_at: { type: "string", description: "check_availability_for_owner'dan dönen yeni ends_at (ISO)" },
+      },
+      required: ["appointment_id", "starts_at", "ends_at"],
+    },
+  },
 ];
 
 interface ToolContext {
@@ -73,7 +170,236 @@ export async function executeAssistantTool(name: string, input: Record<string, u
   if (name === "get_staff_performance") return getStaffPerformance(input, ctx);
   if (name === "get_customer_info") return getCustomerInfo(input, ctx);
   if (name === "list_appointments") return listAppointments(input, ctx);
+  if (name === "find_customer_appointments") return findCustomerAppointments(input, ctx);
+  if (name === "cancel_appointment_action") return cancelAppointmentAction(input, ctx);
+  if (name === "check_availability_for_owner") return checkAvailabilityForOwner(input, ctx);
+  if (name === "create_appointment_action") return createAppointmentAction(input, ctx);
+  if (name === "reschedule_appointment_action") return rescheduleAppointmentAction(input, ctx);
   return JSON.stringify({ error: `Bilinmeyen araç: ${name}` });
+}
+
+async function findCustomerAppointments(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const query = String(input.customer_query ?? "").trim();
+  if (!query) return JSON.stringify({ error: "Müşteri adı veya telefon numarası gerekli." });
+
+  const admin = createAdminSupabaseClient();
+  const { data: customers } = await admin
+    .from("customers")
+    .select("id, full_name, phone")
+    .eq("business_id", ctx.businessId)
+    .or(`full_name.ilike.%${query}%,phone.ilike.%${query}%`)
+    .limit(5);
+
+  if (!customers || customers.length === 0) {
+    return JSON.stringify({ no_data: true, message: "Bu isimde/numarada bir müşteri bulunamadı." });
+  }
+  if (customers.length > 1) {
+    return JSON.stringify({
+      ambiguous: true,
+      matches: customers.map((c) => ({ name: c.full_name, phone: c.phone })),
+      message: "Birden fazla eşleşme var, hangisini kastettiğini netleştir.",
+    });
+  }
+
+  const customer = customers[0];
+  const { data: appointments } = await admin
+    .from("appointments")
+    .select("id, starts_at, appointment_services(service:services(name), staff:staff(full_name))")
+    .eq("business_id", ctx.businessId)
+    .eq("customer_id", customer.id)
+    .in("status", ["scheduled", "confirmed"])
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at");
+
+  if (!appointments || appointments.length === 0) {
+    return JSON.stringify({
+      customer: { name: customer.full_name, phone: customer.phone },
+      appointments: [],
+      message: "Bu müşterinin yaklaşan randevusu yok.",
+    });
+  }
+
+  return JSON.stringify({
+    customer: { name: customer.full_name, phone: customer.phone },
+    appointments: appointments.map((a) => ({
+      appointment_id: a.id,
+      display: `${formatDateTR(a.starts_at)} ${formatTimeTR(a.starts_at)}`,
+      services: (a.appointment_services as unknown as { service: { name: string } | { name: string }[] | null; staff: { full_name: string } | { full_name: string }[] | null }[]).map(
+        (s) => ({ service_name: one(s.service)?.name, staff_name: one(s.staff)?.full_name })
+      ),
+    })),
+  });
+}
+
+async function cancelAppointmentAction(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const appointmentId = String(input.appointment_id ?? "");
+  if (!appointmentId) return JSON.stringify({ error: "appointment_id gerekli." });
+
+  const admin = createAdminSupabaseClient();
+  const { data: appointment } = await admin
+    .from("appointments")
+    .select("id, status")
+    .eq("business_id", ctx.businessId)
+    .eq("id", appointmentId)
+    .maybeSingle();
+
+  if (!appointment) return JSON.stringify({ error: "Randevu bulunamadı." });
+  if (appointment.status === "cancelled") return JSON.stringify({ error: "Bu randevu zaten iptal edilmiş." });
+
+  const { error } = await admin.from("appointments").update({ status: "cancelled" }).eq("id", appointmentId);
+  if (error) return JSON.stringify({ error: "İptal edilemedi, lütfen tekrar dene." });
+
+  await matchWaitlistForCancelledAppointment(ctx.businessId, appointmentId).catch((err) =>
+    console.error("waitlist match failed", err)
+  );
+
+  return JSON.stringify({ success: true });
+}
+
+async function checkAvailabilityForOwner(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const serviceNames = (input.service_names as string[] | undefined) ?? [];
+  const dateKey = String(input.date ?? "");
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return JSON.stringify({ error: "Tarih YYYY-MM-DD formatında olmalı." });
+  }
+
+  const bizCtx = await loadBusinessContext(ctx.businessId);
+  const normalized = serviceNames.map((n) => n.trim().toLowerCase());
+  const requestedServices = bizCtx.services.filter((s) => normalized.includes(s.name.trim().toLowerCase()));
+  if (requestedServices.length !== serviceNames.length) {
+    return JSON.stringify({ error: `Bazı hizmet adları tanınmadı. Sistemdeki hizmetler: ${bizCtx.services.map((s) => s.name).join(", ")}` });
+  }
+
+  const admin = createAdminSupabaseClient();
+  const { data: appointments } = await admin
+    .from("appointments")
+    .select("*, appointment_services(*)")
+    .eq("business_id", ctx.businessId)
+    .gte("starts_at", `${dateKey}T00:00:00+03:00`)
+    .lt("starts_at", `${dateKey}T23:59:59+03:00`);
+
+  const slots = findAvailableSlots({
+    business: bizCtx.business,
+    requestedServices,
+    staff: bizCtx.staff,
+    expertise: bizCtx.expertise,
+    existingAppointments: (appointments ?? []) as (Appointment & { appointment_services: AppointmentService[] })[],
+    dateKey,
+  });
+
+  if (slots.length === 0) {
+    return JSON.stringify({ slots: [], message: "Bu tarihte uygun saat yok." });
+  }
+
+  return JSON.stringify({
+    date: dateKey,
+    slots: slots.map((slot) => ({
+      starts_at: slot.startsAt,
+      ends_at: slot.endsAt,
+      display: `${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
+      assignments: slot.assignments.map((a) => ({ service_name: a.serviceName, staff_name: a.staffName })),
+    })),
+  });
+}
+
+async function createAppointmentAction(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const customerQuery = String(input.customer_query ?? "").trim();
+  const startsAt = String(input.starts_at ?? "");
+  const endsAt = String(input.ends_at ?? "");
+  const rawAssignments = (input.assignments as { service_name: string; staff_name: string }[] | undefined) ?? [];
+
+  if (!customerQuery) return JSON.stringify({ error: "Müşteri adı veya telefonu gerekli." });
+
+  const admin = createAdminSupabaseClient();
+  const { data: customers } = await admin
+    .from("customers")
+    .select("id, full_name, phone")
+    .eq("business_id", ctx.businessId)
+    .eq("status", "active")
+    .or(`full_name.ilike.%${customerQuery}%,phone.ilike.%${customerQuery}%`)
+    .limit(5);
+
+  if (!customers || customers.length === 0) {
+    return JSON.stringify({ error: "Müşteri bulunamadı. Önce Müşteriler ekranından kayıt oluşturulmalı." });
+  }
+  if (customers.length > 1) {
+    return JSON.stringify({
+      ambiguous: true,
+      matches: customers.map((c) => ({ name: c.full_name, phone: c.phone })),
+      message: "Birden fazla eşleşme var, hangisini kastettiğini netleştir.",
+    });
+  }
+  const customer = customers[0];
+
+  const bizCtx = await loadBusinessContext(ctx.businessId);
+  const resolved = rawAssignments.map((a) => {
+    const service = bizCtx.services.find((s) => s.name.trim().toLowerCase() === a.service_name.trim().toLowerCase());
+    const staff = bizCtx.staff.find((s) => s.full_name.trim().toLowerCase() === a.staff_name.trim().toLowerCase());
+    return { service, staff };
+  });
+
+  if (resolved.some((r) => !r.service || !r.staff)) {
+    return JSON.stringify({ error: "Hizmet veya personel adı tanınmadı, önce check_availability_for_owner ile geçerli bir seçenek al." });
+  }
+
+  const { data: appointmentId, error } = await admin.rpc("create_appointment_with_services", {
+    p_customer_id: customer.id,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_source: "manual",
+    p_services: resolved.map((r) => ({
+      service_id: r.service!.id,
+      staff_id: r.staff!.id,
+      planned_price: r.service!.price,
+    })),
+    p_business_id: ctx.businessId,
+  });
+
+  if (error) {
+    if (error.message?.includes("staff_conflict")) {
+      return JSON.stringify({ error: "Bu saat az önce başka bir randevuyla doldu, tekrar check_availability_for_owner çağır." });
+    }
+    return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
+  }
+  if (!appointmentId) {
+    return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
+  }
+
+  return JSON.stringify({
+    success: true,
+    customer_name: customer.full_name,
+    display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`,
+  });
+}
+
+async function rescheduleAppointmentAction(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const appointmentId = String(input.appointment_id ?? "");
+  const startsAt = String(input.starts_at ?? "");
+  const endsAt = String(input.ends_at ?? "");
+  if (!appointmentId || !startsAt || !endsAt) {
+    return JSON.stringify({ error: "appointment_id, starts_at ve ends_at gerekli." });
+  }
+
+  const admin = createAdminSupabaseClient();
+  const { error } = await admin.rpc("reschedule_appointment_with_check", {
+    p_appointment_id: appointmentId,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_business_id: ctx.businessId,
+  });
+
+  if (error) {
+    if (error.message?.includes("staff_conflict")) {
+      return JSON.stringify({ error: "Yeni saat az önce doldu, tekrar check_availability_for_owner çağır." });
+    }
+    if (error.message?.includes("not_found")) {
+      return JSON.stringify({ error: "Randevu bulunamadı." });
+    }
+    return JSON.stringify({ error: "Erteleme yapılamadı, lütfen tekrar dene." });
+  }
+
+  return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
 }
 
 function rangeToUtc(from: string, to: string) {

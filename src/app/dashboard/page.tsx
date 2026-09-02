@@ -1,10 +1,58 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL } from "@/lib/date";
+import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL, formatTimeTR } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import AppShell from "@/components/AppShell";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import type { Staff } from "@/types/database";
+
+type OneOrMany<T> = T | T[] | null;
+function one<T>(value: OneOrMany<T>): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+type UpcomingApptRow = {
+  id: string;
+  starts_at: string;
+  customer: OneOrMany<{ full_name: string }>;
+  appointment_services: {
+    service: OneOrMany<{ name: string }>;
+    staff: OneOrMany<{ full_name: string }>;
+  }[];
+};
+
+async function loadUpcomingToday(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { endUtc } = dayRangeUtcISO(0);
+  const { data } = await supabase
+    .from("appointments")
+    .select(
+      "id, starts_at, customer:customers(full_name), appointment_services(service:services(name), staff:staff(full_name))"
+    )
+    .eq("business_id", businessId)
+    .neq("status", "cancelled")
+    .gte("starts_at", new Date().toISOString())
+    .lt("starts_at", endUtc)
+    .order("starts_at")
+    .limit(6);
+  return (data ?? []) as unknown as UpcomingApptRow[];
+}
+
+async function loadTodayReconciled(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { data } = await supabase
+    .from("daily_financial_summaries")
+    .select("reconciled_at")
+    .eq("business_id", businessId)
+    .eq("summary_date", dateKeyTR(0))
+    .maybeSingle();
+  return !!data?.reconciled_at;
+}
 
 async function loadPendingSuggestions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
@@ -96,12 +144,14 @@ async function loadDayTotals(
 export default async function DashboardPage() {
   const { owner, business, supabase } = await getBusinessOwnerForPage();
 
-  const [today, yesterday, lastWeekSameDay, financeNote, suggestions] = await Promise.all([
+  const [today, yesterday, lastWeekSameDay, financeNote, suggestions, upcomingToday, todayReconciled] = await Promise.all([
     loadDayTotals(supabase, business.id, 0),
     loadDayTotals(supabase, business.id, -1),
     loadDayTotals(supabase, business.id, -7),
     loadTodaysFinanceNote(supabase, business.id),
     loadPendingSuggestions(supabase, business.id),
+    loadUpcomingToday(supabase, business.id),
+    loadTodayReconciled(supabase, business.id),
   ]);
 
   const { data: staffData } = await supabase
@@ -139,6 +189,14 @@ export default async function DashboardPage() {
       ? Math.round(((totalCapacityMinutes - freeMinutes) / totalCapacityMinutes) * 100)
       : 0;
 
+  const staffOnDutyToday = staffList.map((s) => ({
+    name: s.full_name,
+    onLeave: s.leave_dates?.includes(dateKeyTR(0)) ?? false,
+    working: !isClosedToday && !!s.working_hours?.[weekdayKeyTR(0)],
+  }));
+
+  const showReconcileReminder = !isClosedToday && today.appointmentCount > 0 && !todayReconciled;
+
   return (
     <AppShell businessName={business.name}>
       <div className="flex items-center justify-between">
@@ -156,6 +214,27 @@ export default async function DashboardPage() {
         >
           + Yeni Randevu
         </Link>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-5 items-start">
+        <UpcomingTodayCard appointments={upcomingToday} />
+        <div className="flex flex-col gap-3 lg:gap-5">
+          {showReconcileReminder && (
+            <Link
+              href="/gun-sonu"
+              className="bg-accent2-soft border border-accent2/30 rounded-2xl p-4 flex items-center justify-between gap-3"
+            >
+              <div>
+                <p className="text-[12.5px] font-bold text-accent2-ink uppercase tracking-wide">Gün Sonu</p>
+                <p className="text-[13.5px] text-ink">Bugünü henüz kapatmadınız — ciro eksik görünebilir.</p>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </Link>
+          )}
+          <StaffOnDutyCard staff={staffOnDutyToday} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_1fr] gap-3 lg:gap-5">
@@ -249,6 +328,66 @@ function OccupancyCard({ percent, freeMinutes }: { percent: number; freeMinutes:
       <span className="text-ink-muted text-[13px] text-center">
         Bugün için {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
       </span>
+    </div>
+  );
+}
+
+function UpcomingTodayCard({ appointments }: { appointments: UpcomingApptRow[] }) {
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugünün Programı</p>
+        <Link href="/takvim" className="text-[12.5px] font-semibold text-accent">
+          Tümünü Gör
+        </Link>
+      </div>
+      {appointments.length === 0 ? (
+        <p className="text-[13px] text-ink-muted py-2">Bugün için kalan randevu yok.</p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {appointments.map((a) => {
+            const customer = one(a.customer);
+            const serviceNames = a.appointment_services
+              .map((s) => one(s.service)?.name)
+              .filter((n): n is string => !!n)
+              .join(", ");
+            const staffNames = Array.from(
+              new Set(a.appointment_services.map((s) => one(s.staff)?.full_name).filter((n): n is string => !!n))
+            ).join(", ");
+            return (
+              <div key={a.id} className="flex items-center gap-3">
+                <span className="text-[13px] font-bold font-display shrink-0 w-12">{formatTimeTR(a.starts_at)}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px] font-semibold truncate">{customer?.full_name ?? "Müşteri"}</p>
+                  <p className="text-[12px] text-ink-muted truncate">
+                    {serviceNames}
+                    {staffNames ? ` · ${staffNames}` : ""}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StaffOnDutyCard({ staff }: { staff: { name: string; onLeave: boolean; working: boolean }[] }) {
+  if (staff.length === 0) return null;
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 flex-1">
+      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugün Kim Çalışıyor</p>
+      <div className="flex flex-col gap-1.5">
+        {staff.map((s) => (
+          <div key={s.name} className="flex items-center justify-between text-[13.5px]">
+            <span>{s.name}</span>
+            <span className={`text-[12px] font-semibold ${s.working ? "text-good-ink" : "text-ink-muted"}`}>
+              {s.onLeave ? "İzinli" : s.working ? "Çalışıyor" : "Bugün kapalı"}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

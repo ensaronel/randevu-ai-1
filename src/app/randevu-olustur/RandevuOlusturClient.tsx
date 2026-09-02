@@ -39,7 +39,7 @@ function nextDateKeys(): { dateKey: string; label: string; dayNumber: number }[]
 
 export default function RandevuOlusturClient({ services, staff }: { services: Service[]; staff: Staff[] }) {
   const router = useRouter();
-  const dateOptions = useMemo(nextDateKeys, []);
+  const dateOptions = useMemo(() => nextDateKeys(), []);
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerHits, setCustomerHits] = useState<CustomerHit[]>([]);
@@ -67,6 +67,7 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
     if (selectedCustomer) return;
     const q = customerQuery.trim();
     if (!q) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sorgu boşaldığında önceki sonuçları temizlemek gerekiyor
       setCustomerHits([]);
       return;
     }
@@ -81,6 +82,7 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   }, [customerQuery, selectedCustomer]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hizmet/personel/tarih değişince önceki seçim geçersiz kalır
     setSelectedSlot(null);
     if (!selectedServiceId || !selectedDateKey) {
       setSlots([]);

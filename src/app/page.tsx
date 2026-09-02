@@ -41,7 +41,7 @@ export default function Home() {
             <br /> yapay zeka destekli randevu asistanı
           </h1>
           <p className="text-lg text-ink-muted max-w-xl">
-            Müşterileriniz WhatsApp'tan randevu istesin, yapay zeka sizin yerinize yanıtlasın —
+            Müşterileriniz WhatsApp&apos;tan randevu istesin, yapay zeka sizin yerinize yanıtlasın —
             siz işinize odaklanın.
           </p>
         </section>

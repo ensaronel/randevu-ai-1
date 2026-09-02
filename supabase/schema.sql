@@ -396,17 +396,24 @@ $$;
 -- yorumu). Bu fonksiyon olmadan önce PATCH /api/appointments/[id] doğrudan
 -- .update() yapıyordu ve çakışma kontrolünden hiç geçmiyordu.
 -- ============================================================
+-- Parametre listesi 3'ten 4'e çıktı (p_business_id eklendi) — eski imzayı
+-- açıkça drop etmeden "create or replace" yeni parametre listesiyle bir
+-- overload daha ekler, eskisini silmez (bkz. create_appointment_with_services
+-- yorumu / Hafta 9 dersi).
+drop function if exists reschedule_appointment_with_check(uuid, timestamptz, timestamptz);
+
 create or replace function reschedule_appointment_with_check(
   p_appointment_id uuid,
   p_starts_at timestamptz,
-  p_ends_at timestamptz
+  p_ends_at timestamptz,
+  p_business_id uuid default null -- sadece service-role (owner AI asistanı) çağrılarında geçilir
 )
 returns void
 language plpgsql
 security invoker
 as $$
 declare
-  v_business_id uuid := current_business_id();
+  v_business_id uuid := coalesce(p_business_id, current_business_id());
   v_staff_id uuid;
   v_conflict_count int;
 begin

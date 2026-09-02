@@ -7,8 +7,8 @@ import { colorForCategory } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
 import type { Staff } from "@/types/database";
 
-const GRID_START_HOUR = 9;
-const GRID_END_HOUR = 19;
+const DEFAULT_GRID_START_HOUR = 9;
+const DEFAULT_GRID_END_HOUR = 19;
 const COLUMN_WIDTH = 108;
 const HOUR_HEIGHT = 60; // 1px = 1dk
 const WEEKDAY_LABELS = ["PAZ", "PZT", "SAL", "ÇAR", "PER", "CUM", "CTS"];
@@ -16,6 +16,13 @@ const WEEKDAY_LABELS = ["PAZ", "PZT", "SAL", "ÇAR", "PER", "CUM", "CTS"];
 function shiftDateKey(dateKey: string, days: number): string {
   const [y, m, d] = dateKey.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Türkiye yerel saatine göre gece yarısından bu yana geçen dakika (UTC+3 sabit ofset, bkz. lib/date.ts notu). */
+function turkeyNowMinutesOfDay(): number {
+  const turkeyMs = Date.now() + 3 * 60 * 60000;
+  const d = new Date(turkeyMs);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
 function weekdayLabel(dateKey: string): string {
@@ -73,8 +80,30 @@ export default async function TakvimPage({
 
   const staffList = (staffData ?? []) as Staff[];
   const appointments = (apptData ?? []) as unknown as ApptRow[];
-  const gridMinutes = (GRID_END_HOUR - GRID_START_HOUR) * 60;
   const weekdayKey = weekdayKeyForDate(dateKey);
+
+  // Grid, sabit 09:00-19:00 yerine o günkü gerçek en erken açılış/en geç kapanışa
+  // göre boyutlanır — işletme daha kısa çalışıyorsa boş alan israf edilmez.
+  const activeShiftsToday = staffList
+    .filter((s) => !s.leave_dates?.includes(dateKey))
+    .map((s) => s.working_hours?.[weekdayKey])
+    .filter((shift): shift is [string, string] => !!shift);
+  const businessShiftToday = business.working_hours?.[weekdayKey];
+  const candidateShifts = activeShiftsToday.length > 0 ? activeShiftsToday : businessShiftToday ? [businessShiftToday] : [];
+
+  const GRID_START_HOUR =
+    candidateShifts.length > 0
+      ? Math.floor(Math.min(...candidateShifts.map((s) => parseTimeToMinutes(s[0]))) / 60)
+      : DEFAULT_GRID_START_HOUR;
+  const GRID_END_HOUR =
+    candidateShifts.length > 0
+      ? Math.ceil(Math.max(...candidateShifts.map((s) => parseTimeToMinutes(s[1]))) / 60)
+      : DEFAULT_GRID_END_HOUR;
+  const gridMinutes = (GRID_END_HOUR - GRID_START_HOUR) * 60;
+
+  const isToday = dateKey === dateKeyTR(0);
+  const nowLineTop = turkeyNowMinutesOfDay() - GRID_START_HOUR * 60;
+  const showNowLine = isToday && nowLineTop >= 0 && nowLineTop <= gridMinutes;
 
   function serviceDuration(service: ServiceInfo | ServiceInfo[] | null): number {
     if (!service) return 0;
@@ -184,6 +213,15 @@ export default async function TakvimPage({
             </div>
 
             <div className="flex relative" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
+              {showNowLine && (
+                <div
+                  className="absolute z-10 pointer-events-none flex items-center"
+                  style={{ top: nowLineTop, left: 38, right: 0 }}
+                >
+                  <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
+                  <span className="flex-1 h-[1.5px] bg-bad" />
+                </div>
+              )}
               <div style={{ width: 42, height: gridMinutes, position: "relative", flexShrink: 0 }}>
                 {hourMarks.map((h, i) => (
                   <div
