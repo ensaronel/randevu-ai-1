@@ -146,14 +146,14 @@ export default async function TakvimPage({
             <Link
               key={chipDateKey}
               href={`/takvim?date=${chipDateKey}`}
-              className={`w-[42px] h-[54px] rounded-xl flex flex-col items-center justify-center gap-0.5 shrink-0 ${
+              className={`w-[46px] h-[58px] rounded-[18px] flex flex-col items-center justify-center gap-0.5 shrink-0 transition-colors ${
                 chipDateKey === dateKey
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-white shadow-sm"
                   : "bg-surface border border-border text-ink-muted"
               }`}
             >
               <span className="text-[9.5px] font-bold">{weekdayLabel(chipDateKey)}</span>
-              <span className="text-[13px] font-bold">{Number(chipDateKey.split("-")[2])}</span>
+              <span className="text-[15px] font-bold">{Number(chipDateKey.split("-")[2])}</span>
             </Link>
           ))}
         </div>

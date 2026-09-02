@@ -1,14 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #faf6f1;
+  /* Marka rengi: Lacivert (turuncunun yerine, stil rehberinde onaylandı — bkz. docs/PROJE_DURUMU.md). */
+  --bg: #f5f3ec;
   --surface: #ffffff;
-  --border: oklch(90% 0.012 70);
-  --ink: oklch(24% 0.02 50);
-  --ink-muted: oklch(50% 0.02 55);
-  --accent: oklch(62% 0.14 45);
-  --accent-ink: oklch(32% 0.1 45);
-  --accent-soft: oklch(94% 0.035 50);
+  --border: #d7dae5;
+  --ink: #1a2032;
+  --ink-muted: #6b7086;
+  --accent: #1e2e4f;
+  --accent-ink: #0d1526;
+  --accent-soft: #d6dcea;
+  /* Kontrollü ikincil renk (amber) — kategori/vurgu için, ana rengin yerini almaz. */
+  --accent2: #d9932f;
+  --accent2-ink: #6e4f15;
+  --accent2-soft: #f1dfb9;
   --good: oklch(56% 0.12 150);
   --good-soft: oklch(94% 0.045 150);
   --good-ink: oklch(34% 0.09 150);
@@ -29,6 +34,9 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-accent2: var(--accent2);
+  --color-accent2-ink: var(--accent2-ink);
+  --color-accent2-soft: var(--accent2-soft);
   --color-good: var(--good);
   --color-good-soft: var(--good-soft);
   --color-good-ink: var(--good-ink);

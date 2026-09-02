@@ -58,26 +58,48 @@ const items = [
   },
 ];
 
+const LEFT_ITEMS = items.slice(0, 2);
+const RIGHT_ITEMS = items.slice(2);
+
+function NavLink({ item, active }: { item: (typeof items)[number]; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      className={`flex-1 flex flex-col items-center gap-1 text-[11px] font-semibold ${
+        active ? "text-accent" : "text-ink-muted"
+      }`}
+    >
+      {item.icon}
+      {item.label}
+    </Link>
+  );
+}
+
 export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="bg-surface border-t border-border flex px-2 pt-2.5 pb-3.5">
-      {items.map((item) => {
-        const active = pathname?.startsWith(item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex-1 flex flex-col items-center gap-1 text-[11px] font-semibold ${
-              active ? "text-accent" : "text-ink-muted"
-            }`}
-          >
-            {item.icon}
-            {item.label}
-          </Link>
-        );
-      })}
+    <nav className="relative bg-surface border-t border-border flex items-end px-2 pt-2.5 pb-3.5">
+      {LEFT_ITEMS.map((item) => (
+        <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
+      ))}
+
+      {/* Randevu Oluştur — kabartılmış birincil eylem, geri kalan sekmelerden biri değil. */}
+      <div className="flex-1 flex justify-center">
+        <Link
+          href="/randevu-olustur"
+          aria-label="Randevu Oluştur"
+          className="-mt-8 w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center shadow-md border-4 border-bg"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </Link>
+      </div>
+
+      {RIGHT_ITEMS.map((item) => (
+        <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
+      ))}
     </nav>
   );
 }
