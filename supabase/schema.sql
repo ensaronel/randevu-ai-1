@@ -311,6 +311,7 @@ declare
   v_appointment_id uuid;
   v_conflict_count int;
   v_service jsonb;
+  v_staff_id uuid;
 begin
   if v_business_id is null then
     raise exception 'unauthorized';
@@ -319,6 +320,42 @@ begin
   if p_ends_at <= p_starts_at then
     raise exception 'invalid_time_range';
   end if;
+
+  -- customer_id ve p_services içindeki service_id/staff_id'lerin GERÇEKTEN bu
+  -- işletmeye ait olduğunu doğrula — aksi halde owner (veya AI) başka bir
+  -- işletmenin kaydına referans veren bozuk bir randevu oluşturabilirdi.
+  if not exists (
+    select 1 from customers where id = p_customer_id and business_id = v_business_id
+  ) then
+    raise exception 'invalid_reference';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_services) s
+    where not exists (
+      select 1 from services where id = (s->>'service_id')::uuid and business_id = v_business_id
+    )
+    or not exists (
+      select 1 from staff where id = (s->>'staff_id')::uuid and business_id = v_business_id
+    )
+  ) then
+    raise exception 'invalid_reference';
+  end if;
+
+  -- Çakışma kontrolü ile insert arasında bir yarış durumu (iki eşzamanlı istek
+  -- ikisi de "boş" görüp ikisi de eklenebilir) oluşmasın diye, ilgili her
+  -- personel için transaction bazlı bir advisory lock alınır. Sıralı (uuid'e
+  -- göre) alınması, iki farklı çağrının ters sırada kilit isteyip birbirini
+  -- kilitlemesini (deadlock) önler. `_xact_` kilidi transaction bitince
+  -- (commit/rollback) otomatik düşer, elle unlock gerekmez.
+  for v_staff_id in
+    select distinct (s->>'staff_id')::uuid
+    from jsonb_array_elements(p_services) s
+    order by 1
+  loop
+    perform pg_advisory_xact_lock(hashtext(v_staff_id::text));
+  end loop;
 
   -- Aynı personelin bu zaman aralığında (iptal edilmemiş) başka randevusu var mı?
   select count(*) into v_conflict_count
@@ -350,6 +387,70 @@ begin
   end loop;
 
   return v_appointment_id;
+end;
+$$;
+
+-- ============================================================
+-- Randevu erteleme — sadece starts_at/ends_at değiştirir ama AYNI advisory-lock
+-- + çakışma kontrolü mantığını kullanır (bkz. create_appointment_with_services
+-- yorumu). Bu fonksiyon olmadan önce PATCH /api/appointments/[id] doğrudan
+-- .update() yapıyordu ve çakışma kontrolünden hiç geçmiyordu.
+-- ============================================================
+create or replace function reschedule_appointment_with_check(
+  p_appointment_id uuid,
+  p_starts_at timestamptz,
+  p_ends_at timestamptz
+)
+returns void
+language plpgsql
+security invoker
+as $$
+declare
+  v_business_id uuid := current_business_id();
+  v_staff_id uuid;
+  v_conflict_count int;
+begin
+  if v_business_id is null then
+    raise exception 'unauthorized';
+  end if;
+
+  if p_ends_at <= p_starts_at then
+    raise exception 'invalid_time_range';
+  end if;
+
+  if not exists (
+    select 1 from appointments where id = p_appointment_id and business_id = v_business_id
+  ) then
+    raise exception 'not_found';
+  end if;
+
+  for v_staff_id in
+    select distinct staff_id from appointment_services
+    where appointment_id = p_appointment_id
+    order by 1
+  loop
+    perform pg_advisory_xact_lock(hashtext(v_staff_id::text));
+  end loop;
+
+  select count(*) into v_conflict_count
+  from appointment_services asvc
+  join appointments a on a.id = asvc.appointment_id
+  where a.business_id = v_business_id
+    and a.id != p_appointment_id
+    and a.status != 'cancelled'
+    and asvc.staff_id in (
+      select staff_id from appointment_services where appointment_id = p_appointment_id
+    )
+    and a.starts_at < p_ends_at
+    and a.ends_at > p_starts_at;
+
+  if v_conflict_count > 0 then
+    raise exception 'staff_conflict';
+  end if;
+
+  update appointments
+  set starts_at = p_starts_at, ends_at = p_ends_at, updated_at = now()
+  where id = p_appointment_id and business_id = v_business_id;
 end;
 $$;
 

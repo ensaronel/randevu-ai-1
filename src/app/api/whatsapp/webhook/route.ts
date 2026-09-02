@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual, createHmac } from "crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { generateAiReply } from "@/lib/ai/respond";
 import type { Business } from "@/types/database";
+
+/** Zamanlama saldırısına karşı sabit-zamanlı karşılaştırma — uzunluk farklıysa direkt false döner. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Meta, her webhook POST'unda gövdeyi Uygulama Sırrı (App Secret) ile imzalayıp
+ * `X-Hub-Signature-256` header'ında gönderir — bu sayede URL'yi bilen herkes değil,
+ * sadece gerçekten Meta'dan gelen istekler işlenir.
+ * https://developers.facebook.com/docs/graph-api/webhooks/getting-started#validate-payloads
+ */
+function isValidMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret || !signatureHeader?.startsWith("sha256=")) return false;
+
+  const expected = createHmac("sha256", appSecret).update(rawBody, "utf8").digest("hex");
+  return safeEqual(signatureHeader.slice("sha256=".length), expected);
+}
 
 const KVKK_CONSENT_MESSAGE =
   "Merhaba! Randevu talebinizi işleyebilmemiz için telefon numaranız, " +
@@ -20,7 +43,12 @@ export function GET(request: NextRequest) {
   const token = params.get("hub.verify_token");
   const challenge = params.get("hub.challenge");
 
-  if (mode === "subscribe" && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+  if (
+    mode === "subscribe" &&
+    token &&
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN &&
+    safeEqual(token, process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN)
+  ) {
     return new NextResponse(challenge, { status: 200 });
   }
 
@@ -74,7 +102,19 @@ async function notifyOwnerOfSystemError(
  * (kendi loglarımıza yazıp burada susuyoruz).
  */
 export async function POST(request: NextRequest) {
-  const payload = await request.json().catch(() => null);
+  const rawBody = await request.text();
+
+  if (!isValidMetaSignature(rawBody, request.headers.get("x-hub-signature-256"))) {
+    return new NextResponse("forbidden", { status: 403 });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let payload: any = null;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    payload = null;
+  }
   if (!payload) return NextResponse.json({ ok: true });
 
   const admin = createAdminSupabaseClient();

@@ -30,6 +30,20 @@ export async function PUT(
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 
+    // service_ids'in tamamının GERÇEKTEN bu işletmeye ait olduğunu doğrula —
+    // aksi halde bu personel başka bir işletmenin hizmetiyle eşleşmiş görünürdü.
+    if (service_ids.length > 0) {
+      const { data: validServices, error: servicesError } = await supabase
+        .from("services")
+        .select("id")
+        .eq("business_id", owner.business_id)
+        .in("id", service_ids);
+      if (servicesError) throw servicesError;
+      if ((validServices?.length ?? 0) !== service_ids.length) {
+        return NextResponse.json({ error: "invalid_service" }, { status: 400 });
+      }
+    }
+
     const { error: deleteError } = await supabase
       .from("staff_service_expertise")
       .delete()

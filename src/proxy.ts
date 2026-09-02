@@ -37,12 +37,14 @@ export async function proxy(request: NextRequest) {
   const isApiRoute = pathname.startsWith("/api");
   // webhook (Meta'dan) ve cron (Vercel'den) - ikisi de kendi secret/imza kontrolünü kendi içinde yapar
   const isPublicApi = pathname.startsWith("/api/whatsapp") || pathname.startsWith("/api/cron");
+  // Meta'nın "Live" moda geçiş ve gerçek müşteri gizlilik metni şartı için herkese açık olmalı.
+  const isPublicPage = pathname === "/" || pathname === "/gizlilik";
 
   if (!user && isApiRoute && !isPublicApi) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  if (!user && !isLoginPage && !isApiRoute && pathname !== "/") {
+  if (!user && !isLoginPage && !isApiRoute && !isPublicPage) {
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }

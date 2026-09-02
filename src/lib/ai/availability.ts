@@ -92,6 +92,68 @@ function isStaffFree(
   );
 }
 
+/** Belirli bir saatte, bir hizmeti karşılayabilecek (uygun, müsait, mesaide) personel adayları. */
+function eligibleStaffAt(
+  service: Service,
+  t: number,
+  weekdayKey: (typeof WEEKDAY_KEYS)[number],
+  params: FindSlotsParams
+): Staff[] {
+  const { staff, expertise, dateKey, existingAppointments } = params;
+  const serviceEnd = t + service.duration_minutes;
+
+  return capableStaffFor(service, staff, expertise).filter((s) => {
+    if (s.leave_dates?.includes(dateKey)) return false;
+    const shift = s.working_hours?.[weekdayKey];
+    if (!shift) return false;
+    const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
+    if (t < shiftStart || serviceEnd > shiftEnd) return false;
+    return isStaffFree(s.id, t, serviceEnd, existingAppointments);
+  });
+}
+
+/**
+ * Belirli bir başlangıç saatinde, istenen TÜM hizmetleri (her biri farklı bir
+ * personele) atamaya çalışır — açgözlü değil, geri izlemeli (backtracking):
+ * bir hizmet için seçilen personel sonraki hizmetlerden birini imkansız
+ * kılarsa, o seçim geri alınıp başka bir aday denenir. Böylece "A hizmetini
+ * hem X hem Y, B hizmetini sadece X yapabiliyor" gibi durumlarda, A önce X'i
+ * denese bile B için X'i boşa çıkarıp Y'ye geçebilir.
+ */
+function tryAssignServices(
+  services: Service[],
+  idx: number,
+  t: number,
+  weekdayKey: (typeof WEEKDAY_KEYS)[number],
+  usedStaffIds: Set<string>,
+  params: FindSlotsParams
+): SlotAssignment[] | null {
+  if (idx === services.length) return [];
+
+  const service = services[idx];
+  const candidates = eligibleStaffAt(service, t, weekdayKey, params).filter((s) => !usedStaffIds.has(s.id));
+
+  for (const candidate of candidates) {
+    usedStaffIds.add(candidate.id);
+    const rest = tryAssignServices(services, idx + 1, t, weekdayKey, usedStaffIds, params);
+    if (rest !== null) {
+      return [
+        {
+          serviceId: service.id,
+          serviceName: service.name,
+          staffId: candidate.id,
+          staffName: candidate.full_name,
+          durationMinutes: service.duration_minutes,
+        },
+        ...rest,
+      ];
+    }
+    usedStaffIds.delete(candidate.id);
+  }
+
+  return null;
+}
+
 /**
  * Verilen tarihte, istenen hizmetlerin hepsini (gerekirse farklı personelle
  * eşzamanlı) karşılayabilecek 3'e kadar aday saat döner. Her aday: her hizmet
@@ -99,7 +161,7 @@ function isStaffFree(
  * randevusu olmayan bir personel bulunduğunda geçerli sayılır.
  */
 export function findAvailableSlots(params: FindSlotsParams): SlotCandidate[] {
-  const { business, requestedServices, staff, expertise, existingAppointments, dateKey } = params;
+  const { business, requestedServices, dateKey } = params;
 
   if (business.closed_dates.includes(dateKey)) return [];
 
@@ -116,38 +178,9 @@ export function findAvailableSlots(params: FindSlotsParams): SlotCandidate[] {
   for (let t = openMin; t + maxDuration <= closeMin; t += STEP_MINUTES) {
     if (t - lastCandidateStart < MIN_GAP_BETWEEN_CANDIDATES_MINUTES) continue;
 
-    const assignments: SlotAssignment[] = [];
-    const usedStaffIds = new Set<string>();
-    let allServicesAssignable = true;
+    const assignments = tryAssignServices(requestedServices, 0, t, weekdayKey, new Set(), params);
 
-    for (const service of requestedServices) {
-      const serviceEnd = t + service.duration_minutes;
-      const candidateStaff = capableStaffFor(service, staff, expertise).find((s) => {
-        if (usedStaffIds.has(s.id)) return false;
-        if (s.leave_dates?.includes(dateKey)) return false;
-        const shift = s.working_hours?.[weekdayKey];
-        if (!shift) return false;
-        const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
-        if (t < shiftStart || serviceEnd > shiftEnd) return false;
-        return isStaffFree(s.id, t, serviceEnd, existingAppointments);
-      });
-
-      if (!candidateStaff) {
-        allServicesAssignable = false;
-        break;
-      }
-
-      usedStaffIds.add(candidateStaff.id);
-      assignments.push({
-        serviceId: service.id,
-        serviceName: service.name,
-        staffId: candidateStaff.id,
-        staffName: candidateStaff.full_name,
-        durationMinutes: service.duration_minutes,
-      });
-    }
-
-    if (allServicesAssignable) {
+    if (assignments) {
       const overallEnd = t + maxDuration;
       candidates.push({
         startsAt: turkeyLocalMinutesToUtcISO(dateKey, t),
