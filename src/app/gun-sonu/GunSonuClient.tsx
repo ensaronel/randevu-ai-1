@@ -57,6 +57,7 @@ export default function GunSonuClient({
   const [actualRevenue, setActualRevenue] = useState(initialActualRevenue);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [expenseDraft, setExpenseDraft] = useState(String(initialExpenses || ""));
+  const [isStale, setIsStale] = useState(false);
 
   async function setAttendance(appointmentId: string, attendance: Attendance) {
     setSavingId(appointmentId);
@@ -66,7 +67,10 @@ export default function GunSonuClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ attendance }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        if (reconciledAt) setIsStale(true);
+        router.refresh();
+      }
     } finally {
       setSavingId(null);
     }
@@ -86,6 +90,7 @@ export default function GunSonuClient({
       if (res.ok) {
         setEditingServiceId(null);
         setNoteDraft("");
+        if (reconciledAt) setIsStale(true);
         router.refresh();
       }
     } finally {
@@ -107,6 +112,7 @@ export default function GunSonuClient({
         setReconciledAt(data.reconciled_at);
         setActualRevenue(data.actual_revenue);
         setExpenses(data.expenses);
+        setIsStale(false);
       }
     } finally {
       setReconciling(false);
@@ -235,6 +241,11 @@ export default function GunSonuClient({
 
           {reconciledAt ? (
             <>
+              {isStale && (
+                <p className="text-[12.5px] text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5">
+                  Bu gün kapatılmıştı, rakamlar güncel değil — aşağıdan Yeniden Hesapla&apos;ya bas.
+                </p>
+              )}
               <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Gün Kapatıldı</p>
               <p className="text-[21px] font-semibold font-display">{formatTL(actualRevenue ?? 0)}</p>
               <p className="text-[13px] text-ink-muted">

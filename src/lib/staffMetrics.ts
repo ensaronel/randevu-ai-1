@@ -13,6 +13,7 @@ interface CommissionRow {
     planned_price: number;
     final_price: number | null;
     staff_id: string;
+    commission_rate_snapshot: number | null;
   }[];
 }
 
@@ -76,7 +77,7 @@ export async function loadStaffMonthlyMetrics(
   const [{ data: commissionData }, { data: attendanceData }] = await Promise.all([
     supabase
       .from("appointments")
-      .select("attendance, appointment_services(planned_price, final_price, staff_id)")
+      .select("attendance, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot)")
       .eq("business_id", business.id)
       .eq("attendance", "came")
       .gte("starts_at", startUtc)
@@ -100,8 +101,9 @@ export async function loadStaffMonthlyMetrics(
       for (const svc of row.appointment_services) {
         if (svc.staff_id !== staff.id) continue;
         const price = Number(svc.final_price ?? svc.planned_price);
+        const rate = svc.commission_rate_snapshot ?? staff.commission_rate;
         revenue += price;
-        commission += price * (Number(staff.commission_rate) / 100);
+        commission += price * (Number(rate) / 100);
       }
     }
 

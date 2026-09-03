@@ -117,6 +117,8 @@ create table appointment_services (
   planned_price numeric(10,2) not null,               -- randevu anındaki fiyat
   final_price numeric(10,2),                           -- gün sonu mutabakatında +ekle/-indirim sonrası kesin tutar
   adjustment_note text,                                 -- "50 TL oje eklendi" / "30 TL indirim"
+  commission_rate_snapshot numeric(5,2),                -- randevu anındaki staff.commission_rate — sonradan oran
+                                                         -- değişse bile geçmiş prim hesabı bozulmasın diye donduruldu
   created_at timestamptz not null default now()
 );
 
@@ -377,12 +379,13 @@ begin
 
   for v_service in select * from jsonb_array_elements(p_services)
   loop
-    insert into appointment_services (appointment_id, service_id, staff_id, planned_price)
+    insert into appointment_services (appointment_id, service_id, staff_id, planned_price, commission_rate_snapshot)
     values (
       v_appointment_id,
       (v_service->>'service_id')::uuid,
       (v_service->>'staff_id')::uuid,
-      (v_service->>'planned_price')::numeric
+      (v_service->>'planned_price')::numeric,
+      (select commission_rate from staff where id = (v_service->>'staff_id')::uuid)
     );
   end loop;
 
