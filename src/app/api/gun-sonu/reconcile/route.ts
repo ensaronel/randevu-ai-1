@@ -13,7 +13,7 @@ import { dateKeyTR } from "@/lib/date";
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { owner, supabase } = await requireBusinessOwner();
-    const { date } = reconcileDaySchema.parse(await request.json().catch(() => ({})));
+    const { date, expenses } = reconcileDaySchema.parse(await request.json().catch(() => ({})));
 
     const dateKey = date ?? dateKeyTR(0);
     const { startUtc, endUtc } = dayRangeFromKey(dateKey);
@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
           summary_date: dateKey,
           actual_revenue: actualRevenue,
           reconciled_at: new Date().toISOString(),
+          // expenses verilmezse bu anahtarı hiç göndermiyoruz — upsert'in ON CONFLICT
+          // DO UPDATE'i sadece payload'daki kolonları set eder, mevcut değer korunur.
+          ...(expenses !== undefined ? { expenses } : {}),
         },
         { onConflict: "business_id,summary_date" }
       )

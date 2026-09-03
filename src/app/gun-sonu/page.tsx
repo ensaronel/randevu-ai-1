@@ -58,6 +58,7 @@ export default async function GunSonuPage() {
           todayKey={todayKey}
           initialReconciledAt={summary?.reconciled_at ?? null}
           initialActualRevenue={summary?.actual_revenue ?? null}
+          initialExpenses={summary?.expenses ?? 0}
         />
 
         {commissions.length > 0 && (

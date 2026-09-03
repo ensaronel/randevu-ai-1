@@ -39,11 +39,13 @@ export default function GunSonuClient({
   todayKey,
   initialReconciledAt,
   initialActualRevenue,
+  initialExpenses,
 }: {
   appointments: GunSonuAppointment[];
   todayKey: string;
   initialReconciledAt: string | null;
   initialActualRevenue: number | null;
+  initialExpenses: number;
 }) {
   const router = useRouter();
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -53,6 +55,8 @@ export default function GunSonuClient({
   const [reconciling, setReconciling] = useState(false);
   const [reconciledAt, setReconciledAt] = useState(initialReconciledAt);
   const [actualRevenue, setActualRevenue] = useState(initialActualRevenue);
+  const [expenses, setExpenses] = useState(initialExpenses);
+  const [expenseDraft, setExpenseDraft] = useState(String(initialExpenses || ""));
 
   async function setAttendance(appointmentId: string, attendance: Attendance) {
     setSavingId(appointmentId);
@@ -90,17 +94,19 @@ export default function GunSonuClient({
   }
 
   async function reconcileDay() {
+    const parsedExpenses = Number(expenseDraft.replace(",", ".")) || 0;
     setReconciling(true);
     try {
       const res = await fetch("/api/gun-sonu/reconcile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: todayKey }),
+        body: JSON.stringify({ date: todayKey, expenses: parsedExpenses }),
       });
       if (res.ok) {
         const { data } = await res.json();
         setReconciledAt(data.reconciled_at);
         setActualRevenue(data.actual_revenue);
+        setExpenses(data.expenses);
       }
     } finally {
       setReconciling(false);
@@ -213,10 +219,27 @@ export default function GunSonuClient({
 
       {appointments.length > 0 && (
         <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-1">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[12.5px] text-ink-muted" htmlFor="gun-sonu-expenses">
+              Bugünkü giderler (TL)
+            </label>
+            <input
+              id="gun-sonu-expenses"
+              inputMode="decimal"
+              value={expenseDraft}
+              onChange={(e) => setExpenseDraft(e.target.value)}
+              placeholder="0"
+              className="w-24 border border-border rounded px-2 py-1 text-right text-[13px]"
+            />
+          </div>
+
           {reconciledAt ? (
             <>
               <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Gün Kapatıldı</p>
               <p className="text-[21px] font-semibold font-display">{formatTL(actualRevenue ?? 0)}</p>
+              <p className="text-[13px] text-ink-muted">
+                Net kâr (ciro - gider): <span className="font-semibold text-ink">{formatTL((actualRevenue ?? 0) - expenses)}</span>
+              </p>
               <button onClick={reconcileDay} disabled={reconciling} className="text-[12.5px] text-accent font-semibold self-start">
                 Yeniden Hesapla
               </button>
