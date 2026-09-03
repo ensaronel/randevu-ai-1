@@ -72,6 +72,8 @@ const SYSTEM_ERROR_OWNER_TEMPLATE = (customerPhone: string, detail: string) =>
 const SYSTEM_ERROR_CUSTOMER_FALLBACK =
   "Şu an sistemimizde teknik bir sorun oluştu, ekibimiz en kısa sürede size dönüş yapacak. 🙏";
 
+const UNSUPPORTED_MESSAGE_TYPE_FALLBACK = "Şu an sadece yazılı mesajları okuyabiliyorum 🙏";
+
 /** Beklenmeyen bir hata olduğunda işletme sahibini WhatsApp'tan uyarır — best-effort, kendi hatası bile olsa akışı kesmez. */
 async function notifyOwnerOfSystemError(
   admin: ReturnType<typeof createAdminSupabaseClient>,
@@ -91,6 +93,29 @@ async function notifyOwnerOfSystemError(
   } catch (err) {
     console.error("İşletme sahibine hata bildirimi gönderilemedi:", err);
   }
+}
+
+/** Müşterinin ilk teması ise KVKK aydınlatma metnini gönderip onay tarihini damgalar — değilse hiçbir şey yapmaz. */
+async function ensureKvkkConsent(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  businessId: string,
+  customer: { id: string; phone: string; kvkk_consent_at: string | null }
+) {
+  if (customer.kvkk_consent_at) return;
+
+  await admin.from("customers").update({ kvkk_consent_at: new Date().toISOString() }).eq("id", customer.id);
+
+  await sendWhatsappTextMessage(customer.phone, KVKK_CONSENT_MESSAGE).catch((err) =>
+    console.error("KVKK mesajı gönderilemedi:", err)
+  );
+
+  await admin.from("whatsapp_message_log").insert({
+    business_id: businessId,
+    customer_id: customer.id,
+    direction: "outbound",
+    message_type: "freeform",
+    body: KVKK_CONSENT_MESSAGE,
+  });
 }
 
 /**
@@ -153,15 +178,54 @@ export async function POST(request: NextRequest) {
             // (contacts[].profile.name) — bulunursa gerçek isim olarak kullanılır,
             // yoksa (nadiren, gizlilik ayarına göre) telefon numarasına düşülür.
             const waProfileName = contacts.find((c) => c.wa_id === message.from)?.profile?.name;
-            const { data: newCustomer } = await admin
+            const { data: newCustomer, error: insertErr } = await admin
               .from("customers")
               .insert({ business_id: business.id, full_name: waProfileName || message.from, phone: message.from })
               .select()
               .single();
-            customer = newCustomer;
+
+            if (insertErr?.code === "23505") {
+              // Aynı numaradan eşzamanlı ikinci mesaj yarışıp müşteriyi az önce
+              // oluşturmuş olabilir — hatayı yutup silmek yerine gerçek satırı okuyoruz.
+              const { data: raceCustomer } = await admin
+                .from("customers")
+                .select("*")
+                .eq("business_id", business.id)
+                .eq("phone", message.from)
+                .maybeSingle();
+              customer = raceCustomer;
+            } else {
+              customer = newCustomer;
+            }
           }
 
-          if (!customer || !body) continue;
+          if (!customer) continue;
+
+          if (!body) {
+            // Metin dışı mesaj (resim/konum/ses vb.) — sessizce atlamak yerine
+            // logluyor ve müşteriye kısa bir açıklama gönderiyoruz.
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "inbound",
+              message_type: "freeform",
+              body: `[desteklenmeyen mesaj türü: ${message.type}]`,
+            });
+
+            await ensureKvkkConsent(admin, business.id, customer);
+
+            await sendWhatsappTextMessage(message.from, UNSUPPORTED_MESSAGE_TYPE_FALLBACK).catch((err) =>
+              console.error("Desteklenmeyen mesaj türü fallback'i gönderilemedi:", err)
+            );
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "outbound",
+              message_type: "freeform",
+              body: UNSUPPORTED_MESSAGE_TYPE_FALLBACK,
+            });
+            continue;
+          }
 
           // AI, henüz DB'ye yazılmamış geçmişi okuyacağı için çağrıyı inbound
           // log satırından önce başlatıyoruz — aksi halde bu mesaj geçmişte
@@ -176,24 +240,7 @@ export async function POST(request: NextRequest) {
             body,
           });
 
-          if (!customer.kvkk_consent_at) {
-            await admin
-              .from("customers")
-              .update({ kvkk_consent_at: new Date().toISOString() })
-              .eq("id", customer.id);
-
-            await sendWhatsappTextMessage(message.from, KVKK_CONSENT_MESSAGE).catch((err) =>
-              console.error("KVKK mesajı gönderilemedi:", err)
-            );
-
-            await admin.from("whatsapp_message_log").insert({
-              business_id: business.id,
-              customer_id: customer.id,
-              direction: "outbound",
-              message_type: "freeform",
-              body: KVKK_CONSENT_MESSAGE,
-            });
-          }
+          await ensureKvkkConsent(admin, business.id, customer);
 
           const aiReply = await aiReplyPromise.catch((err) => {
             console.error("AI yanıtı üretilemedi:", err);

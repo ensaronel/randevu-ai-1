@@ -6,6 +6,7 @@ export interface WeeklySummaryResult {
   businessId: string;
   sent: boolean;
   reason: string;
+  error?: string;
 }
 
 const NO_SHOW_VALUES = ["no_show_notified", "no_show_silent"];
@@ -137,7 +138,17 @@ export async function runWeeklySummaryForAllBusinesses(): Promise<WeeklySummaryR
 
   const results: WeeklySummaryResult[] = [];
   for (const b of businesses ?? []) {
-    results.push(await runWeeklySummaryForBusiness(b.id));
+    try {
+      results.push(await runWeeklySummaryForBusiness(b.id));
+    } catch (err) {
+      console.error("weekly summary failed for business", b.id, err);
+      results.push({
+        businessId: b.id,
+        sent: false,
+        reason: "beklenmeyen hata",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return results;
 }

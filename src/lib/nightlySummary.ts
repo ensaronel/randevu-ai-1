@@ -11,6 +11,7 @@ export interface NightlySummaryResult {
   businessId: string;
   created: boolean;
   reason: string;
+  error?: string;
 }
 
 function percentDiff(value: number, baseline: number): number | null {
@@ -114,7 +115,18 @@ export async function runNightlySummaryForAllBusinesses(): Promise<NightlySummar
 
   const results: NightlySummaryResult[] = [];
   for (const b of businesses ?? []) {
-    results.push(await runNightlySummaryForBusiness(b.id));
+    try {
+      results.push(await runNightlySummaryForBusiness(b.id));
+    } catch (err) {
+      // Bir işletmenin bozuk verisi diğerlerinin gece işini durdurmasın.
+      console.error("nightly summary failed for business", b.id, err);
+      results.push({
+        businessId: b.id,
+        created: false,
+        reason: "beklenmeyen hata",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return results;
 }

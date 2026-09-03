@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
-import { customerCreateSchema } from "@/lib/validation";
+import { customerCreateSchema, sanitizeSearchTerm } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   return handleRoute(async () => {
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
       .order("full_name", { ascending: true });
 
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,phone.ilike.%${search}%`);
+      const term = sanitizeSearchTerm(search);
+      query = query.or(`full_name.ilike.%${term}%,phone.ilike.%${term}%`);
     }
 
     const { data, error } = await query;

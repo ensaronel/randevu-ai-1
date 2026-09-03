@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendDueReminders } from "@/lib/reminders";
+import { verifyCronSecret } from "@/lib/api-response";
 
 /**
  * Vercel Cron günde 1 kez sınırlı olduğu için (Hobby plan), bu endpoint
@@ -8,8 +9,7 @@ import { sendDueReminders } from "@/lib/reminders";
  * pg_cron kurulum notu. Aynı CRON_SECRET korumasını kullanıyor.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

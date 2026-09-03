@@ -159,6 +159,7 @@ export interface ProactiveInsightsResult {
   businessId: string;
   retentionRisksCreated: number;
   rhythmInvitesCreated: number;
+  error?: string;
 }
 
 /**
@@ -246,7 +247,17 @@ export async function runProactiveInsightsForAllBusinesses(): Promise<ProactiveI
 
   const results: ProactiveInsightsResult[] = [];
   for (const b of businesses ?? []) {
-    results.push(await runProactiveInsightsForBusiness(b.id));
+    try {
+      results.push(await runProactiveInsightsForBusiness(b.id));
+    } catch (err) {
+      console.error("proactive insights failed for business", b.id, err);
+      results.push({
+        businessId: b.id,
+        retentionRisksCreated: 0,
+        rhythmInvitesCreated: 0,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return results;
 }

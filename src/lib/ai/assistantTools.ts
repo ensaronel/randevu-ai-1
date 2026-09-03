@@ -4,7 +4,8 @@ import { parseTimeToMinutes } from "@/lib/capacity";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
 import { findAvailableSlots } from "@/lib/ai/availability";
 import { loadBusinessContext } from "@/lib/ai/context";
-import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
+import { matchWaitlistForCancelledAppointment, hasUpcomingAppointment } from "@/lib/proactive";
+import { sanitizeSearchTerm } from "@/lib/validation";
 import type { Appointment, AppointmentService } from "@/types/database";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -231,11 +232,12 @@ async function findCustomerAppointments(input: Record<string, unknown>, ctx: Too
   if (!query) return JSON.stringify({ error: "Müşteri adı veya telefon numarası gerekli." });
 
   const admin = createAdminSupabaseClient();
+  const searchTerm = sanitizeSearchTerm(query);
   const { data: customers } = await admin
     .from("customers")
     .select("id, full_name, phone")
     .eq("business_id", ctx.businessId)
-    .or(`full_name.ilike.%${query}%,phone.ilike.%${query}%`)
+    .or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
     .limit(5);
 
   if (!customers || customers.length === 0) {
@@ -360,12 +362,13 @@ async function createAppointmentAction(input: Record<string, unknown>, ctx: Tool
   if (!customerQuery) return JSON.stringify({ error: "Müşteri adı veya telefonu gerekli." });
 
   const admin = createAdminSupabaseClient();
+  const customerSearchTerm = sanitizeSearchTerm(customerQuery);
   const { data: customers } = await admin
     .from("customers")
     .select("id, full_name, phone")
     .eq("business_id", ctx.businessId)
     .eq("status", "active")
-    .or(`full_name.ilike.%${customerQuery}%,phone.ilike.%${customerQuery}%`)
+    .or(`full_name.ilike.%${customerSearchTerm}%,phone.ilike.%${customerSearchTerm}%`)
     .limit(5);
 
   if (!customers || customers.length === 0) {
@@ -601,15 +604,7 @@ async function getLostCustomers(input: Record<string, unknown>, ctx: ToolContext
     const daysSince = Math.round((nowMs - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24));
     if (daysSince < minDays) continue;
 
-    const { data: upcoming } = await admin
-      .from("appointments")
-      .select("id")
-      .eq("business_id", ctx.businessId)
-      .eq("customer_id", customerId)
-      .in("status", ["scheduled", "confirmed"])
-      .gte("starts_at", new Date().toISOString())
-      .limit(1);
-    if (upcoming && upcoming.length > 0) continue;
+    if (await hasUpcomingAppointment(admin, ctx.businessId, customerId)) continue;
 
     lost.push({ customer_name: entry.name, days_since_last_visit: daysSince, total_past_visits: entry.visits.length });
   }
@@ -719,11 +714,12 @@ async function getCustomerInfo(input: Record<string, unknown>, ctx: ToolContext)
   if (!query) return JSON.stringify({ error: "Müşteri adı veya telefon numarası gerekli." });
 
   const admin = createAdminSupabaseClient();
+  const searchTerm = sanitizeSearchTerm(query);
   const { data: customers } = await admin
     .from("customers")
     .select("*")
     .eq("business_id", ctx.businessId)
-    .or(`full_name.ilike.%${query}%,phone.ilike.%${query}%`)
+    .or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
     .limit(5);
 
   if (!customers || customers.length === 0) {

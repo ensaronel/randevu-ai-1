@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runNightlySummaryForAllBusinesses } from "@/lib/nightlySummary";
 import { runProactiveInsightsForAllBusinesses } from "@/lib/proactive";
 import { runWeeklySummaryForAllBusinesses } from "@/lib/weeklySummary";
+import { verifyCronSecret } from "@/lib/api-response";
 
 /**
  * Vercel Cron her gün bunu tetikler (bkz. vercel.json). Vercel, projede
@@ -9,8 +10,7 @@ import { runWeeklySummaryForAllBusinesses } from "@/lib/weeklySummary";
  * `Authorization: Bearer <CRON_SECRET>` ekler — burada aynı değeri kontrol ediyoruz.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

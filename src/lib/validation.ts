@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+// HH:MM zero-padded olduğu için (regex bunu garanti eder) string karşılaştırması
+// saat karşılaştırmasıyla aynı sonucu verir — ayrı bir dakika-parse fonksiyonuna gerek yok.
+const dayShiftSchema = z
+  .tuple([z.string(), z.string()])
+  .refine(([start, end]) => HHMM_REGEX.test(start) && HHMM_REGEX.test(end), {
+    message: "Saat HH:MM formatında olmalı (ör. 09:00)",
+  })
+  .refine(([start, end]) => end > start, {
+    message: "Bitiş saati başlangıç saatinden sonra olmalı",
+  });
+
 export const serviceCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   duration_minutes: z.number().int().positive().max(600),
@@ -13,7 +25,7 @@ export const serviceUpdateSchema = serviceCreateSchema.partial().extend({
 export const staffCreateSchema = z.object({
   full_name: z.string().trim().min(1).max(120),
   commission_rate: z.number().min(0).max(100).optional(),
-  working_hours: z.record(z.string(), z.tuple([z.string(), z.string()])).optional(),
+  working_hours: z.record(z.string(), dayShiftSchema).optional(),
 });
 export const staffUpdateSchema = staffCreateSchema.partial().extend({
   status: z.enum(["active", "inactive"]).optional(),
@@ -74,7 +86,15 @@ export const assistantQuestionSchema = z.object({
     .optional(),
 });
 
-const dayShiftSchema = z.tuple([z.string(), z.string()]);
+/**
+ * PostgREST'in `.or()` filtre sözdizimini (virgül, parantez, `%` joker) bozabilecek
+ * karakterleri temizler — arama terimi doğrudan `.or()` string'ine gömülen her
+ * yerde kullanılmalı, aksi halde kullanıcı girdisi filtreyi manipüle edebilir.
+ */
+export function sanitizeSearchTerm(term: string): string {
+  return term.replace(/[,()%]/g, "");
+}
+
 export const businessUpdateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   working_hours: z.record(z.string(), dayShiftSchema).optional(),
