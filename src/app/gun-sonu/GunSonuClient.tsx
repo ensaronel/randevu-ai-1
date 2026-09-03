@@ -113,7 +113,9 @@ export default function GunSonuClient({
     <>
       <div className="flex flex-col gap-3">
         {appointments.length === 0 && (
-          <p className="text-sm text-ink-muted text-center py-6">Bugün için randevu yok.</p>
+          <p className="text-sm text-ink-muted text-center py-6">
+            Bugün için randevu yok — Takvim&apos;deki + butonundan veya Randevu Oluştur&apos;dan ekleyebilirsin.
+          </p>
         )}
 
         {appointments.map((appt) => {

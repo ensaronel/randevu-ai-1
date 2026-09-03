@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/ayarlar/hizmetler", label: "Hizmetler", desc: "Fiyat, süre ve hizmet listesi" },
   { href: "/ayarlar/calisanlar", label: "Çalışanlar", desc: "Personel, çalışma saatleri ve performans" },
   { href: "/ayarlar/isletme", label: "İşletme Ayarları", desc: "Çalışma saatleri ve kapalı günler" },
+  { href: "/bekleme-listesi", label: "Bekleme Listesi", desc: "Uygun saat çıkınca haber verilecek müşteriler" },
 ];
 
 export default async function AyarlarPage() {

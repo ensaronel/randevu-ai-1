@@ -39,11 +39,16 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
   }
 
   const visible = items.filter((item) => !resolvedIds.has(item.id));
-  if (visible.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-2.5">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Öneriler</p>
+      {visible.length === 0 && (
+        <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl p-4">
+          Şu an bekleyen öneri yok — AI, boşalan randevuları bekleme listesindekilerle eşleştirdiğinde veya
+          uzun süredir gelmeyen bir müşteri fark ettiğinde burada bir öneri kartı olarak çıkacak.
+        </p>
+      )}
       {visible.map((item) => (
         <div key={item.id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
           <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">

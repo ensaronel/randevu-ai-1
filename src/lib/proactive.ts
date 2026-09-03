@@ -120,7 +120,7 @@ function daysBetween(a: string, b: string): number {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / (1000 * 60 * 60 * 24);
 }
 
-async function hasUpcomingAppointment(
+export async function hasUpcomingAppointment(
   admin: ReturnType<typeof createAdminSupabaseClient>,
   businessId: string,
   customerId: string

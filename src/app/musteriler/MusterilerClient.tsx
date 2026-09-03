@@ -111,7 +111,7 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
       <div className="flex flex-col gap-2.5">
         {filtered.length === 0 && (
           <p className="text-sm text-ink-muted text-center py-6">
-            {query ? "Eşleşen müşteri bulunamadı." : "Henüz müşteri yok."}
+            {query ? "Eşleşen müşteri bulunamadı." : "Henüz müşteri yok — yukarıdaki \"+ Yeni Müşteri\" ile ilk kaydı oluşturabilirsin."}
           </p>
         )}
         {filtered.map((c) => (

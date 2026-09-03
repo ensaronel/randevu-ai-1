@@ -189,7 +189,7 @@ export default async function TakvimPage({
 
         {staffList.length === 0 ? (
           <p className="text-sm text-ink-muted">
-            Henüz aktif personel yok — Ayarlar&apos;dan (Hafta 10) personel ekleyince burada görünecek.
+            Henüz aktif personel yok — Ayarlar&apos;dan personel ekleyince burada görünecek.
           </p>
         ) : (
           <div className="overflow-x-auto">

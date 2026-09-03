@@ -72,6 +72,51 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_popular_services",
+    description:
+      "Belirtilen tarih aralığında en çok rezerve edilen (iptal edilmemiş) hizmetleri, rezervasyon " +
+      "sayılarına göre sıralı döner. \"En popüler hizmet\", \"en çok tercih edilen\" gibi sorularda kullan.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD" },
+        to: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_busy_hours",
+    description:
+      "Belirtilen tarih aralığında randevuların (iptal edilmemiş) hangi saat dilimlerinde yoğunlaştığını " +
+      "döner. \"En yoğun saatler\", \"hangi saatte daha çok randevu alıyoruz\" gibi sorularda kullan.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD" },
+        to: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_lost_customers",
+    description:
+      "Daha önce en az iki kez gelmiş (düzenli) ama belirtilen gün sayısından beri hiç gelmemiş ve " +
+      "yaklaşan randevusu olmayan müşterileri, son ziyaretlerinden bu yana geçen gün sayısıyla birlikte " +
+      "listeler. \"Kimi kaybettik\", \"hangi müşteriler gelmiyor\" gibi sorularda kullan.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        min_days_since_last_visit: {
+          type: "number",
+          description: "Son ziyaretten bu yana en az kaç gün geçmiş olmalı — belirtilmezse 60 kullan.",
+        },
+      },
+      required: ["min_days_since_last_visit"],
+    },
+  },
+  {
     name: "find_customer_appointments",
     description:
       "Bir müşterinin yaklaşan (henüz gerçekleşmemiş) randevularını bulur, her birinin appointment_id'siyle " +
@@ -167,6 +212,9 @@ interface ToolContext {
 
 export async function executeAssistantTool(name: string, input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   if (name === "get_revenue_summary") return getRevenueSummary(input, ctx);
+  if (name === "get_popular_services") return getPopularServices(input, ctx);
+  if (name === "get_busy_hours") return getBusyHours(input, ctx);
+  if (name === "get_lost_customers") return getLostCustomers(input, ctx);
   if (name === "get_staff_performance") return getStaffPerformance(input, ctx);
   if (name === "get_customer_info") return getCustomerInfo(input, ctx);
   if (name === "list_appointments") return listAppointments(input, ctx);
@@ -449,6 +497,129 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
   }
 
   return JSON.stringify({ from, to, revenue, appointments_came: cameCount, cancelled: cancelledCount, no_show: noShowCount });
+}
+
+async function getPopularServices(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const from = String(input.from ?? "");
+  const to = String(input.to ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
+  }
+  const { startUtc, endUtc } = rangeToUtc(from, to);
+  const admin = createAdminSupabaseClient();
+
+  const { data } = await admin
+    .from("appointments")
+    .select("status, appointment_services(service:services(name))")
+    .eq("business_id", ctx.businessId)
+    .neq("status", "cancelled")
+    .gte("starts_at", startUtc)
+    .lte("starts_at", endUtc);
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    for (const svc of row.appointment_services) {
+      const name = one(svc.service)?.name;
+      if (!name) continue;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+
+  if (counts.size === 0) {
+    return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç randevu kaydı yok." });
+  }
+
+  const ranked = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([service_name, booking_count]) => ({ service_name, booking_count }));
+
+  return JSON.stringify({ from, to, services: ranked });
+}
+
+const HOUR_LABEL = (hour: number) => `${String(hour).padStart(2, "0")}:00-${String(hour + 1).padStart(2, "0")}:00`;
+
+async function getBusyHours(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const from = String(input.from ?? "");
+  const to = String(input.to ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
+  }
+  const { startUtc, endUtc } = rangeToUtc(from, to);
+  const admin = createAdminSupabaseClient();
+
+  const { data } = await admin
+    .from("appointments")
+    .select("starts_at, status")
+    .eq("business_id", ctx.businessId)
+    .neq("status", "cancelled")
+    .gte("starts_at", startUtc)
+    .lte("starts_at", endUtc);
+
+  if (!data || data.length === 0) {
+    return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç randevu kaydı yok." });
+  }
+
+  const counts = new Map<number, number>();
+  for (const row of data) {
+    const turkeyMs = new Date(row.starts_at).getTime() + 3 * 60 * 60000;
+    const hour = new Date(turkeyMs).getUTCHours();
+    counts.set(hour, (counts.get(hour) ?? 0) + 1);
+  }
+
+  const ranked = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([hour, appointment_count]) => ({ hour_range: HOUR_LABEL(hour), appointment_count }));
+
+  return JSON.stringify({ from, to, busy_hours: ranked });
+}
+
+async function getLostCustomers(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const minDays = Number(input.min_days_since_last_visit ?? 60);
+  const admin = createAdminSupabaseClient();
+
+  const { data } = await admin
+    .from("appointments")
+    .select("customer_id, starts_at, customer:customers(full_name)")
+    .eq("business_id", ctx.businessId)
+    .eq("attendance", "came")
+    .order("starts_at", { ascending: true });
+
+  const byCustomer = new Map<string, { name: string; visits: string[] }>();
+  for (const row of data ?? []) {
+    const name = one(row.customer)?.full_name ?? "Müşteri";
+    const entry: { name: string; visits: string[] } = byCustomer.get(row.customer_id) ?? { name, visits: [] };
+    entry.visits.push(row.starts_at);
+    byCustomer.set(row.customer_id, entry);
+  }
+
+  const nowMs = Date.now();
+  const lost: { customer_name: string; days_since_last_visit: number; total_past_visits: number }[] = [];
+
+  for (const [customerId, entry] of byCustomer) {
+    if (entry.visits.length < 2) continue;
+    const lastVisit = entry.visits[entry.visits.length - 1];
+    const daysSince = Math.round((nowMs - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince < minDays) continue;
+
+    const { data: upcoming } = await admin
+      .from("appointments")
+      .select("id")
+      .eq("business_id", ctx.businessId)
+      .eq("customer_id", customerId)
+      .in("status", ["scheduled", "confirmed"])
+      .gte("starts_at", new Date().toISOString())
+      .limit(1);
+    if (upcoming && upcoming.length > 0) continue;
+
+    lost.push({ customer_name: entry.name, days_since_last_visit: daysSince, total_past_visits: entry.visits.length });
+  }
+
+  if (lost.length === 0) {
+    return JSON.stringify({ no_data: true, message: `${minDays} günden fazladır gelmeyen, eskiden düzenli gelen bir müşteri yok.` });
+  }
+
+  lost.sort((a, b) => b.days_since_last_visit - a.days_since_last_visit);
+  return JSON.stringify({ min_days_since_last_visit: minDays, lost_customers: lost });
 }
 
 async function computeAvailableMinutes(
