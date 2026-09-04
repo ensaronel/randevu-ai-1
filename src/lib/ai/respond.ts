@@ -2,15 +2,10 @@ import { GoogleGenAI, type Content, type FunctionCall } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { AI_TOOLS, executeAiTool } from "@/lib/ai/tools";
+import { AI_MODEL } from "@/lib/ai/model";
 import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business, Customer } from "@/types/database";
 
-// Bütçe kısıtı nedeniyle şimdilik Gemini'nin ücretsiz katmanı kullanılıyor
-// (kart gerektirmiyor) — flash-lite'ın ücretsiz katmanı günde 1000 istek
-// destekliyor (eski gemini-3.6-flash'ın günlük 20 istek sınırına takılmıştık).
-// Gerekirse plandaki Claude Haiku'ya dönülebilir, mimari (tools.ts/availability.ts)
-// sağlayıcıdan bağımsız.
-const MODEL = "gemini-3.5-flash-lite";
 const MAX_TOOL_ITERATIONS = 6;
 const HISTORY_LIMIT = 20;
 
@@ -112,7 +107,7 @@ export async function generateAiReply(
   };
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-    const response = await ai.models.generateContent({ model: MODEL, contents, config });
+    const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
 
     const functionCalls: FunctionCall[] = response.functionCalls ?? [];
 

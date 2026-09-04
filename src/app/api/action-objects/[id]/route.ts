@@ -32,7 +32,7 @@ export async function PATCH(
             business_id: owner.business_id,
             customer_id: actionObject.related_customer_id,
             direction: "outbound",
-            message_type: "freeform",
+            message_type: "system_notice",
             body: actionObject.suggestion,
           });
           outcome = "mesaj gönderildi";

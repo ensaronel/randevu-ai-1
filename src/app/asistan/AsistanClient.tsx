@@ -9,8 +9,8 @@ interface Message {
 
 const SUGGESTIONS = ["Bu ay ne kadar kazandım?", "Yarın programım nasıl?", "Bu hafta en çok kim çalıştı?"];
 
-export default function AsistanClient() {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function AsistanClient({ initialMessages }: { initialMessages: Message[] }) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,7 @@ export default function AsistanClient() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history: messages }),
+        body: JSON.stringify({ question }),
       });
       const data = await res.json();
       const replyText = res.ok ? data.replyText : "Bir hata oluştu, lütfen tekrar dene.";

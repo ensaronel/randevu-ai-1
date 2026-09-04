@@ -6,10 +6,12 @@ import { askAssistant } from "@/lib/ai/assistant";
 import { assistantQuestionSchema } from "@/lib/validation";
 import type { Business } from "@/types/database";
 
+const HISTORY_LIMIT = 20;
+
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { owner, supabase } = await requireBusinessOwner();
-    const { question, history } = assistantQuestionSchema.parse(await request.json());
+    const { question } = assistantQuestionSchema.parse(await request.json());
 
     const { data: business, error } = await supabase
       .from("businesses")
@@ -18,12 +20,26 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) throw error;
 
-    const historyContents: Content[] = (history ?? []).map((m) => ({
-      role: m.role,
-      parts: [{ text: m.text }],
-    }));
+    // Client'ın gönderdiği history'e güvenmek yerine (manipüle edilebilir,
+    // sekmeler arası tutarsız olabilir) son N mesajı kalıcı log'dan okuyoruz.
+    const { data: historyRows } = await supabase
+      .from("assistant_message_log")
+      .select("role, body")
+      .eq("business_id", owner.business_id)
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_LIMIT);
+
+    const historyContents: Content[] = (historyRows ?? [])
+      .reverse()
+      .map((m) => ({ role: m.role as "user" | "model", parts: [{ text: m.body }] }));
 
     const reply = await askAssistant(business as Business, question, historyContents);
+
+    await supabase.from("assistant_message_log").insert([
+      { business_id: owner.business_id, role: "user", body: question },
+      { business_id: owner.business_id, role: "model", body: reply.replyText },
+    ]);
+
     return NextResponse.json(reply);
   });
 }

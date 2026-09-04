@@ -80,10 +80,6 @@ export const actionObjectUpdateSchema = z.object({
 
 export const assistantQuestionSchema = z.object({
   question: z.string().trim().min(1).max(500),
-  history: z
-    .array(z.object({ role: z.enum(["user", "model"]), text: z.string() }))
-    .max(20)
-    .optional(),
 });
 
 /**

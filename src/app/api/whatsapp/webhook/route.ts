@@ -113,7 +113,7 @@ async function ensureKvkkConsent(
     business_id: businessId,
     customer_id: customer.id,
     direction: "outbound",
-    message_type: "freeform",
+    message_type: "system_notice",
     body: KVKK_CONSENT_MESSAGE,
   });
 }
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
               business_id: business.id,
               customer_id: customer.id,
               direction: "outbound",
-              message_type: "freeform",
+              message_type: "system_notice",
               body: UNSUPPORTED_MESSAGE_TYPE_FALLBACK,
             });
             continue;
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
               business_id: business.id,
               customer_id: customer.id,
               direction: "outbound",
-              message_type: "freeform",
+              message_type: "system_notice",
               body: SYSTEM_ERROR_CUSTOMER_FALLBACK,
               ai_confidence: 0,
               escalated: true,

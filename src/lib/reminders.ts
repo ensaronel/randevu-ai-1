@@ -81,7 +81,7 @@ async function sendReminderBatch(
         business_id: appt.business_id,
         customer_id: customer.id,
         direction: "outbound",
-        message_type: "freeform",
+        message_type: "system_notice",
         body,
       });
       sentCount++;

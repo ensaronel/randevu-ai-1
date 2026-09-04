@@ -1,10 +1,9 @@
 import { GoogleGenAI, type Content, type FunctionCall } from "@google/genai";
 import { ASSISTANT_TOOLS, executeAssistantTool } from "@/lib/ai/assistantTools";
+import { AI_MODEL } from "@/lib/ai/model";
 import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business } from "@/types/database";
 
-// Diğer AI dosyalarıyla aynı sağlayıcı — bkz. respond.ts üstündeki not.
-const MODEL = "gemini-3.5-flash-lite";
 const MAX_TOOL_ITERATIONS = 6;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -60,7 +59,7 @@ export async function askAssistant(business: Business, question: string, history
   };
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-    const response = await ai.models.generateContent({ model: MODEL, contents, config });
+    const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
     const functionCalls: FunctionCall[] = response.functionCalls ?? [];
 
     if (functionCalls.length === 0) {

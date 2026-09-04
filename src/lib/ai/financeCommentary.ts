@@ -1,7 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-
-// Diğer AI dosyalarıyla aynı sağlayıcı kararı — bkz. respond.ts üstündeki not.
-const MODEL = "gemini-3.5-flash-lite";
+import { AI_MODEL } from "@/lib/ai/model";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -33,7 +31,7 @@ SADECE verilen rakamları karşılaştır. Sebebini tahmin etme (ör. "hava köt
 sebebi bilmiyorsun). Rakam uydurma, sadece verilenleri kullan. Tek cümle yaz, uzun rapor yazma.`;
 
   const response = await ai.models.generateContent({
-    model: MODEL,
+    model: AI_MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
   });
 

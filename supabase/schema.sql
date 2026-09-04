@@ -181,7 +181,7 @@ create table whatsapp_message_log (
   business_id uuid not null references businesses(id) on delete cascade,
   customer_id uuid references customers(id),
   direction text not null check (direction in ('inbound','outbound')),
-  message_type text not null default 'freeform' check (message_type in ('freeform','template')),
+  message_type text not null default 'freeform' check (message_type in ('freeform','template','system_notice')),
   template_name text,
   body text,
   ai_confidence numeric(3,2),     -- düşükse eskalasyon tetiklenir (Hafta 5)
@@ -190,6 +190,20 @@ create table whatsapp_message_log (
 );
 
 create index idx_whatsapp_log_business_time on whatsapp_message_log(business_id, created_at);
+
+-- ============================================================
+-- Owner'ın /asistan sohbet geçmişi — client'ın gönderdiği history'e
+-- güvenmek yerine burada kalıcı tutulur (bkz. J3 notu).
+-- ============================================================
+create table assistant_message_log (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  role text not null check (role in ('user','model')),
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index idx_assistant_log_business_time on assistant_message_log(business_id, created_at);
 
 -- ============================================================
 -- Row Level Security — bir işletme başka bir işletmenin verisini
@@ -219,6 +233,7 @@ alter table daily_financial_summaries enable row level security;
 alter table action_objects enable row level security;
 alter table waitlist_entries enable row level security;
 alter table whatsapp_message_log enable row level security;
+alter table assistant_message_log enable row level security;
 
 -- business_owners: bir kullanıcı sadece kendi kaydını görebilir (current_business_id()
 -- bu tabloyu SECURITY DEFINER ile okuduğu için burada döngü oluşmaz).
@@ -274,6 +289,10 @@ create policy "own waitlist_entries" on waitlist_entries
   with check (business_id = current_business_id());
 
 create policy "own whatsapp_message_log" on whatsapp_message_log
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());
+
+create policy "own assistant_message_log" on assistant_message_log
   for all using (business_id = current_business_id())
   with check (business_id = current_business_id());
 
