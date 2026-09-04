@@ -20,19 +20,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "date (YYYY-MM-DD) ve service_id gerekli" }, { status: 400 });
     }
 
-    const [{ data: business }, { data: service }, { data: staffData }, { data: expertise }, { data: apptData }] =
-      await Promise.all([
-        supabase.from("businesses").select("*").eq("id", owner.business_id).single(),
-        supabase.from("services").select("*").eq("business_id", owner.business_id).eq("id", serviceId).single(),
-        supabase.from("staff").select("*").eq("business_id", owner.business_id).eq("status", "active"),
-        supabase.from("staff_service_expertise").select("staff_id, service_id"),
-        supabase
-          .from("appointments")
-          .select("*, appointment_services(*)")
-          .eq("business_id", owner.business_id)
-          .gte("starts_at", `${dateKey}T00:00:00+03:00`)
-          .lt("starts_at", `${dateKey}T23:59:59+03:00`),
-      ]);
+    const [{ data: business }, { data: service }, { data: staffData }, { data: apptData }] = await Promise.all([
+      supabase.from("businesses").select("*").eq("id", owner.business_id).single(),
+      supabase.from("services").select("*").eq("business_id", owner.business_id).eq("id", serviceId).single(),
+      supabase.from("staff").select("*").eq("business_id", owner.business_id).eq("status", "active"),
+      supabase
+        .from("appointments")
+        .select("*, appointment_services(*)")
+        .eq("business_id", owner.business_id)
+        .gte("starts_at", `${dateKey}T00:00:00+03:00`)
+        .lt("starts_at", `${dateKey}T23:59:59+03:00`),
+    ]);
 
     if (!business || !service) {
       return NextResponse.json({ error: "isletme_veya_hizmet_bulunamadi" }, { status: 404 });
@@ -40,6 +38,17 @@ export async function GET(request: NextRequest) {
 
     let staffList = (staffData ?? []) as Staff[];
     if (staffId) staffList = staffList.filter((s) => s.id === staffId);
+
+    // RLS zaten staff_service_expertise'i bu işletmenin personeline daraltıyor
+    // (staff.business_id üzerinden) ama savunma katmanı olarak burada da açıkça
+    // sadece ilgili staffList'in id'leriyle filtreleniyor.
+    const { data: expertise } =
+      staffList.length > 0
+        ? await supabase
+            .from("staff_service_expertise")
+            .select("staff_id, service_id")
+            .in("staff_id", staffList.map((s) => s.id))
+        : { data: [] };
 
     const slots = findAvailableSlots({
       business: business as Business,

@@ -8,6 +8,13 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/** businesses.is_active manuel bir kapatma anahtarı olarak kullanıldığında (ödeme sistemi yok, elle kapatma) fırlatılır. */
+export class AccountInactiveError extends Error {
+  constructor() {
+    super("account_inactive");
+  }
+}
+
 /**
  * Route handler'larda çağrılır. Giriş yapmış kullanıcının business_owners
  * kaydını (dolayısıyla business_id'sini) döner — tüm CRUD sorguları buna
@@ -29,7 +36,7 @@ export async function requireBusinessOwner(): Promise<{
 
   const { data: owner, error } = await supabase
     .from("business_owners")
-    .select("*")
+    .select("*, business:businesses(is_active)")
     .eq("auth_user_id", user.id)
     .single();
 
@@ -37,7 +44,12 @@ export async function requireBusinessOwner(): Promise<{
     throw new UnauthorizedError();
   }
 
-  return { owner: owner as BusinessOwner, supabase };
+  const { business, ...ownerRest } = owner as BusinessOwner & { business: { is_active: boolean } | null };
+  if (business?.is_active === false) {
+    throw new AccountInactiveError();
+  }
+
+  return { owner: ownerRest as BusinessOwner, supabase };
 }
 
 /**
@@ -67,6 +79,8 @@ export async function getBusinessOwnerForPage(): Promise<{
   if (!owner || !owner.business) redirect("/login");
 
   const { business, ...ownerRest } = owner as BusinessOwner & { business: Business };
+
+  if (!business.is_active) redirect("/hesap-pasif");
 
   return { owner: ownerRest as BusinessOwner, business, supabase };
 }

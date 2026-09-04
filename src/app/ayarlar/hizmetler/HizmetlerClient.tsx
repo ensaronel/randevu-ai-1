@@ -20,10 +20,12 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function addService() {
     if (!form.name.trim() || !form.price) return;
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/services", {
         method: "POST",
@@ -38,7 +40,11 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
       if (res.ok) {
         setForm(emptyForm);
         router.refresh();
+      } else {
+        setError("Hizmet eklenemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Hizmet eklenemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -46,13 +52,20 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
 
   async function toggleStatus(service: ServiceItem) {
     setBusyId(service.id);
+    setError(null);
     try {
       const res = await fetch(`/api/services/${service.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: service.status === "active" ? "inactive" : "active" }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError("Durum değiştirilemedi, lütfen tekrar dene.");
+      }
+    } catch {
+      setError("Durum değiştirilemedi, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -97,6 +110,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         >
           {saving ? "Ekleniyor..." : "Hizmeti Ekle"}
         </button>
+        {error && <p className="text-[12px] text-bad">{error}</p>}
       </div>
 
       <div className="flex flex-col gap-2">

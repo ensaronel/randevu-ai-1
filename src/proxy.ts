@@ -38,7 +38,11 @@ export async function proxy(request: NextRequest) {
   // webhook (Meta'dan) ve cron (Vercel'den) - ikisi de kendi secret/imza kontrolünü kendi içinde yapar
   const isPublicApi = pathname.startsWith("/api/whatsapp") || pathname.startsWith("/api/cron");
   // Meta'nın "Live" moda geçiş ve gerçek müşteri gizlilik metni şartı için herkese açık olmalı.
-  const isPublicPage = pathname === "/" || pathname === "/gizlilik";
+  // /sifre-sifirla: Supabase'in şifre sıfırlama bağlantısındaki oturum bilgisi
+  // URL hash'inde taşınır (sunucuya hiç gitmez), bu yüzden bu sayfaya ilk
+  // istekte proxy henüz bir kullanıcı görmez — client tarafında hash işlenip
+  // gerçek oturum kurulana kadar herkese açık kalmalı.
+  const isPublicPage = pathname === "/" || pathname === "/gizlilik" || pathname === "/sifre-sifirla";
 
   if (!user && isApiRoute && !isPublicApi) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

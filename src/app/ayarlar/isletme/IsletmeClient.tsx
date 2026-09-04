@@ -18,9 +18,11 @@ export default function IsletmeClient({
   const [newDate, setNewDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function save(next: { working_hours?: WorkingHours; closed_dates?: string[] }) {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/business", {
         method: "PATCH",
@@ -28,9 +30,15 @@ export default function IsletmeClient({
         body: JSON.stringify(next),
       });
       if (res.ok) {
-        setSavedAt(Date.now());
+        // eslint-disable-next-line react-hooks/purity -- event handler içinde çağrılıyor, render sırasında değil
+        const now = Date.now();
+        setSavedAt(now);
         router.refresh();
+      } else {
+        setError("Kaydedilemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Kaydedilemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -62,7 +70,8 @@ export default function IsletmeClient({
         >
           {saving ? "Kaydediliyor..." : "Kaydet"}
         </button>
-        {savedAt && <p className="text-[12px] text-good-ink">Kaydedildi.</p>}
+        {error && <p className="text-[12px] text-bad">{error}</p>}
+        {!error && savedAt && <p className="text-[12px] text-good-ink">Kaydedildi.</p>}
       </div>
 
       <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5">

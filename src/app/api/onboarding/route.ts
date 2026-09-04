@@ -61,7 +61,15 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (ownerError) throw ownerError;
+    if (ownerError) {
+      // 23505 (auth_user_id unique ihlali): existingOwner ön-kontrolünden sonra
+      // eşzamanlı ikinci bir onboarding isteği araya girip önce tamamlanmış
+      // olabilir — bu durumda da ham 500 yerine aynı 409 already_onboarded dönülür.
+      if (ownerError.code === "23505") {
+        return NextResponse.json({ error: "already_onboarded" }, { status: 409 });
+      }
+      throw ownerError;
+    }
 
     return NextResponse.json({ data: { business, owner } }, { status: 201 });
   });

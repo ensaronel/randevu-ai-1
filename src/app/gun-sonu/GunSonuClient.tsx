@@ -7,6 +7,26 @@ import type { Attendance } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
 
+/**
+ * Türkçe para girişini (binlik ayraç "." + ondalık ayraç ",") sayıya çevirir.
+ * Virgül varsa noktalar binlik ayraç sayılıp silinir. Virgül yoksa ve tek bir
+ * nokta 1-2 haneli bir kesirle bitiyorsa ("45.5" gibi) ondalık ayraç kabul
+ * edilir, aksi halde ("1.234" gibi) binlik ayraç sayılıp silinir.
+ */
+function parseTLInput(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return NaN;
+  if (trimmed.includes(",")) {
+    return Number(trimmed.replace(/\./g, "").replace(",", "."));
+  }
+  const dotMatches = trimmed.match(/\./g);
+  if (dotMatches?.length === 1) {
+    const decimalPart = trimmed.split(".")[1];
+    if (decimalPart.length <= 2) return Number(trimmed);
+  }
+  return Number(trimmed.replace(/\./g, ""));
+}
+
 export interface GunSonuAppointment {
   id: string;
   starts_at: string;
@@ -77,7 +97,7 @@ export default function GunSonuClient({
   }
 
   async function savePrice(serviceRowId: string) {
-    const value = Number(priceDraft.replace(",", "."));
+    const value = parseTLInput(priceDraft);
     if (Number.isNaN(value) || value < 0) return;
 
     setSavingId(serviceRowId);
@@ -99,7 +119,7 @@ export default function GunSonuClient({
   }
 
   async function reconcileDay() {
-    const parsedExpenses = Number(expenseDraft.replace(",", ".")) || 0;
+    const parsedExpenses = parseTLInput(expenseDraft) || 0;
     setReconciling(true);
     try {
       const res = await fetch("/api/gun-sonu/reconcile", {

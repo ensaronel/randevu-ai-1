@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { ZodError } from "zod";
-import { UnauthorizedError } from "@/lib/auth";
+import { UnauthorizedError, AccountInactiveError } from "@/lib/auth";
 
 /**
  * Vercel Cron isteklerini doğrular — `Authorization: Bearer <CRON_SECRET>` header'ını
@@ -33,6 +33,9 @@ export async function handleRoute(
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    if (err instanceof AccountInactiveError) {
+      return NextResponse.json({ error: "account_inactive" }, { status: 403 });
     }
     if (err instanceof ZodError) {
       return NextResponse.json(

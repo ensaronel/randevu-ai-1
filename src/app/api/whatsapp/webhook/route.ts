@@ -160,7 +160,8 @@ export async function POST(request: NextRequest) {
         .eq("whatsapp_phone_number_id", phoneNumberId)
         .maybeSingle();
 
-      if (!business) continue;
+      // Hesap pasifse (elle kapatma anahtarı) gelen mesajlar hiç işlenmez.
+      if (!business || !business.is_active) continue;
 
       for (const message of messages) {
         try {

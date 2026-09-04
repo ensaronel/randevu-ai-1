@@ -100,7 +100,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     <AppShell businessName={business.name}>
         <MusteriDetayClient
           customer={customer}
-          staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name }))}
+          staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name, status: s.status }))}
           totalSpent={totalSpent}
           visitCount={cameVisits.length}
           lastVisitAt={lastVisitAt}

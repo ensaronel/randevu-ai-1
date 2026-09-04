@@ -55,7 +55,7 @@ export default function MusteriDetayClient({
   actionHistory,
 }: {
   customer: Customer;
-  staffList: { id: string; full_name: string }[];
+  staffList: { id: string; full_name: string; status: "active" | "inactive" }[];
   totalSpent: number;
   visitCount: number;
   lastVisitAt: string | null;
@@ -68,16 +68,24 @@ export default function MusteriDetayClient({
   const [preferredStaffId, setPreferredStaffId] = useState(customer.preferred_staff_id ?? "");
   const [saving, setSaving] = useState(false);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function saveProfile() {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/customers/${customer.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: notes.trim() || null, preferred_staff_id: preferredStaffId || null }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError("Kaydedilemedi, lütfen tekrar dene.");
+      }
+    } catch {
+      setError("Kaydedilemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -85,13 +93,20 @@ export default function MusteriDetayClient({
 
   async function toggleActiveStatus() {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/customers/${customer.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: customer.status === "active" ? "inactive" : "active" }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError("Durum değiştirilemedi, lütfen tekrar dene.");
+      }
+    } catch {
+      setError("Durum değiştirilemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -163,6 +178,7 @@ export default function MusteriDetayClient({
             {staffList.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.full_name}
+                {s.status === "inactive" ? " (pasif)" : ""}
               </option>
             ))}
           </select>
@@ -194,6 +210,8 @@ export default function MusteriDetayClient({
             {customer.status === "active" ? "Pasifleştir" : "Aktifleştir"}
           </button>
         </div>
+
+        {error && <p className="text-[12px] text-bad">{error}</p>}
 
         {customer.kvkk_consent_at && (
           <p className="text-[11.5px] text-ink-muted">KVKK onayı: {formatDateTR(customer.kvkk_consent_at)}</p>

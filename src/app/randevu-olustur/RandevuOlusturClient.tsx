@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTL, formatTimeTR } from "@/lib/date";
 import type { Service, Staff } from "@/types/database";
@@ -62,6 +62,7 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   const [success, setSuccess] = useState(false);
 
   const selectedService = services.find((s) => s.id === selectedServiceId) ?? null;
+  const slotsRequestSeq = useRef(0);
 
   useEffect(() => {
     if (selectedCustomer) return;
@@ -88,13 +89,21 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
       setSlots([]);
       return;
     }
+    const seq = ++slotsRequestSeq.current;
     setLoadingSlots(true);
     const params = new URLSearchParams({ date: selectedDateKey, service_id: selectedServiceId });
     if (selectedStaffId) params.set("staff_id", selectedStaffId);
     fetch(`/api/appointments/available-slots?${params.toString()}`)
       .then((res) => res.json())
-      .then((body) => setSlots(body.data ?? []))
-      .finally(() => setLoadingSlots(false));
+      .then((body) => {
+        // Bu istek beklerken hizmet/personel/tarih tekrar değişip yeni bir
+        // istek başlatılmışsa, geç gelen bu eski cevap ekranı güncellemez.
+        if (seq !== slotsRequestSeq.current) return;
+        setSlots(body.data ?? []);
+      })
+      .finally(() => {
+        if (seq === slotsRequestSeq.current) setLoadingSlots(false);
+      });
   }, [selectedServiceId, selectedStaffId, selectedDateKey]);
 
   async function addNewCustomer() {

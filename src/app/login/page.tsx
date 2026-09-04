@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "forgot";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,6 +20,7 @@ export default function LoginPage() {
   // "User already registered" hatasına çarpar, oysa oturum zaten kurulu
   // olduğu için sadece onboarding'i tekrar denemek yeterli ve doğru olan.
   const [signedUpAwaitingOnboarding, setSignedUpAwaitingOnboarding] = useState(false);
+  const [resetLinkSent, setResetLinkSent] = useState(false);
 
   async function completeOnboarding() {
     const onboardRes = await fetch("/api/onboarding", {
@@ -36,6 +37,24 @@ export default function LoginPage() {
     }
     router.push("/dashboard");
     router.refresh();
+  }
+
+  async function handleForgotSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const supabase = createBrowserSupabaseClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/sifre-sifirla`,
+      });
+      if (resetError) throw resetError;
+      setResetLinkSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "bilinmeyen_hata");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -70,6 +89,56 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (mode === "forgot") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg px-4">
+        <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl p-6 flex flex-col gap-5">
+          <div>
+            <h1 className="text-xl font-semibold">Şifremi Unuttum</h1>
+            <p className="text-sm text-black/50 mt-1">
+              {resetLinkSent
+                ? "E-postana bir sıfırlama bağlantısı gönderdik — gelen kutunu kontrol et."
+                : "E-posta adresini gir, sana bir sıfırlama bağlantısı gönderelim."}
+            </p>
+          </div>
+
+          {!resetLinkSent && (
+            <form onSubmit={handleForgotSubmit} className="flex flex-col gap-3">
+              <input
+                type="email"
+                placeholder="E-posta"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="border border-black/15 rounded-lg px-3 py-2 text-sm"
+              />
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+              >
+                {loading ? "..." : "Sıfırlama Bağlantısı Gönder"}
+              </button>
+            </form>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode("login");
+              setResetLinkSent(false);
+              setError(null);
+            }}
+            className="text-sm text-accent font-medium"
+          >
+            Giriş sayfasına dön
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -126,6 +195,19 @@ export default function LoginPage() {
               minLength={6}
               className="border border-black/15 rounded-lg px-3 py-2 text-sm"
             />
+          )}
+
+          {mode === "login" && !signedUpAwaitingOnboarding && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("forgot");
+                setError(null);
+              }}
+              className="text-[12.5px] text-accent font-medium self-start"
+            >
+              Şifremi unuttum
+            </button>
           )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
