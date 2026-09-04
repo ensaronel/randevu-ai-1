@@ -13,16 +13,16 @@ export async function GET(request: NextRequest) {
   return handleRoute(async () => {
     const { owner, supabase } = await requireBusinessOwner();
     const dateKey = request.nextUrl.searchParams.get("date");
-    const serviceId = request.nextUrl.searchParams.get("service_id");
+    const serviceIds = request.nextUrl.searchParams.getAll("service_id");
     const staffId = request.nextUrl.searchParams.get("staff_id");
 
-    if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !serviceId) {
-      return NextResponse.json({ error: "date (YYYY-MM-DD) ve service_id gerekli" }, { status: 400 });
+    if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || serviceIds.length === 0) {
+      return NextResponse.json({ error: "date (YYYY-MM-DD) ve en az bir service_id gerekli" }, { status: 400 });
     }
 
-    const [{ data: business }, { data: service }, { data: staffData }, { data: apptData }] = await Promise.all([
+    const [{ data: business }, { data: serviceData }, { data: staffData }, { data: apptData }] = await Promise.all([
       supabase.from("businesses").select("*").eq("id", owner.business_id).single(),
-      supabase.from("services").select("*").eq("business_id", owner.business_id).eq("id", serviceId).single(),
+      supabase.from("services").select("*").eq("business_id", owner.business_id).in("id", serviceIds),
       supabase.from("staff").select("*").eq("business_id", owner.business_id).eq("status", "active"),
       supabase
         .from("appointments")
@@ -32,7 +32,8 @@ export async function GET(request: NextRequest) {
         .lt("starts_at", `${dateKey}T23:59:59+03:00`),
     ]);
 
-    if (!business || !service) {
+    const services = (serviceData ?? []) as Service[];
+    if (!business || services.length !== serviceIds.length) {
       return NextResponse.json({ error: "isletme_veya_hizmet_bulunamadi" }, { status: 404 });
     }
 
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const slots = findAvailableSlots({
       business: business as Business,
-      requestedServices: [service as Service],
+      requestedServices: services,
       staff: staffList,
       expertise: expertise ?? [],
       existingAppointments: (apptData ?? []) as (Appointment & { appointment_services: AppointmentService[] })[],

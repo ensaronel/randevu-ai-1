@@ -94,7 +94,7 @@ Bu pakette kalan **13 Orta + 8 Düşük öncelikli madde + ertelenen "çoklu-hiz
   yerine son N mesajı bu tablodan okur, soru+cevabı da buraya yazar. `AsistanClient.tsx`'teki
   client-side state sadece anlık render için kalır, `history` artık API'ye gönderilmez.
 
-### Grup K — Çoklu hizmet manuel randevu (madde 8)
+### Grup K — Çoklu hizmet manuel randevu (madde 8) ✅ tamamlandı
 
 **K1.** `src/app/randevu-olustur/RandevuOlusturClient.tsx`
 - `selectedServiceId: string|null` → `selectedServiceIds: string[]`; hizmet chip'leri çoklu-

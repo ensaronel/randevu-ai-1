@@ -49,7 +49,9 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   const [newPhone, setNewPhone] = useState("");
   const [addingCustomer, setAddingCustomer] = useState(false);
 
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(services[0]?.id ?? null);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(
+    services[0] ? [services[0].id] : []
+  );
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = Herhangi
   const [selectedDateKey, setSelectedDateKey] = useState(dateOptions[0]?.dateKey ?? "");
 
@@ -61,8 +63,19 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const selectedService = services.find((s) => s.id === selectedServiceId) ?? null;
+  const selectedServices = useMemo(
+    () => services.filter((s) => selectedServiceIds.includes(s.id)),
+    [services, selectedServiceIds]
+  );
+  const totalDurationMinutes = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
   const slotsRequestSeq = useRef(0);
+
+  function toggleService(id: string) {
+    setSelectedServiceIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  }
 
   useEffect(() => {
     if (selectedCustomer) return;
@@ -85,13 +98,14 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hizmet/personel/tarih değişince önceki seçim geçersiz kalır
     setSelectedSlot(null);
-    if (!selectedServiceId || !selectedDateKey) {
+    if (selectedServiceIds.length === 0 || !selectedDateKey) {
       setSlots([]);
       return;
     }
     const seq = ++slotsRequestSeq.current;
     setLoadingSlots(true);
-    const params = new URLSearchParams({ date: selectedDateKey, service_id: selectedServiceId });
+    const params = new URLSearchParams({ date: selectedDateKey });
+    selectedServiceIds.forEach((id) => params.append("service_id", id));
     if (selectedStaffId) params.set("staff_id", selectedStaffId);
     fetch(`/api/appointments/available-slots?${params.toString()}`)
       .then((res) => res.json())
@@ -104,7 +118,7 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
       .finally(() => {
         if (seq === slotsRequestSeq.current) setLoadingSlots(false);
       });
-  }, [selectedServiceId, selectedStaffId, selectedDateKey]);
+  }, [selectedServiceIds, selectedStaffId, selectedDateKey]);
 
   async function addNewCustomer() {
     if (!newName.trim() || !newPhone.trim()) return;
@@ -133,12 +147,15 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
   }
 
   async function submit() {
-    if (!selectedCustomer || !selectedService || !selectedSlot) return;
+    if (!selectedCustomer || selectedServices.length === 0 || !selectedSlot) return;
     setSubmitting(true);
     setError(null);
     try {
-      const assignment = selectedSlot.assignments.find((a) => a.service_id === selectedService.id);
-      if (!assignment) throw new Error("no_assignment");
+      const servicesPayload = selectedServices.map((svc) => {
+        const assignment = selectedSlot.assignments.find((a) => a.service_id === svc.id);
+        if (!assignment) throw new Error("no_assignment");
+        return { service_id: svc.id, staff_id: assignment.staff_id, planned_price: svc.price };
+      });
 
       const res = await fetch("/api/appointments", {
         method: "POST",
@@ -148,9 +165,7 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
           starts_at: selectedSlot.starts_at,
           ends_at: selectedSlot.ends_at,
           source: "manual",
-          services: [
-            { service_id: selectedService.id, staff_id: assignment.staff_id, planned_price: selectedService.price },
-          ],
+          services: servicesPayload,
         }),
       });
 
@@ -171,8 +186,11 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
     }
   }
 
-  const resolvedStaffName = selectedSlot?.assignments.find((a) => a.service_id === selectedServiceId)?.staff_name;
-  const canSubmit = !!(selectedCustomer && selectedService && selectedSlot) && !submitting;
+  const resolvedAssignments = selectedServices.map((svc) => ({
+    service: svc,
+    staffName: selectedSlot?.assignments.find((a) => a.service_id === svc.id)?.staff_name ?? "-",
+  }));
+  const canSubmit = !!(selectedCustomer && selectedServices.length > 0 && selectedSlot) && !submitting;
 
   if (success) {
     return (
@@ -281,9 +299,9 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
           {services.map((s) => (
             <button
               key={s.id}
-              onClick={() => setSelectedServiceId(s.id)}
+              onClick={() => toggleService(s.id)}
               className={`rounded-full px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap shrink-0 ${
-                selectedServiceId === s.id ? "bg-accent text-white" : "bg-surface border border-border"
+                selectedServiceIds.includes(s.id) ? "bg-accent text-white" : "bg-surface border border-border"
               }`}
             >
               {s.name}
@@ -293,6 +311,11 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
             <p className="text-sm text-ink-muted">Önce Ayarlar &gt; Hizmetler&apos;den bir hizmet ekle.</p>
           )}
         </div>
+        {selectedServices.length > 0 && (
+          <p className="text-[12.5px] text-ink-muted">
+            {selectedServices.length} hizmet · {totalDurationMinutes} dk · {formatTL(totalPrice)}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2.5">
@@ -378,19 +401,20 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
         )}
       </div>
 
-      {selectedCustomer && selectedService && selectedSlot && (
+      {selectedCustomer && selectedServices.length > 0 && selectedSlot && (
         <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5">
           <span className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Randevu Özeti</span>
           <SummaryRow label="Müşteri" value={selectedCustomer.full_name} />
-          <SummaryRow label="Hizmet" value={selectedService.name} />
-          <SummaryRow label="Personel" value={resolvedStaffName ?? "-"} />
+          {resolvedAssignments.map(({ service, staffName }) => (
+            <SummaryRow key={service.id} label={service.name} value={staffName} />
+          ))}
           <SummaryRow
             label="Tarih / Saat"
             value={`${selectedDateKey.split("-").reverse().join(".")}, ${formatTimeTR(selectedSlot.starts_at)}`}
           />
           <div className="flex items-center justify-between pt-2 border-t border-border">
-            <span className="text-[13.5px] text-ink-muted">Fiyat</span>
-            <span className="font-display font-semibold text-lg">{formatTL(selectedService.price)}</span>
+            <span className="text-[13.5px] text-ink-muted">Toplam ({totalDurationMinutes} dk)</span>
+            <span className="font-display font-semibold text-lg">{formatTL(totalPrice)}</span>
           </div>
         </div>
       )}
