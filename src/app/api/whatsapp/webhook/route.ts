@@ -29,9 +29,10 @@ function isValidMetaSignature(rawBody: string, signatureHeader: string | null): 
 
 const KVKK_CONSENT_MESSAGE =
   "Merhaba! Randevu talebinizi işleyebilmemiz için telefon numaranız, " +
-  "randevu geçmişiniz ve varsa tercih notlarınız KVKK kapsamında işletme " +
-  "tarafından saklanacaktır. Devam ederek bunu kabul etmiş olursunuz. " +
-  "Size nasıl yardımcı olabiliriz?";
+  "randevu geçmişiniz ve mesajlarınız KVKK kapsamında işletme tarafından " +
+  "ve yapay zeka destekli sistemimiz (Google) aracılığıyla işlenip " +
+  "saklanacaktır. Detaylar: https://randevu-ai-1.vercel.app/gizlilik — " +
+  "Devam ederek bunu kabul etmiş olursunuz. Size nasıl yardımcı olabiliriz?";
 
 /**
  * Meta, webhook'u abone ederken bu GET ile doğrular:
