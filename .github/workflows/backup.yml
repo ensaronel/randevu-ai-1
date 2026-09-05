@@ -1,0 +1,37 @@
+name: Gunluk Supabase Yedegi
+
+on:
+  schedule:
+    # Her gun 01:00 UTC = Turkiye saatiyle 04:00 (dusuk trafik saati)
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PostgreSQL 17 istemcisini kur (Supabase surumuyle eslesmesi icin)
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Yedek al (pg_dump)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "SUPABASE_DB_URL secret'i tanimli degil, repo Settings > Secrets and variables > Actions'tan ekle." >&2
+            exit 1
+          fi
+          mkdir -p backup
+          /usr/lib/postgresql/17/bin/pg_dump --format=custom --no-owner --no-privileges \
+            --file="backup/randevu-ai-$(date +%F).dump" "$SUPABASE_DB_URL"
+
+      - name: Yedegi GitHub Actions artifact olarak sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.run_id }}
+          path: backup/*.dump
+          retention-days: 30
