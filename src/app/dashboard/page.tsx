@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL, formatTimeTR } from "@/lib/date";
@@ -217,160 +218,192 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-5 items-start">
-        <UpcomingTodayCard appointments={upcomingToday} />
-        <div className="flex flex-col gap-3 lg:gap-5">
-          {showReconcileReminder && (
-            <Link
-              href="/gun-sonu"
-              className="bg-accent2-soft border border-accent2/30 rounded-2xl p-4 flex items-center justify-between gap-3"
-            >
-              <div>
-                <p className="text-[12.5px] font-bold text-accent2-ink uppercase tracking-wide">Gün Sonu</p>
-                <p className="text-[13.5px] text-ink">Bugünü henüz kapatmadınız — ciro eksik görünebilir.</p>
-              </div>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </Link>
-          )}
-          <StaffOnDutyCard staff={staffOnDutyToday} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_1fr] gap-3 lg:gap-5">
-        <OccupancyCard percent={occupancyPercent} freeMinutes={freeMinutes} />
-
-        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2.5 lg:gap-5">
-          <StatCard label="Bugünkü randevu" value={String(today.appointmentCount)} tone="block1" />
-          <StatCard label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
-        </div>
-
-        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5 lg:justify-center">
-          <div className="flex items-center justify-between">
-            <span className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">
-              Dün (tahmini)
-            </span>
-            {percentDiff !== null && (
-              <span
-                className={`text-[13px] font-bold ${
-                  percentDiff >= 0 ? "text-good-ink" : "text-bad"
-                }`}
-              >
-                {percentDiff >= 0 ? "+" : ""}
-                {percentDiff}%
-              </span>
-            )}
+      {/* HERO: koyu, dolu bir kart içinde halka + gündem tek arada — referans
+          2'deki "büyük kart + gömülü halka" örüntüsü, ayrı ayrı kutucuklar yerine. */}
+      <div className="bg-accent text-white rounded-[28px] p-5 lg:p-7 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Bugünün Programı</p>
+            <p className="text-[13.5px] text-white/85 mt-0.5">
+              {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
+            </p>
           </div>
-          <p className="text-[27px] font-semibold font-display">{formatTL(yesterday.revenue)}</p>
-          {percentDiff !== null && (
-            <p className="text-[13.5px] text-ink-muted">Geçen haftanın aynı gününe göre.</p>
-          )}
+          <MiniRing percent={occupancyPercent} />
         </div>
+
+        {upcomingToday.length === 0 ? (
+          <p className="text-[13px] text-white/70 py-1">Bugün için kalan randevu yok.</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {upcomingToday.map((a) => {
+              const customer = one(a.customer);
+              const serviceNames = a.appointment_services
+                .map((s) => one(s.service)?.name)
+                .filter((n): n is string => !!n)
+                .join(", ");
+              return (
+                <div key={a.id} className="flex items-center gap-3">
+                  <span className="text-[13px] font-bold font-display shrink-0 w-11">
+                    {formatTimeTR(a.starts_at)}
+                  </span>
+                  <div className="min-w-0 flex-1 border-t border-white/15 pt-2.5">
+                    <p className="text-[13.5px] font-semibold truncate">{customer?.full_name ?? "Müşteri"}</p>
+                    <p className="text-[12px] text-white/65 truncate">{serviceNames}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1">
+          Takvimi Gör
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-3 lg:gap-5 items-start">
+      {/* Kompakt ikonlu istatistik hapları — büyük eşit kutular yerine referans
+          2'deki küçük "Step to walk / Drink Water" hap kartları örüntüsü. */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <PillStat icon="calendar" label="Randevu" value={String(today.appointmentCount)} tone="block1" />
+        <PillStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
+        <PillStat
+          icon="tl"
+          label="Dün"
+          value={formatTL(yesterday.revenue)}
+          tone="accentSoft"
+          badge={percentDiff !== null ? `${percentDiff >= 0 ? "+" : ""}${percentDiff}%` : undefined}
+        />
+      </div>
+
+      {showReconcileReminder && (
+        <Link
+          href="/gun-sonu"
+          className="bg-accent2-soft border border-accent2/30 rounded-2xl p-4 flex items-center justify-between gap-3"
+        >
+          <div>
+            <p className="text-[12.5px] font-bold text-accent2-ink uppercase tracking-wide">Gün Sonu</p>
+            <p className="text-[13.5px] text-ink">Bugünü henüz kapatmadınız — ciro eksik görünebilir.</p>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </Link>
+      )}
+
+      {/* Danışman banner'ı — referans 3'teki büyük illüstrasyonlu "start your
+          day" kartı gibi kendi başına bir görsel an, satır-içi bir link değil. */}
+      <Link
+        href="/asistan"
+        className="bg-accent2-soft rounded-[28px] p-5 flex items-center gap-4 relative overflow-hidden"
+      >
+        <div className="absolute -right-6 -bottom-8 w-32 h-32 rounded-full bg-accent2/15" />
+        <Mascot size={72} />
+        <div className="flex-1 min-w-0 relative">
+          <p className="text-[17px] font-bold font-display text-accent2-ink">Danışmana Sor</p>
+          <p className="text-[13px] text-accent2-ink/75 mt-0.5">
+            &quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor
+          </p>
+        </div>
+      </Link>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-5 items-start">
+        <StaffOnDutyCard staff={staffOnDutyToday} />
         {financeNote && (
           <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5">
             <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
             <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
           </div>
         )}
-
-        <div className="flex flex-col gap-2.5 lg:gap-3.5">
-          <Link
-            href="/asistan"
-            className="bg-accent2-soft border border-accent2/25 rounded-2xl p-4 flex items-center gap-3.5"
-          >
-            <Mascot size={48} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-accent2-ink">Danışmana Sor</p>
-              <p className="text-[12.5px] text-ink-muted">&quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor</p>
-            </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <path d="M9 6l6 6-6 6" />
-            </svg>
-          </Link>
-
-          <SuggestionsClient items={suggestions} />
-        </div>
       </div>
+
+      <SuggestionsClient items={suggestions} />
     </AppShell>
   );
 }
 
-function OccupancyCard({ percent, freeMinutes }: { percent: number; freeMinutes: number }) {
-  const radius = 63;
+/** Hero kartın başlığındaki küçük halka — dolu koyu zeminin üstünde, beyaz tonlarda. */
+function MiniRing({ percent }: { percent: number }) {
+  const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const dashoffset = circumference * (1 - percent / 100);
-
   return (
-    <div className="bg-accent-soft rounded-2xl p-4 lg:p-6 flex flex-col items-center gap-3 pt-5 lg:pt-6">
-      <div className="relative w-[140px] h-[140px] lg:w-[160px] lg:h-[160px]">
-        <svg width="100%" height="100%" viewBox="0 0 140 140">
-          <circle cx="70" cy="70" r={radius} fill="none" stroke="var(--surface)" strokeWidth="14" />
-          <circle
-            cx="70"
-            cy="70"
-            r={radius}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="14"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashoffset}
-            transform="rotate(-90 70 70)"
-          />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display text-[32px] lg:text-[34px] font-bold leading-none">%{percent}</span>
-          <span className="text-ink-muted text-[11.5px] font-bold uppercase tracking-wide mt-1">Doluluk</span>
-        </div>
+    <div className="relative w-14 h-14 shrink-0">
+      <svg width="100%" height="100%" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r={radius} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
+        <circle
+          cx="28"
+          cy="28"
+          r={radius}
+          fill="none"
+          stroke="white"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashoffset}
+          transform="rotate(-90 28 28)"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[13px] font-bold">%{percent}</span>
       </div>
-      <span className="text-ink-muted text-[13px] text-center">
-        Bugün için {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
-      </span>
     </div>
   );
 }
 
-function UpcomingTodayCard({ appointments }: { appointments: UpcomingApptRow[] }) {
+const PILL_STAT_TONES = {
+  block1: "bg-block1 text-block1-ink",
+  block2: "bg-block2 text-block2-ink",
+  warn: "bg-bad-soft text-bad",
+  accentSoft: "bg-accent-soft text-accent",
+} as const;
+
+const PILL_STAT_ICONS: Record<string, ReactNode> = {
+  calendar: (
+    <>
+      <rect x="4" y="5.5" width="16" height="15" rx="3" />
+      <path d="M4 10h16M8 3v4M16 3v4" />
+    </>
+  ),
+  x: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
+    </>
+  ),
+  tl: (
+    <>
+      <path d="M9 5v13M9 11l7-2.5M9 15.5l7-2.5" />
+    </>
+  ),
+};
+
+function PillStat({
+  icon,
+  label,
+  value,
+  tone,
+  badge,
+}: {
+  icon: keyof typeof PILL_STAT_ICONS;
+  label: string;
+  value: string;
+  tone: keyof typeof PILL_STAT_TONES;
+  badge?: string;
+}) {
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+    <div className={`${PILL_STAT_TONES[tone]} rounded-2xl p-3 flex flex-col gap-2`}>
       <div className="flex items-center justify-between">
-        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugünün Programı</p>
-        <Link href="/takvim" className="text-[12.5px] font-semibold text-accent">
-          Tümünü Gör
-        </Link>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.75">
+          {PILL_STAT_ICONS[icon]}
+        </svg>
+        {badge && <span className="text-[10px] font-bold opacity-80">{badge}</span>}
       </div>
-      {appointments.length === 0 ? (
-        <p className="text-[13px] text-ink-muted py-2">Bugün için kalan randevu yok.</p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {appointments.map((a) => {
-            const customer = one(a.customer);
-            const serviceNames = a.appointment_services
-              .map((s) => one(s.service)?.name)
-              .filter((n): n is string => !!n)
-              .join(", ");
-            const staffNames = Array.from(
-              new Set(a.appointment_services.map((s) => one(s.staff)?.full_name).filter((n): n is string => !!n))
-            ).join(", ");
-            return (
-              <div key={a.id} className="flex items-center gap-3">
-                <span className="text-[13px] font-bold font-display shrink-0 w-12">{formatTimeTR(a.starts_at)}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-semibold truncate">{customer?.full_name ?? "Müşteri"}</p>
-                  <p className="text-[12px] text-ink-muted truncate">
-                    {serviceNames}
-                    {staffNames ? ` · ${staffNames}` : ""}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div>
+        <p className="text-[15px] lg:text-[17px] font-bold font-display leading-tight truncate">{value}</p>
+        <p className="text-[10.5px] opacity-75">{label}</p>
+      </div>
     </div>
   );
 }
@@ -390,30 +423,6 @@ function StaffOnDutyCard({ staff }: { staff: { name: string; onLeave: boolean; w
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-const STAT_CARD_TONES = {
-  block1: { bg: "bg-block1", ink: "text-block1-ink" },
-  block2: { bg: "bg-block2", ink: "text-block2-ink" },
-  warn: { bg: "bg-bad-soft", ink: "text-bad" },
-} as const;
-
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: keyof typeof STAT_CARD_TONES;
-}) {
-  const { bg, ink } = STAT_CARD_TONES[tone];
-  return (
-    <div className={`${bg} rounded-2xl p-3.5 lg:p-5 flex flex-col gap-2 lg:flex-1 lg:justify-center`}>
-      <p className={`text-[23px] lg:text-[28px] font-bold font-display ${ink}`}>{value}</p>
-      <p className={`text-[12.5px] ${ink} opacity-80`}>{label}</p>
     </div>
   );
 }
