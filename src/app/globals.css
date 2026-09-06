@@ -23,6 +23,12 @@
   --warn: oklch(68% 0.13 75);
   --warn-soft: oklch(95% 0.05 80);
   --warn-ink: oklch(40% 0.09 70);
+  /* Dekoratif "blok" renkler — kartlara referans görsellerdeki gibi (tek düze
+     beyaz+ince-çerçeve yerine) renkli, dolu zemin çeşitliliği katmak için. */
+  --block1: oklch(93% 0.045 25);
+  --block1-ink: oklch(45% 0.13 25);
+  --block2: oklch(92% 0.05 165);
+  --block2-ink: oklch(42% 0.09 165);
 }
 
 @theme inline {
@@ -46,6 +52,10 @@
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-warn-ink: var(--warn-ink);
+  --color-block1: var(--block1);
+  --color-block1-ink: var(--block1-ink);
+  --color-block2: var(--block2);
+  --color-block2-ink: var(--block2-ink);
   --font-sans: var(--font-manrope);
   --font-display: var(--font-lora);
 }

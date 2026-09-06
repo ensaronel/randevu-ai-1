@@ -360,17 +360,15 @@ export default function RandevuOlusturClient({ services, staff }: { services: Se
         <span className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Tarih</span>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {dateOptions.map((d) => (
-            <button
-              key={d.dateKey}
-              onClick={() => setSelectedDateKey(d.dateKey)}
-              className={`w-[46px] h-[58px] rounded-xl flex flex-col items-center justify-center gap-0.5 shrink-0 ${
-                selectedDateKey === d.dateKey
-                  ? "bg-accent text-white"
-                  : "bg-surface border border-border text-ink-muted"
-              }`}
-            >
-              <span className="text-[10px] font-bold">{d.label}</span>
-              <span className="text-sm font-bold">{d.dayNumber}</span>
+            <button key={d.dateKey} onClick={() => setSelectedDateKey(d.dateKey)} className="w-12 shrink-0 flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-bold text-ink-muted">{d.label}</span>
+              <span
+                className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                  selectedDateKey === d.dateKey ? "bg-accent text-white" : "bg-surface border border-border text-ink-muted"
+                }`}
+              >
+                {d.dayNumber}
+              </span>
             </button>
           ))}
         </div>

@@ -3,6 +3,7 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL, formatTimeTR } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import AppShell from "@/components/AppShell";
+import Mascot from "@/components/Mascot";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import type { Staff } from "@/types/database";
 
@@ -241,8 +242,8 @@ export default async function DashboardPage() {
         <OccupancyCard percent={occupancyPercent} freeMinutes={freeMinutes} />
 
         <div className="grid grid-cols-2 lg:grid-cols-1 gap-2.5 lg:gap-5">
-          <StatCard label="Bugünkü randevu" value={String(today.appointmentCount)} />
-          <StatCard label="İptal" value={String(today.cancelledCount)} warn={today.cancelledCount > 0} />
+          <StatCard label="Bugünkü randevu" value={String(today.appointmentCount)} tone="block1" />
+          <StatCard label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
         </div>
 
         <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5 lg:justify-center">
@@ -279,13 +280,14 @@ export default async function DashboardPage() {
         <div className="flex flex-col gap-2.5 lg:gap-3.5">
           <Link
             href="/asistan"
-            className="bg-surface border border-border rounded-2xl p-4 flex items-center justify-between"
+            className="bg-accent2-soft border border-accent2/25 rounded-2xl p-4 flex items-center gap-3.5"
           >
-            <div>
-              <p className="text-sm font-semibold">AI Asistana Sor</p>
+            <Mascot size={48} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-accent2-ink">Danışmana Sor</p>
               <p className="text-[12.5px] text-ink-muted">&quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor</p>
             </div>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
               <path d="M9 6l6 6-6 6" />
             </svg>
           </Link>
@@ -303,10 +305,10 @@ function OccupancyCard({ percent, freeMinutes }: { percent: number; freeMinutes:
   const dashoffset = circumference * (1 - percent / 100);
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-6 flex flex-col items-center gap-3 pt-5 lg:pt-6">
+    <div className="bg-accent-soft rounded-2xl p-4 lg:p-6 flex flex-col items-center gap-3 pt-5 lg:pt-6">
       <div className="relative w-[140px] h-[140px] lg:w-[160px] lg:h-[160px]">
         <svg width="100%" height="100%" viewBox="0 0 140 140">
-          <circle cx="70" cy="70" r={radius} fill="none" stroke="var(--accent-soft)" strokeWidth="14" />
+          <circle cx="70" cy="70" r={radius} fill="none" stroke="var(--surface)" strokeWidth="14" />
           <circle
             cx="70"
             cy="70"
@@ -392,19 +394,26 @@ function StaffOnDutyCard({ staff }: { staff: { name: string; onLeave: boolean; w
   );
 }
 
+const STAT_CARD_TONES = {
+  block1: { bg: "bg-block1", ink: "text-block1-ink" },
+  block2: { bg: "bg-block2", ink: "text-block2-ink" },
+  warn: { bg: "bg-bad-soft", ink: "text-bad" },
+} as const;
+
 function StatCard({
   label,
   value,
-  warn,
+  tone,
 }: {
   label: string;
   value: string;
-  warn?: boolean;
+  tone: keyof typeof STAT_CARD_TONES;
 }) {
+  const { bg, ink } = STAT_CARD_TONES[tone];
   return (
-    <div className="bg-surface border border-border rounded-2xl p-3.5 lg:p-5 flex flex-col gap-2 lg:flex-1 lg:justify-center">
-      <p className={`text-[21px] lg:text-[26px] font-semibold font-display ${warn ? "text-bad" : ""}`}>{value}</p>
-      <p className="text-[12.5px] text-ink-muted">{label}</p>
+    <div className={`${bg} rounded-2xl p-3.5 lg:p-5 flex flex-col gap-2 lg:flex-1 lg:justify-center`}>
+      <p className={`text-[23px] lg:text-[28px] font-bold font-display ${ink}`}>{value}</p>
+      <p className={`text-[12.5px] ${ink} opacity-80`}>{label}</p>
     </div>
   );
 }
