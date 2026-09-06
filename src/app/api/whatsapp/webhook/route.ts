@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual, createHmac } from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { generateAiReply } from "@/lib/ai/respond";
@@ -264,6 +265,7 @@ export async function POST(request: NextRequest) {
 
           const aiReply = await aiReplyPromise.catch((err) => {
             console.error("AI yanıtı üretilemedi:", err);
+            Sentry.captureException(err);
             return null;
           });
 
@@ -308,6 +310,7 @@ export async function POST(request: NextRequest) {
           // Bu mesajda ne olursa olsun (beklenmeyen DB/ağ hatası dahil) diğer
           // mesajların işlenmesi durmasın, işletme sahibi bilgilendirilsin.
           console.error("Mesaj işlenirken beklenmeyen hata:", err);
+          Sentry.captureException(err);
           await notifyOwnerOfSystemError(
             admin,
             business.id,

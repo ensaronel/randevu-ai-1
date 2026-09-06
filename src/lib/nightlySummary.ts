@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, dayRangeUtcISO } from "@/lib/date";
 import { generateFinanceCommentary } from "@/lib/ai/financeCommentary";
@@ -120,6 +121,7 @@ export async function runNightlySummaryForAllBusinesses(): Promise<NightlySummar
     } catch (err) {
       // Bir işletmenin bozuk verisi diğerlerinin gece işini durdurmasın.
       console.error("nightly summary failed for business", b.id, err);
+      Sentry.captureException(err);
       results.push({
         businessId: b.id,
         created: false,

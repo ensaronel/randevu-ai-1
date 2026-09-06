@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR } from "@/lib/date";
 import type { Attendance } from "@/types/database";
@@ -251,6 +252,7 @@ export async function runProactiveInsightsForAllBusinesses(): Promise<ProactiveI
       results.push(await runProactiveInsightsForBusiness(b.id));
     } catch (err) {
       console.error("proactive insights failed for business", b.id, err);
+      Sentry.captureException(err);
       results.push({
         businessId: b.id,
         retentionRisksCreated: 0,

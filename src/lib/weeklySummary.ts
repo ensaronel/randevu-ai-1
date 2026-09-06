@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, weekdayKeyTR, dayRangeUtcISO, formatTL } from "@/lib/date";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
@@ -142,6 +143,7 @@ export async function runWeeklySummaryForAllBusinesses(): Promise<WeeklySummaryR
       results.push(await runWeeklySummaryForBusiness(b.id));
     } catch (err) {
       console.error("weekly summary failed for business", b.id, err);
+      Sentry.captureException(err);
       results.push({
         businessId: b.id,
         sent: false,

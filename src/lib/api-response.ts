@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { ZodError } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { UnauthorizedError, AccountInactiveError } from "@/lib/auth";
 
 /**
@@ -44,6 +45,7 @@ export async function handleRoute(
       );
     }
     console.error(err);
+    Sentry.captureException(err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
