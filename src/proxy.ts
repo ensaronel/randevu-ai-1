@@ -1,8 +1,21 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { generalLimiter, isRateLimited } from "@/lib/rateLimit";
 
 // middleware.ts değil proxy.ts — Next.js 16'da isim değişti (bkz. node_modules/next/dist/docs).
 export async function proxy(request: NextRequest) {
+  // IP basina genel bir hiz siniri - webhook/cron haric (onlar kendi imza/secret
+  // kontrolunu yapiyor ve webhook Meta'nin paylasilan IP'lerinden geldigi icin
+  // IP bazli sinirlama orada anlamli degil, ayrica AI-tuketen yol zaten
+  // src/app/api/whatsapp/webhook/route.ts icinde musteri telefonu bazinda sinirlaniyor).
+  const { pathname: rateLimitPath } = request.nextUrl;
+  if (!rateLimitPath.startsWith("/api/whatsapp") && !rateLimitPath.startsWith("/api/cron")) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    if (await isRateLimited(generalLimiter, ip)) {
+      return NextResponse.json({ error: "too_many_requests" }, { status: 429 });
+    }
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

@@ -3,6 +3,7 @@ import { timingSafeEqual, createHmac } from "crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { generateAiReply } from "@/lib/ai/respond";
+import { aiReplyLimiter, isRateLimited } from "@/lib/rateLimit";
 import type { Business } from "@/types/database";
 
 /** Zamanlama saldırısına karşı sabit-zamanlı karşılaştırma — uzunluk farklıysa direkt false döner. */
@@ -226,6 +227,23 @@ export async function POST(request: NextRequest) {
               message_type: "system_notice",
               body: UNSUPPORTED_MESSAGE_TYPE_FALLBACK,
             });
+            continue;
+          }
+
+          // Paylasilan Gemini ucretsiz-katman kotasini tek bir musterinin spam'inden
+          // korur - asiri istekte AI hic cagrilmaz, kisa bir bekleme mesaji gider.
+          if (await isRateLimited(aiReplyLimiter, `customer:${customer.id}`)) {
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "inbound",
+              message_type: "freeform",
+              body,
+            });
+            await sendWhatsappTextMessage(
+              message.from,
+              "Kısa sürede çok fazla mesaj gönderdiniz, biraz bekleyip tekrar yazar mısınız? 🙏"
+            ).catch((err) => console.error("Rate limit mesajı gönderilemedi:", err));
             continue;
           }
 
