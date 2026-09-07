@@ -146,15 +146,26 @@ async function loadDayTotals(
 export default async function DashboardPage() {
   const { owner, business, supabase } = await getBusinessOwnerForPage();
 
-  const [today, yesterday, lastWeekSameDay, financeNote, suggestions, upcomingToday, todayReconciled] = await Promise.all([
-    loadDayTotals(supabase, business.id, 0),
-    loadDayTotals(supabase, business.id, -1),
-    loadDayTotals(supabase, business.id, -7),
-    loadTodaysFinanceNote(supabase, business.id),
-    loadPendingSuggestions(supabase, business.id),
-    loadUpcomingToday(supabase, business.id),
-    loadTodayReconciled(supabase, business.id),
-  ]);
+  const [today, yesterday, lastWeekSameDay, financeNote, suggestions, upcomingToday, todayReconciled, weekTotals] =
+    await Promise.all([
+      loadDayTotals(supabase, business.id, 0),
+      loadDayTotals(supabase, business.id, -1),
+      loadDayTotals(supabase, business.id, -7),
+      loadTodaysFinanceNote(supabase, business.id),
+      loadPendingSuggestions(supabase, business.id),
+      loadUpcomingToday(supabase, business.id),
+      loadTodayReconciled(supabase, business.id),
+      Promise.all(
+        [-6, -5, -4, -3, -2, -1, 0].map((offset) => loadDayTotals(supabase, business.id, offset))
+      ),
+    ]);
+  const WEEKDAY_SHORT_TR: Record<string, string> = {
+    sun: "Paz", mon: "Pzt", tue: "Sal", wed: "Çar", thu: "Per", fri: "Cum", sat: "Cts",
+  };
+  const weekChart = weekTotals.map((t, i) => {
+    const offset = i - 6;
+    return { label: WEEKDAY_SHORT_TR[weekdayKeyTR(offset)], revenue: t.revenue, isToday: offset === 0 };
+  });
 
   const { data: staffData } = await supabase
     .from("staff")
@@ -277,6 +288,8 @@ export default async function DashboardPage() {
         />
       </div>
 
+      <WeekRevenueChart data={weekChart} />
+
       {showReconcileReminder && (
         <Link
           href="/gun-sonu"
@@ -292,20 +305,25 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* Danışman banner'ı — referans 3'teki büyük illüstrasyonlu "start your
-          day" kartı gibi kendi başına bir görsel an, satır-içi bir link değil. */}
+      {/* Danışman sahnesi — referans 3'teki buyuk illustrasyonlu "start your
+          day" karti gibi gercek bir sahne: buyuk maskot, zemin/gokyuzu
+          illustrasyonu, hap CTA butonu — kucuk bir satir linki degil. */}
       <Link
         href="/asistan"
-        className="bg-accent2-soft rounded-[28px] p-5 flex items-center gap-4 relative overflow-hidden"
+        className="bg-accent2-soft rounded-[28px] p-6 pb-5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
       >
-        <div className="absolute -right-6 -bottom-8 w-32 h-32 rounded-full bg-accent2/15" />
-        <Mascot size={72} />
-        <div className="flex-1 min-w-0 relative">
-          <p className="text-[17px] font-bold font-display text-accent2-ink">Danışmana Sor</p>
-          <p className="text-[13px] text-accent2-ink/75 mt-0.5">
-            &quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor
-          </p>
-        </div>
+        <svg viewBox="0 0 400 90" className="absolute bottom-0 left-0 w-full h-[70px]" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 40 Q 100 0 200 30 T 400 20 V90 H0 Z" fill="var(--accent2)" opacity="0.16" />
+          <path d="M0 60 Q 120 25 220 55 T 400 45 V90 H0 Z" fill="var(--accent2)" opacity="0.22" />
+        </svg>
+        <Mascot size={92} />
+        <p className="text-[18px] font-bold font-display text-accent2-ink mt-1 relative">Danışmana Sor</p>
+        <p className="text-[13px] text-accent2-ink/75 relative">
+          &quot;Bu ay ne kadar kazandım?&quot; gibi sorular sor
+        </p>
+        <span className="mt-2 bg-accent2-ink text-white rounded-full px-5 py-2 text-[13px] font-bold relative">
+          Sohbete Başla
+        </span>
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-5 items-start">
@@ -403,6 +421,36 @@ function PillStat({
       <div>
         <p className="text-[15px] lg:text-[17px] font-bold font-display leading-tight truncate">{value}</p>
         <p className="text-[10.5px] opacity-75">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Referans 2'deki "Statistic" ekranındaki çubuk grafik örüntüsü — 7 günlük ciro. */
+function WeekRevenueChart({ data }: { data: { label: string; revenue: number; isToday: boolean }[] }) {
+  const max = Math.max(...data.map((d) => d.revenue), 1);
+  const total = data.reduce((sum, d) => sum + d.revenue, 0);
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-4">
+      <div>
+        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bu Hafta</p>
+        <p className="text-[22px] font-bold font-display">{formatTL(total)}</p>
+      </div>
+      <div className="flex items-end justify-between gap-2 h-24">
+        {data.map((d) => {
+          const heightPercent = Math.max(6, Math.round((d.revenue / max) * 100));
+          return (
+            <div key={d.label + d.revenue} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+              <div
+                className={`w-full rounded-t-md ${d.isToday ? "bg-accent" : "bg-accent-soft"}`}
+                style={{ height: `${heightPercent}%` }}
+              />
+              <span className={`text-[10px] font-bold ${d.isToday ? "text-accent" : "text-ink-muted"}`}>
+                {d.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
