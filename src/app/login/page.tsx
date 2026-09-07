@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import Mascot from "@/components/Mascot";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -94,14 +95,17 @@ export default function LoginPage() {
   if (mode === "forgot") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
-        <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl p-6 flex flex-col gap-5">
-          <div>
-            <h1 className="text-xl font-semibold">Şifremi Unuttum</h1>
-            <p className="text-sm text-black/50 mt-1">
-              {resetLinkSent
-                ? "E-postana bir sıfırlama bağlantısı gönderdik — gelen kutunu kontrol et."
-                : "E-posta adresini gir, sana bir sıfırlama bağlantısı gönderelim."}
-            </p>
+        <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
+          <div className="flex flex-col items-center text-center gap-2">
+            <Mascot size={56} />
+            <div>
+              <h1 className="text-xl font-semibold font-display">Şifremi Unuttum</h1>
+              <p className="text-sm text-ink-muted mt-1">
+                {resetLinkSent
+                  ? "E-postana bir sıfırlama bağlantısı gönderdik — gelen kutunu kontrol et."
+                  : "E-posta adresini gir, sana bir sıfırlama bağlantısı gönderelim."}
+              </p>
+            </div>
           </div>
 
           {!resetLinkSent && (
@@ -112,9 +116,9 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="border border-black/15 rounded-lg px-3 py-2 text-sm"
+                className="border border-border rounded-lg px-3 py-2 text-sm"
               />
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-bad">{error}</p>}
               <button
                 type="submit"
                 disabled={loading}
@@ -143,16 +147,25 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4">
-      <div className="w-full max-w-sm bg-white border border-black/10 rounded-2xl p-6 flex flex-col gap-5">
-        <div>
-          <h1 className="text-xl font-semibold">
-            {signedUpAwaitingOnboarding ? "Son bir adım kaldı" : mode === "login" ? "Giriş Yap" : "Hesap Oluştur"}
-          </h1>
-          <p className="text-sm text-black/50 mt-1">
-            {signedUpAwaitingOnboarding
-              ? "Hesabınız oluşturuldu, işletme kaydınız tamamlanamadı — tekrar deneyin."
-              : "Randevu AI"}
-          </p>
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
+        <div className="flex flex-col items-center text-center gap-2">
+          <Mascot size={64} waving={!signedUpAwaitingOnboarding && mode === "login"} />
+          <div>
+            <h1 className="text-xl font-semibold font-display">
+              {signedUpAwaitingOnboarding
+                ? "Son bir adım kaldı"
+                : mode === "login"
+                  ? "Tekrar hoş geldin"
+                  : "Aramıza hoş geldin"}
+            </h1>
+            <p className="text-sm text-ink-muted mt-1">
+              {signedUpAwaitingOnboarding
+                ? "Hesabınız oluşturuldu, işletme kaydınız tamamlanamadı — tekrar deneyin."
+                : mode === "login"
+                  ? "Randevu AI'ye giriş yap"
+                  : "İşletmeni birkaç adımda kur"}
+            </p>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -164,7 +177,7 @@ export default function LoginPage() {
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 required
-                className="border border-black/15 rounded-lg px-3 py-2 text-sm"
+                className="border border-border rounded-lg px-3 py-2 text-sm"
               />
               <input
                 type="text"
@@ -172,7 +185,7 @@ export default function LoginPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="border border-black/15 rounded-lg px-3 py-2 text-sm"
+                className="border border-border rounded-lg px-3 py-2 text-sm"
               />
             </>
           )}
@@ -183,7 +196,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={signedUpAwaitingOnboarding}
-            className="border border-black/15 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+            className="border border-border rounded-lg px-3 py-2 text-sm disabled:opacity-50"
           />
           {!signedUpAwaitingOnboarding && (
             <input
@@ -193,7 +206,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="border border-black/15 rounded-lg px-3 py-2 text-sm"
+              className="border border-border rounded-lg px-3 py-2 text-sm"
             />
           )}
 
@@ -210,7 +223,7 @@ export default function LoginPage() {
             </button>
           )}
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-bad">{error}</p>}
 
           <button
             type="submit"
