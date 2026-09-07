@@ -196,26 +196,28 @@ export default async function TakvimPage({
           <EmptyState message="Henüz aktif personel yok — Ayarlar'dan personel ekleyince burada görünecek." />
         ) : (
           <div className="overflow-x-auto">
-            <div className="flex" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
-              <div style={{ width: 42 }} />
-              {staffList.map((s) => {
-                const occupancy = occupancyForStaff(s);
-                return (
-                  <div
-                    key={s.id}
-                    className="flex flex-col items-center gap-0.5"
-                    style={{ width: COLUMN_WIDTH, marginRight: 8 }}
-                  >
-                    <span className="text-center text-[12.5px] font-bold">{s.full_name}</span>
-                    <span className="text-[10.5px] text-ink-muted">
-                      {occupancy.working ? `%${occupancy.percent} dolu` : "Bugün kapalı"}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="flex" style={{ minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8 }}>
+              <div style={{ width: 42, flexShrink: 0 }} />
+              <div className="flex flex-1" style={{ gap: 8 }}>
+                {staffList.map((s) => {
+                  const occupancy = occupancyForStaff(s);
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex flex-col items-center gap-0.5 flex-1"
+                      style={{ minWidth: COLUMN_WIDTH }}
+                    >
+                      <span className="text-center text-[12.5px] font-bold">{s.full_name}</span>
+                      <span className="text-[10.5px] text-ink-muted">
+                        {occupancy.working ? `%${occupancy.percent} dolu` : "Bugün kapalı"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex relative" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
+            <div className="flex relative" style={{ minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8 }}>
               {showNowLine && (
                 <div
                   className="absolute z-10 pointer-events-none flex items-center"
@@ -237,7 +239,7 @@ export default async function TakvimPage({
                 ))}
               </div>
 
-              <div style={{ position: "relative", height: gridMinutes, flex: 1 }}>
+              <div className="flex flex-1" style={{ position: "relative", height: gridMinutes, gap: 8 }}>
                 <div
                   className="absolute inset-0"
                   style={{
@@ -246,16 +248,11 @@ export default async function TakvimPage({
                   }}
                 />
 
-                {staffList.map((staff, colIndex) => (
+                {staffList.map((staff) => (
                   <div
                     key={staff.id}
-                    style={{
-                      position: "absolute",
-                      left: colIndex * (COLUMN_WIDTH + 8),
-                      top: 0,
-                      width: COLUMN_WIDTH,
-                      height: gridMinutes,
-                    }}
+                    className="relative flex-1"
+                    style={{ minWidth: COLUMN_WIDTH, height: gridMinutes }}
                   >
                     {appointments.flatMap((appt) => {
                       const startMinutes =
@@ -280,7 +277,8 @@ export default async function TakvimPage({
                               style={{
                                 top: startMinutes,
                                 height: blockHeight,
-                                width: COLUMN_WIDTH - 6,
+                                left: 3,
+                                right: 3,
                                 background: color.bg,
                                 color: color.text,
                               }}
