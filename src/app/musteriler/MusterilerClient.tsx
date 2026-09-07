@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatTL, formatDateTR } from "@/lib/date";
+import EmptyState from "@/components/EmptyState";
 
 export interface CustomerListItem {
   id: string;
@@ -110,9 +111,13 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
 
       <div className="flex flex-col gap-2.5">
         {filtered.length === 0 && (
-          <p className="text-sm text-ink-muted text-center py-6">
-            {query ? "Eşleşen müşteri bulunamadı." : "Henüz müşteri yok — yukarıdaki \"+ Yeni Müşteri\" ile ilk kaydı oluşturabilirsin."}
-          </p>
+          <EmptyState
+            message={
+              query
+                ? "Eşleşen müşteri bulunamadı."
+                : "Henüz müşteri yok — yukarıdaki \"+ Yeni Müşteri\" ile ilk kaydı oluşturabilirsin."
+            }
+          />
         )}
         {filtered.map((c) => (
           <Link

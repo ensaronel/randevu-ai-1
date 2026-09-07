@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimeTR, formatTL } from "@/lib/date";
+import EmptyState from "@/components/EmptyState";
 import type { Attendance } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
@@ -145,9 +146,7 @@ export default function GunSonuClient({
     <>
       <div className="flex flex-col gap-3">
         {appointments.length === 0 && (
-          <p className="text-sm text-ink-muted text-center py-6">
-            Bugün için randevu yok — Takvim&apos;deki + butonundan veya Randevu Oluştur&apos;dan ekleyebilirsin.
-          </p>
+          <EmptyState message="Bugün için randevu yok — Takvim'deki + butonundan veya Randevu Oluştur'dan ekleyebilirsin." />
         )}
 
         {appointments.map((appt) => {

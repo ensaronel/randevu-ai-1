@@ -5,6 +5,7 @@ import { dayRangeUtcISOForDate, weekdayKeyForDate } from "@/lib/ai/availability"
 import { parseTimeToMinutes } from "@/lib/capacity";
 import { colorForCategory } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
+import EmptyState from "@/components/EmptyState";
 import type { Staff } from "@/types/database";
 
 const DEFAULT_GRID_START_HOUR = 9;
@@ -192,9 +193,7 @@ export default async function TakvimPage({
         </div>
 
         {staffList.length === 0 ? (
-          <p className="text-sm text-ink-muted">
-            Henüz aktif personel yok — Ayarlar&apos;dan personel ekleyince burada görünecek.
-          </p>
+          <EmptyState message="Henüz aktif personel yok — Ayarlar'dan personel ekleyince burada görünecek." />
         ) : (
           <div className="overflow-x-auto">
             <div className="flex" style={{ minWidth: 42 + staffList.length * (COLUMN_WIDTH + 8) }}>
