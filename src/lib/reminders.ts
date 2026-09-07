@@ -1,13 +1,16 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
+import { sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
 
-// NOT: WhatsApp kuralına göre işletme, müşteri son 24 saatte yazmadıysa ona
-// ancak Meta'nın ONAYLADIĞI bir şablon mesajıyla ulaşabilir — bu hatırlatmalar
-// tam olarak bu duruma giriyor. Şu an, projedeki diğer her yerde olduğu gibi
-// (KVKK/AI yanıtları), serbest metin gönderen sendWhatsappTextMessage
-// kullanılıyor — Meta doğrulaması + şablon onayı tamamlanınca burası mutlaka
-// onaylı bir şablon çağrısına çevrilmeli, yoksa Meta gerçek gönderimi reddeder.
+// WhatsApp kuralına göre işletme, müşteri son 24 saatte yazmadıysa ona ancak
+// Meta'nın ONAYLADIĞI bir şablon mesajıyla ulaşabilir — bu hatırlatmalar tam
+// olarak bu duruma giriyor. "randevu_hatirlatma" şablonu Meta tarafından
+// onaylandı (2026-09-07, kontrol edildi), bu yüzden burada artık onaylı
+// şablon üzerinden gönderiliyor. Şablonun gövdesi ("Merhaba {{1}}, {{2}}
+// tarihinde saat {{3}} için {{4}} randevunuzu hatırlatmak isteriz. Görüşmek
+// üzere!") kaç saat kaldığını içermiyor — o yüzden reminderMessage sadece
+// whatsapp_message_log'a yazılan okunabilir özet için kullanılıyor, gerçek
+// gönderilen mesaj değil.
 
 interface DueAppointment {
   id: string;
@@ -74,14 +77,21 @@ async function sendReminderBatch(
       .filter((n): n is string => !!n);
 
     const body = reminderMessage(customer.full_name, serviceNames, appt.starts_at, hoursLabel);
+    const serviceText = serviceNames.length > 0 ? serviceNames.join(", ") : "randevunuz";
 
     try {
-      await sendWhatsappTextMessage(customer.phone, body);
+      await sendWhatsappTemplateMessage(customer.phone, "randevu_hatirlatma", "tr", [
+        customer.full_name,
+        formatDateTR(appt.starts_at),
+        formatTimeTR(appt.starts_at),
+        serviceText,
+      ]);
       await admin.from("whatsapp_message_log").insert({
         business_id: appt.business_id,
         customer_id: customer.id,
         direction: "outbound",
         message_type: "system_notice",
+        template_name: "randevu_hatirlatma",
         body,
       });
       sentCount++;

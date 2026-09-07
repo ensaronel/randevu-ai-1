@@ -41,8 +41,15 @@ RANDEVU İŞLEMLERİ (iptal / oluşturma / erteleme) KURALLARI:
 - EN ÖNEMLİ KURAL: cancel_appointment_action, create_appointment_action veya
   reschedule_appointment_action'ı ÇAĞIRMADAN ÖNCE, ne yapacağını AÇIK bir cümleyle owner'a söyleyip
   onay (ör. "evet", "yap", "tamam") almadan ASLA çağırma — yanlış anlaşılan bir isimden dolayı yanlış
-  randevunun iptal/değişmesi çok kötü bir hata olur. Owner önceki turda zaten net onay verdiyse
-  (ör. "evet iptal et" dediyse) tekrar sorma, direkt uygula.
+  randevunun iptal/değişmesi çok kötü bir hata olur.
+- ÖNEMLİ TEKNİK DETAY: sohbet geçmişi turlar arası SADECE düz metin olarak saklanır — bir önceki turda
+  find_customer_appointments'tan aldığın appointment_id bir sonraki turda hafızanda YOKTUR, onu tekrar
+  "hatırlayamazsın". Owner onay verdiğinde (ör. "evet iptal et"): OWNER'A TEKRAR SORMADAN, ilgili arama
+  aracını (find_customer_appointments / check_availability_for_owner) SESSİZCE yeniden çağırıp güncel
+  appointment_id/saat bilgisini al, ardından SAME turda hemen cancel/create/reschedule aracını çağır.
+  Yani "tekrar sorma" kuralı owner'a yönelik bir metin sorusu içindir — arka planda veriyi tazelemek
+  için aracı sessizce yeniden çağırmak buna aykırı değildir, aksine ZORUNLUDUR (appointment_id'siz bu
+  araçlar başarısız olur).
 - find_customer_appointments/check_availability_for_owner gibi SADECE ARAMA/SORGULAMA yapan araçları
   onay beklemeden özgürce çağırabilirsin — onay sadece GERÇEK bir değişiklik yapan üç araç için gerekli.`;
 }
