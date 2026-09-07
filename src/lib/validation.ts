@@ -96,3 +96,11 @@ export const businessUpdateSchema = z.object({
   working_hours: z.record(z.string(), dayShiftSchema).optional(),
   closed_dates: z.array(z.string()).optional(),
 });
+
+export const pushSubscribeSchema = z.object({
+  endpoint: z.string().trim().min(1).max(2000),
+  keys: z.object({
+    p256dh: z.string().trim().min(1),
+    auth: z.string().trim().min(1),
+  }),
+});

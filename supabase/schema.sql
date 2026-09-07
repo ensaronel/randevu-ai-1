@@ -206,6 +206,23 @@ create table assistant_message_log (
 create index idx_assistant_log_business_time on assistant_message_log(business_id, created_at);
 
 -- ============================================================
+-- Web Push abonelikleri — WhatsApp botu üzerinden randevu oluşturma/iptal
+-- olduğunda owner'ın cihazına (uygulama kapalı/arka planda olsa bile) bildirim
+-- gönderebilmek için. Bir tarayıcı/cihaz aynı endpoint'e tekrar abone olursa
+-- upsert edilir (unique endpoint).
+-- ============================================================
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
+create index idx_push_subscriptions_business on push_subscriptions(business_id);
+
+-- ============================================================
 -- Row Level Security — bir işletme başka bir işletmenin verisini
 -- ASLA görmemeli/değiştirmemeli. RLS olmadan Supabase varsayılan
 -- olarak public tabloları API üzerinden herkese açık bırakır.
@@ -234,6 +251,7 @@ alter table action_objects enable row level security;
 alter table waitlist_entries enable row level security;
 alter table whatsapp_message_log enable row level security;
 alter table assistant_message_log enable row level security;
+alter table push_subscriptions enable row level security;
 
 -- business_owners: bir kullanıcı sadece kendi kaydını görebilir (current_business_id()
 -- bu tabloyu SECURITY DEFINER ile okuduğu için burada döngü oluşmaz).
@@ -293,6 +311,10 @@ create policy "own whatsapp_message_log" on whatsapp_message_log
   with check (business_id = current_business_id());
 
 create policy "own assistant_message_log" on assistant_message_log
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());
+
+create policy "own push_subscriptions" on push_subscriptions
   for all using (business_id = current_business_id())
   with check (business_id = current_business_id());
 

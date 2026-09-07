@@ -138,7 +138,7 @@ export async function generateAiReply(
       const { result, escalated, escalationReason } = await executeAiTool(
         call.name ?? "",
         (call.args as Record<string, unknown>) ?? {},
-        { ctx, customerId: customer.id }
+        { ctx, customerId: customer.id, customerName: customer.full_name }
       );
       functionResponseParts!.push({
         functionResponse: { name: call.name, response: { result }, id: call.id },

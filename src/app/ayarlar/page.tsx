@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
+import PushNotificationSettings from "@/components/PushNotificationSettings";
 
 const LINKS = [
   { href: "/ayarlar/hizmetler", label: "Hizmetler", desc: "Fiyat, süre ve hizmet listesi" },
@@ -31,6 +32,8 @@ export default async function AyarlarPage() {
             </Link>
           ))}
         </div>
+
+        <PushNotificationSettings />
     </AppShell>
   );
 }

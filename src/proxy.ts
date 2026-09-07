@@ -59,7 +59,11 @@ export async function proxy(request: NextRequest) {
   // manifest.webmanifest) - tarayici/isletim sistemi bunlari "yuklenebilir mi"
   // kontrolu veya favicon icin OTURUMSUZ ceker, login'e yonlendirilirse PWA
   // kurulumu hic calismaz.
-  const isPublicAsset = pathname.startsWith("/icon") || pathname === "/apple-icon" || pathname === "/manifest.webmanifest";
+  const isPublicAsset =
+    pathname.startsWith("/icon") ||
+    pathname === "/apple-icon" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js";
   const isPublicPage =
     pathname === "/" || pathname === "/gizlilik" || pathname === "/sifre-sifirla" || isPublicAsset;
 

@@ -2,6 +2,7 @@ import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { findAvailableSlots } from "@/lib/ai/availability";
 import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
+import { sendPushToBusiness } from "@/lib/push";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
 import type { Appointment, AppointmentService } from "@/types/database";
@@ -114,6 +115,7 @@ export const AI_TOOLS: FunctionDeclaration[] = [
 interface ToolExecContext {
   ctx: AiBusinessContext;
   customerId: string;
+  customerName: string;
 }
 
 export async function executeAiTool(
@@ -258,6 +260,13 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     return JSON.stringify({ error: "Randevu oluşturulamadı, lütfen tekrar dene." });
   }
 
+  const serviceNames = resolved.map((r) => r.service!.name).join(", ");
+  void sendPushToBusiness(exec.ctx.business.id, {
+    title: "Yeni randevu (WhatsApp)",
+    body: `${exec.customerName} — ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} (${serviceNames})`,
+    url: "/takvim",
+  }).catch((err) => console.error("push gönderilemedi (randevu oluşturma)", err));
+
   return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
 }
 
@@ -315,6 +324,12 @@ async function runCancelAppointment(input: Record<string, unknown>, exec: ToolEx
   await matchWaitlistForCancelledAppointment(exec.ctx.business.id, appointment.id).catch((err) =>
     console.error("waitlist match failed", err)
   );
+
+  void sendPushToBusiness(exec.ctx.business.id, {
+    title: "Randevu iptal edildi (WhatsApp)",
+    body: `${exec.customerName} — ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} randevusunu iptal etti`,
+    url: "/takvim",
+  }).catch((err) => console.error("push gönderilemedi (randevu iptali)", err));
 
   return JSON.stringify({ success: true });
 }
