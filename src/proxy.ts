@@ -55,7 +55,13 @@ export async function proxy(request: NextRequest) {
   // URL hash'inde taşınır (sunucuya hiç gitmez), bu yüzden bu sayfaya ilk
   // istekte proxy henüz bir kullanıcı görmez — client tarafında hash işlenip
   // gerçek oturum kurulana kadar herkese açık kalmalı.
-  const isPublicPage = pathname === "/" || pathname === "/gizlilik" || pathname === "/sifre-sifirla";
+  // PWA manifest/ikonlari (icon, apple-icon, icon-192.png, icon-512.png,
+  // manifest.webmanifest) - tarayici/isletim sistemi bunlari "yuklenebilir mi"
+  // kontrolu veya favicon icin OTURUMSUZ ceker, login'e yonlendirilirse PWA
+  // kurulumu hic calismaz.
+  const isPublicAsset = pathname.startsWith("/icon") || pathname === "/apple-icon" || pathname === "/manifest.webmanifest";
+  const isPublicPage =
+    pathname === "/" || pathname === "/gizlilik" || pathname === "/sifre-sifirla" || isPublicAsset;
 
   if (!user && isApiRoute && !isPublicApi) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
