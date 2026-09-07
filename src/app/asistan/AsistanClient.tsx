@@ -92,9 +92,13 @@ export default function AsistanClient({ initialMessages }: { initialMessages: Me
         ))}
         {sending && (
           <div className="flex items-end gap-2 self-start">
-            <Mascot size={26} />
-            <div className="bg-accent2-soft text-accent2-ink rounded-2xl px-3.5 py-2.5 text-[13.5px]">
-              Düşünüyor...
+            <span className="inline-block animate-bounce [animation-duration:1.1s]">
+              <Mascot size={26} />
+            </span>
+            <div className="bg-accent2-soft text-accent2-ink rounded-2xl px-4 py-3 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent2-ink/60 animate-bounce [animation-delay:0ms] [animation-duration:0.9s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent2-ink/60 animate-bounce [animation-delay:150ms] [animation-duration:0.9s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent2-ink/60 animate-bounce [animation-delay:300ms] [animation-duration:0.9s]" />
             </div>
           </div>
         )}
