@@ -1,7 +1,7 @@
 import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseTimeToMinutes } from "@/lib/capacity";
-import { formatDateTR, formatTimeTR } from "@/lib/date";
+import { formatDateTR, formatTimeTR, dayRangeUtcISO } from "@/lib/date";
 import { findAvailableSlots } from "@/lib/ai/availability";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { matchWaitlistForCancelledAppointment, hasUpcomingAppointment } from "@/lib/proactive";
@@ -252,20 +252,26 @@ async function findCustomerAppointments(input: Record<string, unknown>, ctx: Too
   }
 
   const customer = customers[0];
+  // "Yaklaşan" burada bilinçli olarak "şu andan sonrası" değil, "bugünün
+  // başından itibaren" demek — owner, bugün saati geçmiş ama henüz iptal/
+  // tamamlanmamış bir randevuyu da (ör. bir hata düzeltmek için) iptal
+  // edebilmeli. Müşteri-yüzlü bot tarafında (list_my_appointments) bu ayrım
+  // önemli değil, ama owner'ın bu aracı kullanışı farklı.
+  const { startUtc: todayStartUtc } = dayRangeUtcISO(0);
   const { data: appointments } = await admin
     .from("appointments")
     .select("id, starts_at, appointment_services(service:services(name), staff:staff(full_name))")
     .eq("business_id", ctx.businessId)
     .eq("customer_id", customer.id)
     .in("status", ["scheduled", "confirmed"])
-    .gte("starts_at", new Date().toISOString())
+    .gte("starts_at", todayStartUtc)
     .order("starts_at");
 
   if (!appointments || appointments.length === 0) {
     return JSON.stringify({
       customer: { name: customer.full_name, phone: customer.phone },
       appointments: [],
-      message: "Bu müşterinin yaklaşan randevusu yok.",
+      message: "Bu müşterinin bugünden itibaren bir randevusu yok.",
     });
   }
 
