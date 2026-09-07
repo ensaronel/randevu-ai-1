@@ -46,18 +46,11 @@ const items = [
       </svg>
     ),
   },
-  {
-    href: "/ayarlar",
-    label: "Ayarlar",
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 13a7.6 7.6 0 000-2l2-1.5-2-3.5-2.4.6a7.6 7.6 0 00-1.7-1L15 3h-6l-.3 2.6a7.6 7.6 0 00-1.7 1l-2.4-.6-2 3.5L4.6 11a7.6 7.6 0 000 2l-2 1.5 2 3.5 2.4-.6a7.6 7.6 0 001.7 1L9 21h6l.3-2.6a7.6 7.6 0 001.7-1l2.4.6 2-3.5-2-1.5z" />
-      </svg>
-    ),
-  },
 ];
 
+// "Ayarlar" bilerek burada değil — AppShell'in mobil üst çubuğundaki dişli
+// ikonuna taşındı, ki burada tam 4 sekme (2 sol + 2 sağ) kalıp ortadaki +
+// butonu görünmez dolgu/boşluk gerekmeden gerçekten simetrik olsun.
 const LEFT_ITEMS = items.slice(0, 2);
 const RIGHT_ITEMS = items.slice(2);
 
@@ -78,15 +71,11 @@ function NavLink({ item, active }: { item: (typeof items)[number]; active: boole
 export default function BottomNav() {
   const pathname = usePathname();
 
-  // items 5 gerçek sekme (2 sol + 3 sağ) — ortadaki + butonu tam merkezde
-  // olsun diye sol tarafa görünmez bir flex-1 boşluk eklenip 3-3 simetrisi
-  // sağlanıyor (önceden 2-3 idi, bu yüzden buton sola kaymış görünüyordu).
   return (
     <nav className="relative bg-surface border-t border-border flex items-end px-2 pt-2.5 pb-3.5">
       {LEFT_ITEMS.map((item) => (
         <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
       ))}
-      <div className="flex-1 min-w-0" aria-hidden="true" />
 
       {/* Randevu Oluştur — kabartılmış birincil eylem, geri kalan sekmelerden biri değil. */}
       <div className="flex-1 min-w-0 flex justify-center">
