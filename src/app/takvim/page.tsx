@@ -10,7 +10,7 @@ import type { Staff } from "@/types/database";
 
 const DEFAULT_GRID_START_HOUR = 9;
 const DEFAULT_GRID_END_HOUR = 19;
-const COLUMN_WIDTH = 108;
+const COLUMN_WIDTH = 130;
 const HOUR_HEIGHT = 60; // 1px = 1dk
 const WEEKDAY_LABELS = ["PAZ", "PZT", "SAL", "ÇAR", "PER", "CUM", "CTS"];
 
@@ -272,14 +272,15 @@ export default async function TakvimPage({
                           const color = colorForCategory(service.category);
                           const customer = one(appt.customer);
 
+                          const blockHeight = Math.max(26, service.duration_minutes - 4);
                           return (
                             <div
                               key={`${appt.id}-${i}`}
                               className="absolute rounded-xl px-2 py-1.5 text-[11px] leading-tight overflow-hidden shadow-sm"
                               style={{
                                 top: startMinutes,
-                                height: Math.max(24, service.duration_minutes),
-                                width: COLUMN_WIDTH,
+                                height: blockHeight,
+                                width: COLUMN_WIDTH - 6,
                                 background: color.bg,
                                 color: color.text,
                               }}
@@ -291,9 +292,8 @@ export default async function TakvimPage({
                                 />
                                 {customer?.full_name ?? "Müşteri"}
                               </span>
-                              <span className="block truncate opacity-85 pl-3">{service.name}</span>
-                              {customer?.phone && (
-                                <span className="block truncate opacity-70 text-[10px] pl-3">{customer.phone}</span>
+                              {blockHeight >= 40 && (
+                                <span className="block truncate opacity-85 pl-3">{service.name}</span>
                               )}
                             </div>
                           );
