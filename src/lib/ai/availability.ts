@@ -1,7 +1,9 @@
 import type { Appointment, AppointmentService, Business, Service, Staff } from "@/types/database";
 
 const TURKEY_UTC_OFFSET_MINUTES = 3 * 60;
-const STEP_MINUTES = 15;
+// Randevular yalnizca tam saatlerde baslar (ör. 11:30 degil 11:00/12:00) —
+// bir hizmet ortalama ~1 saat surdugu icin bu, gercek calisma duzenine uyar.
+const STEP_MINUTES = 60;
 const MIN_GAP_BETWEEN_CANDIDATES_MINUTES = 60;
 const MAX_CANDIDATES = 3;
 
@@ -92,7 +94,16 @@ function isStaffFree(
   );
 }
 
-/** Belirli bir saatte, bir hizmeti karşılayabilecek (uygun, müsait, mesaide) personel adayları. */
+/** Bir personelin o gün için toplam dolu dakikası — en boş personeli önceliklendirmek için. */
+function totalBookedMinutes(staffId: string, existingAppointments: FindSlotsParams["existingAppointments"]): number {
+  return staffBusyIntervals(staffId, existingAppointments).reduce((sum, i) => sum + (i.endMin - i.startMin), 0);
+}
+
+/**
+ * Belirli bir saatte, bir hizmeti karşılayabilecek (uygun, müsait, mesaide) personel
+ * adayları — o günkü doluluğu en az olandan en çok olana sıralı döner, böylece
+ * randevu her zaman en meşgul ustaya değil, en boş olana önerilir.
+ */
 function eligibleStaffAt(
   service: Service,
   t: number,
@@ -102,14 +113,16 @@ function eligibleStaffAt(
   const { staff, expertise, dateKey, existingAppointments } = params;
   const serviceEnd = t + service.duration_minutes;
 
-  return capableStaffFor(service, staff, expertise).filter((s) => {
-    if (s.leave_dates?.includes(dateKey)) return false;
-    const shift = s.working_hours?.[weekdayKey];
-    if (!shift) return false;
-    const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
-    if (t < shiftStart || serviceEnd > shiftEnd) return false;
-    return isStaffFree(s.id, t, serviceEnd, existingAppointments);
-  });
+  return capableStaffFor(service, staff, expertise)
+    .filter((s) => {
+      if (s.leave_dates?.includes(dateKey)) return false;
+      const shift = s.working_hours?.[weekdayKey];
+      if (!shift) return false;
+      const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
+      if (t < shiftStart || serviceEnd > shiftEnd) return false;
+      return isStaffFree(s.id, t, serviceEnd, existingAppointments);
+    })
+    .sort((a, b) => totalBookedMinutes(a.id, existingAppointments) - totalBookedMinutes(b.id, existingAppointments));
 }
 
 /**
