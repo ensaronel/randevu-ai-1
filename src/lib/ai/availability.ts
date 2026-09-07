@@ -108,7 +108,10 @@ function totalBookedMinutes(staffId: string, existingAppointments: FindSlotsPara
 /**
  * Belirli bir saatte, bir hizmeti karşılayabilecek (uygun, müsait, mesaide) personel
  * adayları — o günkü doluluğu en az olandan en çok olana sıralı döner, böylece
- * randevu her zaman en meşgul ustaya değil, en boş olana önerilir.
+ * randevu her zaman en meşgul ustaya değil, en boş olana önerilir. Doluluk eşitse
+ * (ör. o gün için hiç randevu yoksa, herkes 0 dakika dolu) saate göre döndürerek
+ * sıralanır — aksi halde eşitlik hep aynı (dizideki ilk/alfabetik) personele
+ * düşer ve bir günde önerilen 3 saatin de hep aynı ustayı göstermesine yol açardı.
  */
 function eligibleStaffAt(
   service: Service,
@@ -119,16 +122,20 @@ function eligibleStaffAt(
   const { staff, expertise, dateKey, existingAppointments } = params;
   const serviceEnd = t + service.duration_minutes;
 
-  return capableStaffFor(service, staff, expertise)
-    .filter((s) => {
-      if (s.leave_dates?.includes(dateKey)) return false;
-      const shift = s.working_hours?.[weekdayKey];
-      if (!shift) return false;
-      const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
-      if (t < shiftStart || serviceEnd > shiftEnd) return false;
-      return isStaffFree(s.id, t, serviceEnd, existingAppointments);
-    })
-    .sort((a, b) => totalBookedMinutes(a.id, existingAppointments) - totalBookedMinutes(b.id, existingAppointments));
+  const eligible = capableStaffFor(service, staff, expertise).filter((s) => {
+    if (s.leave_dates?.includes(dateKey)) return false;
+    const shift = s.working_hours?.[weekdayKey];
+    if (!shift) return false;
+    const [shiftStart, shiftEnd] = shift.map(parseTimeToMinutes);
+    if (t < shiftStart || serviceEnd > shiftEnd) return false;
+    return isStaffFree(s.id, t, serviceEnd, existingAppointments);
+  });
+
+  const rotationOffset = eligible.length > 0 ? Math.floor(t / STEP_MINUTES) % eligible.length : 0;
+  return eligible
+    .map((s, i) => ({ s, busy: totalBookedMinutes(s.id, existingAppointments), rotated: (i + rotationOffset) % eligible.length }))
+    .sort((a, b) => a.busy - b.busy || a.rotated - b.rotated)
+    .map((x) => x.s);
 }
 
 /**
