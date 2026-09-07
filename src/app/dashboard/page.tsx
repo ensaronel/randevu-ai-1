@@ -156,11 +156,9 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [today, yesterday, lastWeekSameDay, financeNote, suggestions, upcomingToday, todayReconciled, weekTotals] =
+  const [today, financeNote, suggestions, upcomingToday, todayReconciled, weekTotals] =
     await Promise.all([
       loadDayTotals(supabase, business.id, 0),
-      loadDayTotals(supabase, business.id, -1),
-      loadDayTotals(supabase, business.id, -7),
       loadTodaysFinanceNote(supabase, business.id),
       loadPendingSuggestions(supabase, business.id),
       loadUpcomingToday(supabase, business.id),
@@ -183,11 +181,6 @@ export default async function DashboardPage() {
   const freeMinutes = isClosedToday
     ? 0
     : computeFreeCapacityMinutes(staffList, weekdayKeyTR(0), dateKeyTR(0), today.bookedMinutesByStaffId);
-
-  const percentDiff =
-    lastWeekSameDay.revenue > 0
-      ? Math.round(((yesterday.revenue - lastWeekSameDay.revenue) / lastWeekSameDay.revenue) * 100)
-      : null;
 
   const totalCapacityMinutes = isClosedToday
     ? 0
@@ -234,23 +227,45 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* HERO: koyu, dolu bir kart içinde halka + gündem tek arada — referans
-          2'deki "büyük kart + gömülü halka" örüntüsü, ayrı ayrı kutucuklar yerine. */}
-      <div className="bg-accent text-white rounded-[28px] p-5 lg:p-7 flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-4">
+      {/* HERO: koyu kart + dalga illüstrasyonu — maskot sahnesiyle aynı imza
+          motif, buyuk halka gercek bir "an" hissi versin diye ortalanmis. */}
+      <div className="bg-accent text-white rounded-[28px] p-5 lg:p-7 flex flex-col gap-4 relative overflow-hidden">
+        <svg viewBox="0 0 400 90" className="absolute bottom-0 left-0 w-full h-[64px] pointer-events-none" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 40 Q 100 0 200 30 T 400 20 V90 H0 Z" fill="white" opacity="0.045" />
+          <path d="M0 60 Q 120 25 220 55 T 400 45 V90 H0 Z" fill="white" opacity="0.06" />
+        </svg>
+
+        <div className="flex items-center gap-5 relative">
+          <div className="relative w-[86px] h-[86px] shrink-0">
+            <svg width="100%" height="100%" viewBox="0 0 86 86">
+              <circle cx="43" cy="43" r="36" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="8" />
+              <circle
+                cx="43"
+                cy="43"
+                r="36"
+                fill="none"
+                stroke="white"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 36}
+                strokeDashoffset={2 * Math.PI * 36 * (1 - occupancyPercent / 100)}
+                transform="rotate(-90 43 43)"
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-[20px] font-bold font-display leading-none">%{occupancyPercent}</span>
+            </div>
+          </div>
           <div>
-            <p className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Bugünün Programı</p>
-            <p className="text-[13.5px] text-white/85 mt-0.5">
+            <p className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Bugünün Doluluğu</p>
+            <p className="text-[15px] font-semibold mt-0.5">
               {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
             </p>
           </div>
-          <MiniRing percent={occupancyPercent} />
         </div>
 
-        {upcomingToday.length === 0 ? (
-          <p className="text-[13px] text-white/70 py-1">Bugün için kalan randevu yok.</p>
-        ) : (
-          <div className="flex flex-col gap-2.5">
+        {upcomingToday.length > 0 && (
+          <div className="flex flex-col gap-2.5 relative">
             {upcomingToday.map((a) => {
               const customer = one(a.customer);
               const serviceNames = a.appointment_services
@@ -271,7 +286,7 @@ export default async function DashboardPage() {
             })}
           </div>
         )}
-        <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1">
+        <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1 relative">
           Takvimi Gör
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 6l6 6-6 6" />
@@ -279,18 +294,11 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Kompakt ikonlu istatistik hapları — büyük eşit kutular yerine referans
-          2'deki küçük "Step to walk / Drink Water" hap kartları örüntüsü. */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <PillStat icon="calendar" label="Randevu" value={String(today.appointmentCount)} tone="block1" />
-        <PillStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
-        <PillStat
-          icon="tl"
-          label="Dün"
-          value={formatTL(yesterday.revenue)}
-          tone="accentSoft"
-          badge={percentDiff !== null ? `${percentDiff >= 0 ? "+" : ""}${percentDiff}%` : undefined}
-        />
+      {/* İkon-rozetli istatistik kartları — referans 1'deki "ikon dairesi +
+          buyuk sayi" oruntusu. */}
+      <div className="grid grid-cols-2 gap-3">
+        <BadgeStat icon="calendar" label="Bugünkü Randevu" value={String(today.appointmentCount)} tone="block1" />
+        <BadgeStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
       </div>
 
       <WeekRevenueChart data={weekChart} />
@@ -346,43 +354,13 @@ export default async function DashboardPage() {
   );
 }
 
-/** Hero kartın başlığındaki küçük halka — dolu koyu zeminin üstünde, beyaz tonlarda. */
-function MiniRing({ percent }: { percent: number }) {
-  const radius = 22;
-  const circumference = 2 * Math.PI * radius;
-  const dashoffset = circumference * (1 - percent / 100);
-  return (
-    <div className="relative w-14 h-14 shrink-0">
-      <svg width="100%" height="100%" viewBox="0 0 56 56">
-        <circle cx="28" cy="28" r={radius} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="5" />
-        <circle
-          cx="28"
-          cy="28"
-          r={radius}
-          fill="none"
-          stroke="white"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={dashoffset}
-          transform="rotate(-90 28 28)"
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[13px] font-bold">%{percent}</span>
-      </div>
-    </div>
-  );
-}
-
-const PILL_STAT_TONES = {
-  block1: "bg-block1 text-block1-ink",
-  block2: "bg-block2 text-block2-ink",
-  warn: "bg-bad-soft text-bad",
-  accentSoft: "bg-accent-soft text-accent",
+const BADGE_STAT_TONES = {
+  block1: { bg: "bg-block1", badge: "bg-white/60 text-block1-ink" },
+  block2: { bg: "bg-block2", badge: "bg-white/60 text-block2-ink" },
+  warn: { bg: "bg-bad-soft", badge: "bg-white/60 text-bad" },
 } as const;
 
-const PILL_STAT_ICONS: Record<string, ReactNode> = {
+const BADGE_STAT_ICONS: Record<string, ReactNode> = {
   calendar: (
     <>
       <rect x="4" y="5.5" width="16" height="15" rx="3" />
@@ -395,37 +373,31 @@ const PILL_STAT_ICONS: Record<string, ReactNode> = {
       <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
     </>
   ),
-  tl: (
-    <>
-      <path d="M9 5v13M9 11l7-2.5M9 15.5l7-2.5" />
-    </>
-  ),
 };
 
-function PillStat({
+/** Referans 1'deki "ikon dairesi + büyük sayı" istatistik örüntüsü. */
+function BadgeStat({
   icon,
   label,
   value,
   tone,
-  badge,
 }: {
-  icon: keyof typeof PILL_STAT_ICONS;
+  icon: keyof typeof BADGE_STAT_ICONS;
   label: string;
   value: string;
-  tone: keyof typeof PILL_STAT_TONES;
-  badge?: string;
+  tone: keyof typeof BADGE_STAT_TONES;
 }) {
+  const { bg, badge } = BADGE_STAT_TONES[tone];
   return (
-    <div className={`${PILL_STAT_TONES[tone]} rounded-2xl p-3 flex flex-col gap-2`}>
-      <div className="flex items-center justify-between">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.75">
-          {PILL_STAT_ICONS[icon]}
+    <div className={`${bg} rounded-2xl p-4 flex flex-col gap-3`}>
+      <div className={`${badge} w-9 h-9 rounded-full flex items-center justify-center`}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {BADGE_STAT_ICONS[icon]}
         </svg>
-        {badge && <span className="text-[10px] font-bold opacity-80">{badge}</span>}
       </div>
       <div>
-        <p className="text-[15px] lg:text-[17px] font-bold font-display leading-tight truncate">{value}</p>
-        <p className="text-[10.5px] opacity-75">{label}</p>
+        <p className="text-[26px] font-bold font-display leading-none">{value}</p>
+        <p className="text-[12px] text-ink-muted mt-1">{label}</p>
       </div>
     </div>
   );
