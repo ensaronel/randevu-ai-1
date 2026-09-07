@@ -82,7 +82,7 @@ export default function AsistanClient({ initialMessages }: { initialMessages: Me
           <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "self-end" : "self-start"}`}>
             {m.role === "model" && <Mascot size={26} />}
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
+              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap ${
                 m.role === "user" ? "bg-accent text-white" : "bg-accent2-soft text-accent2-ink"
               }`}
             >

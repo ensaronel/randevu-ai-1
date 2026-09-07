@@ -78,11 +78,15 @@ function NavLink({ item, active }: { item: (typeof items)[number]; active: boole
 export default function BottomNav() {
   const pathname = usePathname();
 
+  // items 5 gerçek sekme (2 sol + 3 sağ) — ortadaki + butonu tam merkezde
+  // olsun diye sol tarafa görünmez bir flex-1 boşluk eklenip 3-3 simetrisi
+  // sağlanıyor (önceden 2-3 idi, bu yüzden buton sola kaymış görünüyordu).
   return (
     <nav className="relative bg-surface border-t border-border flex items-end px-2 pt-2.5 pb-3.5">
       {LEFT_ITEMS.map((item) => (
         <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
       ))}
+      <div className="flex-1" aria-hidden="true" />
 
       {/* Randevu Oluştur — kabartılmış birincil eylem, geri kalan sekmelerden biri değil. */}
       <div className="flex-1 flex justify-center">
