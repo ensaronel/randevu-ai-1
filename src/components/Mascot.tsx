@@ -4,10 +4,22 @@
  * (yuvarlak karakter, kapalı-gülen gözler, blush) esinlenildi, mevcut accent2
  * (amber) rengiyle kuruldu ki markanın zaten onaylı ikincil rengiyle tutarlı kalsın.
  */
-export default function Mascot({ size = 56 }: { size?: number }) {
+export default function Mascot({ size = 56, waving = false }: { size?: number; waving?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
       <circle cx="32" cy="32" r="32" fill="var(--accent2-soft)" />
+      {waving && (
+        <g>
+          <path
+            d="M45 22c3-2 6-1 6 2.5s-3 5-6 3.5"
+            stroke="var(--accent2)"
+            strokeWidth="3.4"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path d="M53 16.5c1.4.6 2 1.6 2 2.6M55 21c1.4 0 2.4.7 2.6 1.8" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" />
+        </g>
+      )}
       <circle cx="32" cy="34" r="19" fill="var(--accent2)" />
       <path
         d="M24 32c1.5 2 3 3 3 6.5"

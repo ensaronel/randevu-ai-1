@@ -210,7 +210,8 @@ export default async function DashboardPage() {
 
   return (
     <AppShell businessName={business.name}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Mascot size={52} waving />
         <div>
           <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">
             {business.name}
@@ -219,12 +220,6 @@ export default async function DashboardPage() {
             Merhaba, {owner.full_name.split(" ")[0]}
           </h1>
         </div>
-        <Link
-          href="/randevu-olustur"
-          className="hidden lg:flex items-center gap-2 bg-accent text-white rounded-full px-5 py-2.5 text-sm font-semibold shrink-0"
-        >
-          + Yeni Randevu
-        </Link>
       </div>
 
       {/* HERO: koyu kart + dalga illüstrasyonu — maskot sahnesiyle aynı imza
