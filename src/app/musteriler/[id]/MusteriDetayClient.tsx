@@ -159,9 +159,9 @@ export default function MusteriDetayClient({
       )}
 
       <div className="grid grid-cols-3 gap-2.5">
-        <StatCard label="Toplam harcama" value={formatTL(totalSpent)} />
-        <StatCard label="Ziyaret sayısı" value={String(visitCount)} />
-        <StatCard label="Son ziyaret" value={lastVisitAt ? formatDateTR(lastVisitAt) : "—"} small />
+        <CustomerStat icon="wallet" label="Toplam harcama" value={formatTL(totalSpent)} tone="accent2Soft" />
+        <CustomerStat icon="check" label="Ziyaret sayısı" value={String(visitCount)} tone="accentSoft" />
+        <CustomerStat icon="clock" label="Son ziyaret" value={lastVisitAt ? formatDateTR(lastVisitAt) : "—"} tone="block2" />
       </div>
 
       <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
@@ -301,11 +301,59 @@ export default function MusteriDetayClient({
   );
 }
 
-function StatCard({ label, value, small }: { label: string; value: string; small?: boolean }) {
+const CUSTOMER_STAT_TONES = {
+  accent2Soft: { bg: "bg-accent2-soft", badge: "bg-white/70 text-accent2-ink" },
+  accentSoft: { bg: "bg-accent-soft", badge: "bg-white/70 text-accent" },
+  block2: { bg: "bg-block2", badge: "bg-white/60 text-block2-ink" },
+} as const;
+
+const CUSTOMER_STAT_ICONS = {
+  wallet: (
+    <>
+      <path d="M3 7.5A2.5 2.5 0 015.5 5h11A2.5 2.5 0 0119 7.5" />
+      <rect x="3" y="7.5" width="18" height="11.5" rx="2.5" />
+      <path d="M15 13.2h3" />
+    </>
+  ),
+  check: (
+    <>
+      <rect x="4" y="5.5" width="16" height="15" rx="3" />
+      <path d="M4 10h16M8 3v4M16 3v4" />
+      <path d="M8.7 14.3l2 2 4-4" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5v5l3.5 2" />
+    </>
+  ),
+} as const;
+
+/** Dashboard'daki BadgeStat ile aynı gorsel dil (ikon dairesi + buyuk sayi) — istatistikler tek tip düz kart yerine bu örüntüyle tutarlı gösterilsin diye. */
+function CustomerStat({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: keyof typeof CUSTOMER_STAT_ICONS;
+  label: string;
+  value: string;
+  tone: keyof typeof CUSTOMER_STAT_TONES;
+}) {
+  const { bg, badge } = CUSTOMER_STAT_TONES[tone];
   return (
-    <div className="bg-surface border border-border rounded-2xl p-3 flex flex-col gap-1.5">
-      <p className={`font-semibold font-display ${small ? "text-[13px]" : "text-[17px]"}`}>{value}</p>
-      <p className="text-[11px] text-ink-muted">{label}</p>
+    <div className={`${bg} rounded-2xl p-3 flex flex-col gap-2`}>
+      <div className={`${badge} w-8 h-8 rounded-full flex items-center justify-center shrink-0`}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {CUSTOMER_STAT_ICONS[icon]}
+        </svg>
+      </div>
+      <div>
+        <p className="text-[16px] font-bold font-display leading-tight break-words">{value}</p>
+        <p className="text-[11px] text-ink-muted mt-0.5">{label}</p>
+      </div>
     </div>
   );
 }
