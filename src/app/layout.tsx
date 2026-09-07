@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Lora, Manrope } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +17,15 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "Randevu AI",
   description: "Randevu bazlı işletmeler için AI destekli yönetim sistemi",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Randevu AI",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1e2e4f",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
