@@ -31,7 +31,9 @@ export default function AppShell({
             </svg>
           </Link>
         </div>
-        <main className="flex-1 px-4 py-5 lg:px-10 lg:py-8 flex flex-col gap-5 max-w-md lg:max-w-5xl mx-auto w-full">
+        {/* pb-28: alt menü artik sabit (fixed) konumlandigi icin icerigin
+            son kismi arkasinda kalmasin diye mobilde ekstra bosluk. */}
+        <main className="flex-1 px-4 pt-5 pb-28 lg:px-10 lg:py-8 flex flex-col gap-5 max-w-md lg:max-w-5xl mx-auto w-full">
           {children}
         </main>
         <div className="lg:hidden">

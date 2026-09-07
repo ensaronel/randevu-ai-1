@@ -71,3 +71,16 @@ h2,
 h3 {
   font-family: var(--font-lora), Georgia, serif;
 }
+
+/* iOS Safari, bir input'a odaklanıldığında font-size 16px'in altındaysa
+   sayfayı otomatik yakınlaştırır (metni okunaklı yapmak için) — bu, mevcut
+   text-sm/text-xs input'larda "ekran büyüyor" olarak hissedilen davranış.
+   Tailwind'in utility class'ları (ör. text-sm) daha yüksek katman
+   önceliğine sahip olduğundan !important gerekiyor — bu, tam da bu bilinen
+   sorun için yaygın kullanılan, kapsamı dar (sadece form elemanları) bir
+   düzeltme. */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}

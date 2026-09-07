@@ -72,7 +72,10 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="relative bg-surface border-t border-border flex items-end px-2 pt-2.5 pb-3.5">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-20 bg-surface border-t border-border flex items-end px-2 pt-2.5"
+      style={{ paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))" }}
+    >
       {LEFT_ITEMS.map((item) => (
         <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
       ))}
