@@ -275,22 +275,25 @@ export default async function TakvimPage({
                           return (
                             <div
                               key={`${appt.id}-${i}`}
-                              className="absolute rounded-lg px-1.5 py-1 text-[11px] leading-tight overflow-hidden border-l-[3px]"
+                              className="absolute rounded-xl px-2 py-1.5 text-[11px] leading-tight overflow-hidden shadow-sm"
                               style={{
                                 top: startMinutes,
                                 height: Math.max(24, service.duration_minutes),
                                 width: COLUMN_WIDTH,
                                 background: color.bg,
-                                borderColor: color.border,
                                 color: color.text,
                               }}
                             >
-                              <span className="font-bold block truncate">
+                              <span className="font-bold flex items-center gap-1.5 truncate">
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                                  style={{ background: color.border }}
+                                />
                                 {customer?.full_name ?? "Müşteri"}
                               </span>
-                              <span className="block truncate opacity-85">{service.name}</span>
+                              <span className="block truncate opacity-85 pl-3">{service.name}</span>
                               {customer?.phone && (
-                                <span className="block truncate opacity-70 text-[10px]">{customer.phone}</span>
+                                <span className="block truncate opacity-70 text-[10px] pl-3">{customer.phone}</span>
                               )}
                             </div>
                           );
