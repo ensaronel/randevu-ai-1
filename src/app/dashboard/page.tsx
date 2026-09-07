@@ -292,7 +292,7 @@ export default async function DashboardPage() {
       {/* İkon-rozetli istatistik kartları — referans 1'deki "ikon dairesi +
           buyuk sayi" oruntusu. */}
       <div className="grid grid-cols-2 gap-3">
-        <BadgeStat icon="calendar" label="Bugünkü Randevu" value={String(today.appointmentCount)} tone="block1" />
+        <BadgeStat icon="calendar" label="Bugünkü Randevu" value={String(today.appointmentCount)} tone="accentSoft" />
         <BadgeStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
       </div>
 
@@ -350,7 +350,7 @@ export default async function DashboardPage() {
 }
 
 const BADGE_STAT_TONES = {
-  block1: { bg: "bg-block1", badge: "bg-white/60 text-block1-ink" },
+  accentSoft: { bg: "bg-accent-soft", badge: "bg-white/70 text-accent" },
   block2: { bg: "bg-block2", badge: "bg-white/60 text-block2-ink" },
   warn: { bg: "bg-bad-soft", badge: "bg-white/60 text-bad" },
 } as const;
