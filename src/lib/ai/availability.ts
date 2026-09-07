@@ -27,6 +27,12 @@ function turkeyLocalMinutesToUtcISO(dateKey: string, minutesFromMidnight: number
   return new Date(utcMs).toISOString();
 }
 
+/** Türkiye yerel tarihine/gece-yarısından-bu-yana-geçen-dakikaya göre "şu an" (sabit UTC+3 ofset, Türkiye'de DST yok). */
+function nowInTurkey(): { dateKey: string; minutesOfDay: number } {
+  const d = new Date(Date.now() + TURKEY_UTC_OFFSET_MINUTES * 60000);
+  return { dateKey: d.toISOString().slice(0, 10), minutesOfDay: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}
+
 function parseTimeToMinutes(value: string): number {
   const [h, m] = value.split(":").map(Number);
   return h * 60 + (m || 0);
@@ -185,10 +191,18 @@ export function findAvailableSlots(params: FindSlotsParams): SlotCandidate[] {
   const [openMin, closeMin] = businessHours.map(parseTimeToMinutes);
   const maxDuration = Math.max(...requestedServices.map((s) => s.duration_minutes));
 
+  // Bugün için, saati çoktan geçmiş bir başlangıç önerilmesin — bir sonraki
+  // tam saate yuvarlanır (STEP_MINUTES zaten 60 olduğundan bu doğal bir grid noktası).
+  const now = nowInTurkey();
+  const startMin =
+    dateKey === now.dateKey
+      ? Math.max(openMin, Math.ceil(now.minutesOfDay / STEP_MINUTES) * STEP_MINUTES)
+      : openMin;
+
   const candidates: SlotCandidate[] = [];
   let lastCandidateStart = -Infinity;
 
-  for (let t = openMin; t + maxDuration <= closeMin; t += STEP_MINUTES) {
+  for (let t = startMin; t + maxDuration <= closeMin; t += STEP_MINUTES) {
     if (t - lastCandidateStart < MIN_GAP_BETWEEN_CANDIDATES_MINUTES) continue;
 
     const assignments = tryAssignServices(requestedServices, 0, t, weekdayKey, new Set(), params);
