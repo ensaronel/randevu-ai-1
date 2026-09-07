@@ -163,6 +163,11 @@ export default function MusteriDetayClient({
         <CustomerStat icon="check" label="Ziyaret sayısı" value={String(visitCount)} tone="accentSoft" />
         <CustomerStat icon="clock" label="Son ziyaret" value={lastVisitAt ? formatDateTR(lastVisitAt) : "—"} tone="block2" />
       </div>
+      {visitCount === 0 && appointments.some((a) => a.status !== "cancelled") && (
+        <p className="text-[12px] text-ink-muted -mt-2">
+          Bu sayılar yalnızca Gün Sonu&apos;nda &quot;geldi&quot; olarak onaylanan randevuları kapsar — aşağıdaki randevular henüz onaylanmadı.
+        </p>
+      )}
 
       <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Profil</p>
