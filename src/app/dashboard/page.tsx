@@ -146,6 +146,16 @@ async function loadDayTotals(
 export default async function DashboardPage() {
   const { owner, business, supabase } = await getBusinessOwnerForPage();
 
+  const WEEKDAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const WEEKDAY_SHORT_TR: Record<string, string> = {
+    sun: "Paz", mon: "Pzt", tue: "Sal", wed: "Çar", thu: "Per", fri: "Cum", sat: "Cts",
+  };
+  // Hafta her zaman Pazartesi'den baslar (Turkce takvim konvansiyonu) - "son 7
+  // gun" kayan penceresi yerine, bugun neresi olursa olsun soldan Pzt baslar.
+  const todayWeekdayIndex = WEEKDAY_ORDER.indexOf(weekdayKeyTR(0));
+  const mondayOffset = -((todayWeekdayIndex + 6) % 7);
+  const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
+
   const [today, yesterday, lastWeekSameDay, financeNote, suggestions, upcomingToday, todayReconciled, weekTotals] =
     await Promise.all([
       loadDayTotals(supabase, business.id, 0),
@@ -155,15 +165,10 @@ export default async function DashboardPage() {
       loadPendingSuggestions(supabase, business.id),
       loadUpcomingToday(supabase, business.id),
       loadTodayReconciled(supabase, business.id),
-      Promise.all(
-        [-6, -5, -4, -3, -2, -1, 0].map((offset) => loadDayTotals(supabase, business.id, offset))
-      ),
+      Promise.all(weekOffsets.map((offset) => loadDayTotals(supabase, business.id, offset))),
     ]);
-  const WEEKDAY_SHORT_TR: Record<string, string> = {
-    sun: "Paz", mon: "Pzt", tue: "Sal", wed: "Çar", thu: "Per", fri: "Cum", sat: "Cts",
-  };
   const weekChart = weekTotals.map((t, i) => {
-    const offset = i - 6;
+    const offset = weekOffsets[i];
     return { label: WEEKDAY_SHORT_TR[weekdayKeyTR(offset)], revenue: t.revenue, isToday: offset === 0 };
   });
 
