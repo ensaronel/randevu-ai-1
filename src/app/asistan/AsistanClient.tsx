@@ -8,7 +8,17 @@ interface Message {
   text: string;
 }
 
-const SUGGESTIONS = ["Bu ay ne kadar kazandım?", "Yarın programım nasıl?", "Bu hafta en çok kim çalıştı?"];
+const SUGGESTIONS: { text: string; tone: "accentSoft" | "block2" | "accent2Soft" }[] = [
+  { text: "Bu ay ne kadar kazandım?", tone: "accentSoft" },
+  { text: "Yarın programım nasıl?", tone: "block2" },
+  { text: "Bu hafta en çok kim çalıştı?", tone: "accent2Soft" },
+];
+
+const SUGGESTION_TONES = {
+  accentSoft: "bg-accent-soft text-accent",
+  block2: "bg-block2 text-block2-ink",
+  accent2Soft: "bg-accent2-soft text-accent2-ink",
+} as const;
 
 export default function AsistanClient({ initialMessages }: { initialMessages: Message[] }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -58,29 +68,34 @@ export default function AsistanClient({ initialMessages }: { initialMessages: Me
             <p className="text-sm text-ink-muted">Randevu, ciro ve personel verilerine dair soru sorabilirsin:</p>
             {SUGGESTIONS.map((s) => (
               <button
-                key={s}
-                onClick={() => send(s)}
-                className="text-left bg-surface border border-border rounded-xl px-3.5 py-2.5 text-sm"
+                key={s.text}
+                onClick={() => send(s.text)}
+                className={`text-left rounded-xl px-3.5 py-2.5 text-sm font-medium ${SUGGESTION_TONES[s.tone]}`}
               >
-                {s}
+                {s.text}
               </button>
             ))}
           </div>
         )}
 
         {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
-              m.role === "user" ? "self-end bg-accent text-white" : "self-start bg-surface border border-border"
-            }`}
-          >
-            {m.text}
+          <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "self-end" : "self-start"}`}>
+            {m.role === "model" && <Mascot size={26} />}
+            <div
+              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
+                m.role === "user" ? "bg-accent text-white" : "bg-accent2-soft text-accent2-ink"
+              }`}
+            >
+              {m.text}
+            </div>
           </div>
         ))}
         {sending && (
-          <div className="self-start bg-surface border border-border rounded-2xl px-3.5 py-2.5 text-[13.5px] text-ink-muted">
-            Düşünüyor...
+          <div className="flex items-end gap-2 self-start">
+            <Mascot size={26} />
+            <div className="bg-accent2-soft text-accent2-ink rounded-2xl px-3.5 py-2.5 text-[13.5px]">
+              Düşünüyor...
+            </div>
           </div>
         )}
         <div ref={bottomRef} />
