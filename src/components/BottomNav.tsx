@@ -65,7 +65,7 @@ function NavLink({ item, active }: { item: (typeof items)[number]; active: boole
   return (
     <Link
       href={item.href}
-      className={`flex-1 flex flex-col items-center gap-1 text-[11px] font-semibold ${
+      className={`flex-1 min-w-0 flex flex-col items-center gap-1 text-[11px] font-semibold whitespace-nowrap ${
         active ? "text-accent" : "text-ink-muted"
       }`}
     >
@@ -86,10 +86,10 @@ export default function BottomNav() {
       {LEFT_ITEMS.map((item) => (
         <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
       ))}
-      <div className="flex-1" aria-hidden="true" />
+      <div className="flex-1 min-w-0" aria-hidden="true" />
 
       {/* Randevu Oluştur — kabartılmış birincil eylem, geri kalan sekmelerden biri değil. */}
-      <div className="flex-1 flex justify-center">
+      <div className="flex-1 min-w-0 flex justify-center">
         <Link
           href="/randevu-olustur"
           aria-label="Randevu Oluştur"
