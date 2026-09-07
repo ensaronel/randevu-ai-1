@@ -3,7 +3,7 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dateKeyTR, formatDateTR } from "@/lib/date";
 import { dayRangeUtcISOForDate, weekdayKeyForDate } from "@/lib/ai/availability";
 import { parseTimeToMinutes } from "@/lib/capacity";
-import { colorForCategory } from "@/lib/serviceColors";
+import { colorForStaffIndex } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
 import type { Staff } from "@/types/database";
@@ -31,7 +31,7 @@ function weekdayLabel(dateKey: string): string {
   return WEEKDAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 }
 
-type ServiceInfo = { name: string; duration_minutes: number; category: string | null };
+type ServiceInfo = { name: string; duration_minutes: number };
 type ApptServiceRow = {
   staff_id: string;
   service: ServiceInfo | ServiceInfo[] | null;
@@ -71,7 +71,7 @@ export default async function TakvimPage({
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(staff_id, service:services(name, duration_minutes, category))"
+        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(staff_id, service:services(name, duration_minutes))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)
@@ -248,7 +248,9 @@ export default async function TakvimPage({
                   }}
                 />
 
-                {staffList.map((staff) => (
+                {staffList.map((staff, staffIndex) => {
+                  const color = colorForStaffIndex(staffIndex);
+                  return (
                   <div
                     key={staff.id}
                     className="relative flex-1"
@@ -266,7 +268,6 @@ export default async function TakvimPage({
                         .map((svc, i) => {
                           const service = one(svc.service);
                           if (!service) return null;
-                          const color = colorForCategory(service.category);
                           const customer = one(appt.customer);
 
                           const blockHeight = Math.max(26, service.duration_minutes - 4);
@@ -298,7 +299,8 @@ export default async function TakvimPage({
                         });
                     })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
