@@ -1,8 +1,8 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, formatDateTR, formatTL } from "@/lib/date";
+import { formatDateTR, formatTL } from "@/lib/date";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
 import AppShell from "@/components/AppShell";
-import KasaClient, { type KasaAppointment } from "@/app/kasa/KasaClient";
+import KasaClient from "@/app/kasa/KasaClient";
 import type { Business, FixedExpense, Staff } from "@/types/database";
 
 async function loadMonthlyCommissions(
@@ -21,19 +21,8 @@ async function loadMonthlyCommissions(
 
 export default async function KasaPage() {
   const { business, supabase } = await getBusinessOwnerForPage();
-  const { startUtc, endUtc } = dayRangeUtcISO(0);
 
-  const [{ data: apptData }, { data: fixedExpenseData }, commissions] = await Promise.all([
-    supabase
-      .from("appointments")
-      .select(
-        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, planned_price, final_price, adjustment_note, service:services(name), staff:staff(full_name))"
-      )
-      .eq("business_id", business.id)
-      .gte("starts_at", startUtc)
-      .lt("starts_at", endUtc)
-      .neq("status", "cancelled")
-      .order("starts_at"),
+  const [{ data: fixedExpenseData }, commissions] = await Promise.all([
     supabase
       .from("fixed_expenses")
       .select("*")
@@ -42,7 +31,6 @@ export default async function KasaPage() {
     loadMonthlyCommissions(supabase, business),
   ]);
 
-  const appointments = (apptData ?? []) as unknown as KasaAppointment[];
   const fixedExpenses = (fixedExpenseData ?? []) as FixedExpense[];
 
   return (
@@ -52,7 +40,7 @@ export default async function KasaPage() {
           <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
         </div>
 
-        <KasaClient appointments={appointments} initialFixedExpenses={fixedExpenses} />
+        <KasaClient initialFixedExpenses={fixedExpenses} />
 
         {commissions.length > 0 && (
           <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-2">

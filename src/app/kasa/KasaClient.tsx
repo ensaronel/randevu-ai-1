@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { formatTimeTR, formatTL } from "@/lib/date";
-import EmptyState from "@/components/EmptyState";
+import { formatTL } from "@/lib/date";
 import type { FixedExpense } from "@/types/database";
-
-type OneOrMany<T> = T | T[] | null;
 
 /**
  * Türkçe para girişini (binlik ayraç "." + ondalık ayraç ",") sayıya çevirir.
@@ -79,26 +75,6 @@ interface RangeSummary {
   revenue: number;
   expenseShare: number;
   net: number;
-}
-
-export interface KasaAppointment {
-  id: string;
-  starts_at: string;
-  status: string;
-  customer: OneOrMany<{ full_name: string; phone: string }>;
-  appointment_services: {
-    id: string;
-    planned_price: number;
-    final_price: number | null;
-    adjustment_note: string | null;
-    service: OneOrMany<{ name: string }>;
-    staff: OneOrMany<{ full_name: string }>;
-  }[];
-}
-
-function one<T>(value: OneOrMany<T>): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
 }
 
 function RangeCalculator() {
@@ -343,124 +319,10 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   );
 }
 
-export default function KasaClient({
-  appointments,
-  initialFixedExpenses,
-}: {
-  appointments: KasaAppointment[];
-  initialFixedExpenses: FixedExpense[];
-}) {
-  const router = useRouter();
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-  const [priceDraft, setPriceDraft] = useState("");
-  const [noteDraft, setNoteDraft] = useState("");
-
-  async function savePrice(serviceRowId: string) {
-    const value = parseTLInput(priceDraft);
-    if (Number.isNaN(value) || value < 0) return;
-
-    setSavingId(serviceRowId);
-    try {
-      const res = await fetch(`/api/appointment-services/${serviceRowId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ final_price: value, adjustment_note: noteDraft.trim() || null }),
-      });
-      if (res.ok) {
-        setEditingServiceId(null);
-        setNoteDraft("");
-        router.refresh();
-      }
-    } finally {
-      setSavingId(null);
-    }
-  }
-
+export default function KasaClient({ initialFixedExpenses }: { initialFixedExpenses: FixedExpense[] }) {
   return (
     <>
       <RangeCalculator />
-
-      <div className="flex flex-col gap-3">
-        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugünkü Randevular</p>
-        {appointments.length === 0 && (
-          <EmptyState message="Bugün için randevu yok — Takvim'deki + butonundan veya Randevu Oluştur'dan ekleyebilirsin." />
-        )}
-
-        {appointments.map((appt) => {
-          const customer = one(appt.customer);
-          return (
-            <div key={appt.id} className="bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="font-semibold text-sm">{customer?.full_name ?? "Müşteri"}</span>
-                  {customer?.phone && <span className="text-[11.5px] text-ink-muted">{customer.phone}</span>}
-                </div>
-                <span className="text-[12.5px] text-ink-muted">{formatTimeTR(appt.starts_at)}</span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                {appt.appointment_services.map((svc) => {
-                  const service = one(svc.service);
-                  const staff = one(svc.staff);
-                  const isEditing = editingServiceId === svc.id;
-                  const currentPrice = svc.final_price ?? svc.planned_price;
-                  return (
-                    <div key={svc.id} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between text-[13px]">
-                        <span className="text-ink-muted">
-                          {service?.name} · {staff?.full_name}
-                        </span>
-                        {isEditing ? (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              autoFocus
-                              value={priceDraft}
-                              onChange={(e) => setPriceDraft(e.target.value)}
-                              className="w-16 border border-border rounded px-1.5 py-0.5 text-right text-[13px]"
-                            />
-                            <button
-                              onClick={() => savePrice(svc.id)}
-                              disabled={savingId === svc.id}
-                              className="text-accent font-semibold text-[12.5px]"
-                            >
-                              Kaydet
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setEditingServiceId(svc.id);
-                              setPriceDraft(String(currentPrice));
-                              setNoteDraft(svc.adjustment_note ?? "");
-                            }}
-                            className="font-semibold underline decoration-dotted"
-                          >
-                            {formatTL(currentPrice)}
-                          </button>
-                        )}
-                      </div>
-                      {isEditing ? (
-                        <input
-                          value={noteDraft}
-                          onChange={(e) => setNoteDraft(e.target.value)}
-                          placeholder="Düzeltme notu (örn. 30 TL indirim)"
-                          className="border border-border rounded px-1.5 py-0.5 text-[12px] w-full"
-                        />
-                      ) : (
-                        svc.adjustment_note && (
-                          <span className="text-[11.5px] text-ink-muted italic">{svc.adjustment_note}</span>
-                        )
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
       <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
     </>
   );

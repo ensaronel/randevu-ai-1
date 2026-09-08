@@ -3,9 +3,9 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dateKeyTR, formatDateTR } from "@/lib/date";
 import { dayRangeUtcISOForDate, weekdayKeyForDate } from "@/lib/ai/availability";
 import { parseTimeToMinutes } from "@/lib/capacity";
-import { colorForStaffIndex } from "@/lib/serviceColors";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
+import TakvimAppointmentBlocks from "@/app/takvim/TakvimAppointmentBlocks";
 import type { Staff } from "@/types/database";
 
 const DEFAULT_GRID_START_HOUR = 9;
@@ -33,7 +33,11 @@ function weekdayLabel(dateKey: string): string {
 
 type ServiceInfo = { name: string; duration_minutes: number };
 type ApptServiceRow = {
+  id: string;
   staff_id: string;
+  planned_price: number;
+  final_price: number | null;
+  adjustment_note: string | null;
   service: ServiceInfo | ServiceInfo[] | null;
 };
 type ApptRow = {
@@ -43,11 +47,6 @@ type ApptRow = {
   customer: { full_name: string; phone: string } | { full_name: string; phone: string }[] | null;
   appointment_services: ApptServiceRow[];
 };
-
-function one<T>(value: T | T[] | null): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
 
 export default async function TakvimPage({
   searchParams,
@@ -71,7 +70,7 @@ export default async function TakvimPage({
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(staff_id, service:services(name, duration_minutes))"
+        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, staff_id, planned_price, final_price, adjustment_note, service:services(name, duration_minutes))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)
@@ -239,69 +238,13 @@ export default async function TakvimPage({
                 ))}
               </div>
 
-              <div className="flex flex-1" style={{ position: "relative", height: gridMinutes, gap: 8 }}>
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    backgroundImage:
-                      "repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px 60px)",
-                  }}
-                />
-
-                {staffList.map((staff, staffIndex) => {
-                  const color = colorForStaffIndex(staffIndex);
-                  return (
-                  <div
-                    key={staff.id}
-                    className="relative flex-1"
-                    style={{ minWidth: COLUMN_WIDTH, height: gridMinutes }}
-                  >
-                    {appointments.flatMap((appt) => {
-                      const startMinutes =
-                        (new Date(appt.starts_at).getTime() -
-                          new Date(startUtc).getTime()) /
-                          60000 -
-                        GRID_START_HOUR * 60;
-
-                      return appt.appointment_services
-                        .filter((svc) => svc.staff_id === staff.id)
-                        .map((svc, i) => {
-                          const service = one(svc.service);
-                          if (!service) return null;
-                          const customer = one(appt.customer);
-
-                          const blockHeight = Math.max(26, service.duration_minutes - 4);
-                          return (
-                            <div
-                              key={`${appt.id}-${i}`}
-                              className="absolute rounded-xl px-2 py-1.5 text-[11px] leading-tight overflow-hidden shadow-sm"
-                              style={{
-                                top: startMinutes,
-                                height: blockHeight,
-                                left: 3,
-                                right: 3,
-                                background: color.bg,
-                                color: color.text,
-                              }}
-                            >
-                              <span className="font-bold flex items-center gap-1.5 truncate">
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ background: color.border }}
-                                />
-                                {customer?.full_name ?? "Müşteri"}
-                              </span>
-                              {blockHeight >= 40 && (
-                                <span className="block truncate opacity-85 pl-3">{service.name}</span>
-                              )}
-                            </div>
-                          );
-                        });
-                    })}
-                  </div>
-                  );
-                })}
-              </div>
+              <TakvimAppointmentBlocks
+                appointments={appointments}
+                staffIds={staffList.map((s) => s.id)}
+                startUtc={startUtc}
+                gridStartHour={GRID_START_HOUR}
+                gridMinutes={gridMinutes}
+              />
             </div>
           </div>
         )}
