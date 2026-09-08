@@ -37,12 +37,13 @@ const items = [
     ),
   },
   {
-    href: "/gun-sonu",
-    label: "Gün Sonu",
+    href: "/kasa",
+    label: "Kasa",
     icon: (
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="4" y="3" width="16" height="18" rx="2" />
-        <path d="M8 8h8M9 13l2 2 4-4" />
+        <rect x="3" y="6" width="18" height="13" rx="2.5" />
+        <path d="M3 10.5h18" />
+        <circle cx="12" cy="14.5" r="2" />
       </svg>
     ),
   },

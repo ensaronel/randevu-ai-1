@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR } from "@/lib/date";
-import type { Attendance } from "@/types/database";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 type WeekdayKey = (typeof WEEKDAY_KEYS)[number];
@@ -100,9 +99,10 @@ interface VisitRow {
 async function loadCameVisitsByCustomer(admin: ReturnType<typeof createAdminSupabaseClient>, businessId: string) {
   const { data } = await admin
     .from("appointments")
-    .select("customer_id, starts_at, attendance, appointment_services(service_id)")
+    .select("customer_id, starts_at, status, appointment_services(service_id)")
     .eq("business_id", businessId)
-    .eq("attendance", "came" satisfies Attendance)
+    .neq("status", "cancelled")
+    .lt("starts_at", new Date().toISOString())
     .order("starts_at", { ascending: true });
 
   const byCustomer = new Map<string, VisitRow[]>();

@@ -29,7 +29,7 @@ export default async function CalisanlarPage() {
       revenue: m?.revenue ?? 0,
       commission: m?.commission ?? 0,
       occupancyPercent: m?.occupancyPercent ?? 0,
-      noShowRatePercent: m?.noShowRatePercent ?? 0,
+      cancellationRatePercent: m?.cancellationRatePercent ?? 0,
     };
   });
 

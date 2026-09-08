@@ -10,8 +10,6 @@ export interface WeeklySummaryResult {
   error?: string;
 }
 
-const NO_SHOW_VALUES = ["no_show_notified", "no_show_silent"];
-
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -55,7 +53,7 @@ export async function runWeeklySummaryForBusiness(businessId: string): Promise<W
 
   const { data: rows } = await admin
     .from("appointments")
-    .select("status, attendance, appointment_services(planned_price, final_price, service:services(name))")
+    .select("status, appointment_services(planned_price, final_price, service:services(name))")
     .eq("business_id", businessId)
     .gte("starts_at", startUtc)
     .lt("starts_at", endUtc);
@@ -65,9 +63,8 @@ export async function runWeeklySummaryForBusiness(businessId: string): Promise<W
   }
 
   let revenue = 0;
-  let cameCount = 0;
+  let visitCount = 0;
   let cancelledCount = 0;
-  let noShowCount = 0;
   const serviceCounts = new Map<string, number>();
 
   for (const row of rows) {
@@ -75,19 +72,16 @@ export async function runWeeklySummaryForBusiness(businessId: string): Promise<W
       cancelledCount++;
       continue;
     }
-    if (NO_SHOW_VALUES.includes(row.attendance ?? "")) noShowCount++;
-    if (row.attendance === "came") {
-      cameCount++;
-      for (const svc of row.appointment_services) {
-        revenue += Number(svc.final_price ?? svc.planned_price);
-        const name = one(svc.service)?.name;
-        if (name) serviceCounts.set(name, (serviceCounts.get(name) ?? 0) + 1);
-      }
+    visitCount++;
+    for (const svc of row.appointment_services) {
+      revenue += Number(svc.final_price ?? svc.planned_price);
+      const name = one(svc.service)?.name;
+      if (name) serviceCounts.set(name, (serviceCounts.get(name) ?? 0) + 1);
     }
   }
 
-  if (cameCount === 0) {
-    return { businessId, sent: false, reason: "geçen hafta gelen randevu yok, özet gönderilmedi" };
+  if (visitCount === 0) {
+    return { businessId, sent: false, reason: "geçen hafta gerçekleşen randevu yok, özet gönderilmedi" };
   }
 
   const topService = [...serviceCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -95,10 +89,9 @@ export async function runWeeklySummaryForBusiness(businessId: string): Promise<W
   const lines = [
     `📊 Geçen hafta özeti (${shortDateLabel(weekStartKey)} - ${shortDateLabel(weekEndKey)})`,
     `💰 Ciro: ${formatTL(revenue)}`,
-    `✅ Gelen randevu: ${cameCount}`,
+    `✅ Randevu: ${visitCount}`,
   ];
   if (cancelledCount > 0) lines.push(`❌ İptal: ${cancelledCount}`);
-  if (noShowCount > 0) lines.push(`👻 Gelmeyen: ${noShowCount}`);
   if (topService) lines.push(`⭐ En popüler hizmet: ${topService}`);
   const message = lines.join("\n");
 
@@ -125,7 +118,7 @@ export async function runWeeklySummaryForBusiness(businessId: string): Promise<W
     business_id: businessId,
     type: "weekly_summary",
     suggestion: message,
-    reasoning: `${weekStartKey} - ${weekEndKey}: ciro ${revenue} TL, gelen ${cameCount}, iptal ${cancelledCount}, gelmeyen ${noShowCount}`,
+    reasoning: `${weekStartKey} - ${weekEndKey}: ciro ${revenue} TL, randevu ${visitCount}, iptal ${cancelledCount}`,
     status: "auto_sent",
   });
 

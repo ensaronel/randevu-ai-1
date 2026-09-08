@@ -69,9 +69,10 @@ export const appointmentServiceUpdateSchema = z.object({
   adjustment_note: z.string().trim().max(500).optional().nullable(),
 });
 
-export const reconcileDaySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  expenses: z.number().nonnegative().optional(),
+export const expenseItemCreateSchema = z.object({
+  expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  description: z.string().trim().min(1).max(200),
+  amount: z.number().nonnegative(),
 });
 
 export const actionObjectUpdateSchema = z.object({

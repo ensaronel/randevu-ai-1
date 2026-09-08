@@ -19,8 +19,8 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
   {
     name: "get_revenue_summary",
     description:
-      "Belirtilen tarih aralığında gerçekleşen (geldi işaretlenmiş) randevulardan elde edilen ciro, " +
-      "randevu sayısı, iptal sayısı ve no-show sayısını döner. Ciro/kazanç ile ilgili her soru için kullan.",
+      "Belirtilen tarih aralığında iptal edilmemiş randevulardan elde edilen ciro, randevu sayısı ve " +
+      "iptal sayısını döner. Ciro/kazanç ile ilgili her soru için kullan.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -33,8 +33,8 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
   {
     name: "get_staff_performance",
     description:
-      "Belirli bir personelin, belirtilen tarih aralığındaki doluluk oranını, cirosunu ve no-show/iptal " +
-      "oranını döner. Personel performansıyla ilgili her soru için kullan.",
+      "Belirli bir personelin, belirtilen tarih aralığındaki doluluk oranını, cirosunu ve iptal oranını " +
+      "döner. Personel performansıyla ilgili her soru için kullan.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -48,7 +48,7 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
   {
     name: "get_customer_info",
     description:
-      "Bir müşterinin ziyaret geçmişini, toplam harcamasını, son ziyaret tarihini ve no-show sayısını döner. " +
+      "Bir müşterinin ziyaret geçmişini, toplam harcamasını ve son ziyaret tarihini döner. " +
       "Müşteri adı veya telefon numarasıyla arar. Belirli bir müşteriyle ilgili her soru için kullan.",
     parametersJsonSchema: {
       type: "object",
@@ -463,8 +463,6 @@ function rangeToUtc(from: string, to: string) {
   return { startUtc: `${from}T00:00:00+03:00`, endUtc: `${to}T23:59:59+03:00` };
 }
 
-const NO_SHOW_VALUES = ["no_show_notified", "no_show_silent"];
-
 async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const from = String(input.from ?? "");
   const to = String(input.to ?? "");
@@ -476,28 +474,24 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
 
   const { data } = await admin
     .from("appointments")
-    .select("status, attendance, appointment_services(planned_price, final_price)")
+    .select("status, appointment_services(planned_price, final_price)")
     .eq("business_id", ctx.businessId)
     .gte("starts_at", startUtc)
     .lte("starts_at", endUtc);
 
   const rows = data ?? [];
   let revenue = 0;
-  let cameCount = 0;
+  let appointmentCount = 0;
   let cancelledCount = 0;
-  let noShowCount = 0;
 
   for (const row of rows) {
     if (row.status === "cancelled") {
       cancelledCount++;
       continue;
     }
-    if (NO_SHOW_VALUES.includes(row.attendance ?? "")) noShowCount++;
-    if (row.attendance === "came") {
-      cameCount++;
-      for (const svc of row.appointment_services) {
-        revenue += Number(svc.final_price ?? svc.planned_price);
-      }
+    appointmentCount++;
+    for (const svc of row.appointment_services) {
+      revenue += Number(svc.final_price ?? svc.planned_price);
     }
   }
 
@@ -505,7 +499,7 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
     return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç randevu kaydı yok." });
   }
 
-  return JSON.stringify({ from, to, revenue, appointments_came: cameCount, cancelled: cancelledCount, no_show: noShowCount });
+  return JSON.stringify({ from, to, revenue, appointments: appointmentCount, cancelled: cancelledCount });
 }
 
 async function getPopularServices(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
@@ -590,7 +584,8 @@ async function getLostCustomers(input: Record<string, unknown>, ctx: ToolContext
     .from("appointments")
     .select("customer_id, starts_at, customer:customers(full_name)")
     .eq("business_id", ctx.businessId)
-    .eq("attendance", "came")
+    .neq("status", "cancelled")
+    .lt("starts_at", new Date().toISOString())
     .order("starts_at", { ascending: true });
 
   const byCustomer = new Map<string, { name: string; visits: string[] }>();
@@ -671,7 +666,7 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   const { startUtc, endUtc } = rangeToUtc(from, to);
   const { data: apptRows } = await admin
     .from("appointments")
-    .select("status, attendance, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
+    .select("status, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
     .eq("business_id", ctx.businessId)
     .gte("starts_at", startUtc)
     .lte("starts_at", endUtc);
@@ -679,26 +674,25 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   let revenue = 0;
   let bookedMinutes = 0;
   let totalAssignments = 0;
-  let noShowOrCancelled = 0;
+  let cancelledCount = 0;
 
   for (const row of apptRows ?? []) {
     for (const svc of row.appointment_services) {
       if (svc.staff_id !== staff.id) continue;
       totalAssignments++;
-      const isCancelled = row.status === "cancelled";
-      const isNoShow = NO_SHOW_VALUES.includes(row.attendance ?? "");
-      if (isCancelled || isNoShow) noShowOrCancelled++;
-      if (!isCancelled) {
-        const service = Array.isArray(svc.service) ? svc.service[0] : svc.service;
-        bookedMinutes += service?.duration_minutes ?? 0;
+      if (row.status === "cancelled") {
+        cancelledCount++;
+        continue;
       }
-      if (row.attendance === "came") revenue += Number(svc.final_price ?? svc.planned_price);
+      const service = Array.isArray(svc.service) ? svc.service[0] : svc.service;
+      bookedMinutes += service?.duration_minutes ?? 0;
+      revenue += Number(svc.final_price ?? svc.planned_price);
     }
   }
 
   const availableMinutes = await computeAvailableMinutes(admin, staff.id, from, to, staff.working_hours, staff.leave_dates ?? []);
   const occupancyPercent = availableMinutes > 0 ? Math.round((bookedMinutes / availableMinutes) * 100) : 0;
-  const noShowRatePercent = totalAssignments > 0 ? Math.round((noShowOrCancelled / totalAssignments) * 100) : 0;
+  const cancellationRatePercent = totalAssignments > 0 ? Math.round((cancelledCount / totalAssignments) * 100) : 0;
 
   if (totalAssignments === 0) {
     return JSON.stringify({ no_data: true, message: `${staff.full_name} için bu tarih aralığında hiç randevu yok.` });
@@ -710,7 +704,7 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
     to,
     revenue,
     occupancy_percent: occupancyPercent,
-    no_show_rate_percent: noShowRatePercent,
+    cancellation_rate_percent: cancellationRatePercent,
     total_assignments: totalAssignments,
   });
 }
@@ -742,10 +736,10 @@ async function getCustomerInfo(input: Record<string, unknown>, ctx: ToolContext)
   const customer = customers[0];
   const { data: visits } = await admin
     .from("appointments")
-    .select("starts_at, attendance, appointment_services(planned_price, final_price)")
+    .select("starts_at, appointment_services(planned_price, final_price)")
     .eq("business_id", ctx.businessId)
     .eq("customer_id", customer.id)
-    .eq("attendance", "came")
+    .neq("status", "cancelled")
     .order("starts_at", { ascending: false });
 
   const totalSpend = (visits ?? []).reduce(
@@ -759,7 +753,6 @@ async function getCustomerInfo(input: Record<string, unknown>, ctx: ToolContext)
     total_visits: (visits ?? []).length,
     total_spend: totalSpend,
     last_visit: visits && visits.length > 0 ? formatDateTR(visits[0].starts_at) : null,
-    no_show_count: customer.no_show_count,
     notes: customer.notes,
   });
 }

@@ -6,6 +6,7 @@ import type { Customer } from "@/types/database";
 type ApptRow = {
   customer_id: string;
   starts_at: string;
+  status: string;
   appointment_services: { planned_price: number; final_price: number | null }[];
 };
 
@@ -21,9 +22,9 @@ export default async function MusterilerPage() {
       .order("full_name", { ascending: true }),
     supabase
       .from("appointments")
-      .select("customer_id, starts_at, appointment_services(planned_price, final_price)")
+      .select("customer_id, starts_at, status, appointment_services(planned_price, final_price)")
       .eq("business_id", business.id)
-      .eq("attendance", "came"),
+      .neq("status", "cancelled"),
     supabase
       .from("action_objects")
       .select("related_customer_id")
@@ -55,7 +56,6 @@ export default async function MusterilerPage() {
       id: c.id,
       full_name: c.full_name,
       phone: c.phone,
-      noShowCount: c.no_show_count,
       totalSpent: stat?.totalSpent ?? 0,
       lastVisitAt: stat?.lastVisitAt ?? null,
       hasAiFlag: aiFlaggedIds.has(c.id),

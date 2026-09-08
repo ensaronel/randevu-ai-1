@@ -19,7 +19,6 @@ type ApptRow = {
   id: string;
   starts_at: string;
   status: string;
-  attendance: string | null;
   appointment_services: ApptServiceRow[];
 };
 
@@ -46,7 +45,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, attendance, appointment_services(planned_price, final_price, adjustment_note, service:services(name), staff:staff(full_name))"
+        "id, starts_at, status, appointment_services(planned_price, final_price, adjustment_note, service:services(name), staff:staff(full_name))"
       )
       .eq("business_id", business.id)
       .eq("customer_id", id)
@@ -66,7 +65,6 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     id: a.id,
     starts_at: a.starts_at,
     status: a.status,
-    attendance: a.attendance,
     services: a.appointment_services.map((svc) => ({
       name: one(svc.service)?.name ?? "Hizmet",
       staffName: one(svc.staff)?.full_name ?? null,
@@ -75,13 +73,13 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     })),
   }));
 
-  const cameVisits = appointments.filter((a) => a.attendance === "came");
-  const totalSpent = cameVisits.reduce(
+  const visits = appointments.filter((a) => a.status !== "cancelled");
+  const totalSpent = visits.reduce(
     (sum, a) => sum + a.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
     0
   );
-  // appointments zaten starts_at'e göre azalan sıralı geldiği için ilk "came" kayıt son ziyarettir.
-  const lastVisitAt = cameVisits[0]?.starts_at ?? null;
+  // appointments zaten starts_at'e göre azalan sıralı geldiği için ilk kayıt son ziyarettir.
+  const lastVisitAt = visits[0]?.starts_at ?? null;
 
   const actionHistory: ActionHistoryItem[] = (actionData ?? []).map((a) => ({
     id: a.id,
@@ -102,12 +100,11 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
           customer={customer}
           staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name, status: s.status }))}
           totalSpent={totalSpent}
-          visitCount={cameVisits.length}
+          visitCount={visits.length}
           lastVisitAt={lastVisitAt}
           badges={{
             retentionRisk: hasPendingRetentionRisk,
             rhythmInvite: hasPendingRhythmInvite,
-            frequentNoShow: customer.no_show_count >= 2,
           }}
           appointments={appointmentHistory}
           actionHistory={actionHistory}

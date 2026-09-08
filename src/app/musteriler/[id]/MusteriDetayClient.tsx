@@ -10,7 +10,6 @@ export interface AppointmentHistoryItem {
   id: string;
   starts_at: string;
   status: string;
-  attendance: string | null;
   services: { name: string; staffName: string | null; price: number; adjustmentNote: string | null }[];
 }
 
@@ -38,12 +37,6 @@ const STATUS_LABELS: Record<string, string> = {
   auto_sent: "Otomatik Gönderildi",
 };
 
-const ATTENDANCE_LABELS: Record<string, { label: string; tone: "good" | "bad" | "muted" }> = {
-  came: { label: "Geldi", tone: "good" },
-  no_show_notified: { label: "Haber Verdi", tone: "muted" },
-  no_show_silent: { label: "Habersiz", tone: "bad" },
-};
-
 export default function MusteriDetayClient({
   customer,
   staffList,
@@ -59,7 +52,7 @@ export default function MusteriDetayClient({
   totalSpent: number;
   visitCount: number;
   lastVisitAt: string | null;
-  badges: { retentionRisk: boolean; rhythmInvite: boolean; frequentNoShow: boolean };
+  badges: { retentionRisk: boolean; rhythmInvite: boolean };
   appointments: AppointmentHistoryItem[];
   actionHistory: ActionHistoryItem[];
 }) {
@@ -126,7 +119,7 @@ export default function MusteriDetayClient({
     }
   }
 
-  const hasAnyBadge = badges.retentionRisk || badges.rhythmInvite || badges.frequentNoShow;
+  const hasAnyBadge = badges.retentionRisk || badges.rhythmInvite;
 
   return (
     <div className="flex flex-col gap-4">
@@ -152,9 +145,6 @@ export default function MusteriDetayClient({
           {badges.rhythmInvite && (
             <Badge tone="accent" text="AI: Alışılmış randevu zamanı yaklaşıyor, bekleyen bir davet önerisi var." />
           )}
-          {badges.frequentNoShow && (
-            <Badge tone="bad" text={`Sık habersiz gelmeme: ${customer.no_show_count} kez`} />
-          )}
         </div>
       )}
 
@@ -163,11 +153,6 @@ export default function MusteriDetayClient({
         <CustomerStat icon="check" label="Ziyaret sayısı" value={String(visitCount)} tone="accentSoft" />
         <CustomerStat icon="clock" label="Son ziyaret" value={lastVisitAt ? formatDateTR(lastVisitAt) : "—"} tone="block2" />
       </div>
-      {visitCount === 0 && appointments.some((a) => a.status !== "cancelled") && (
-        <p className="text-[12px] text-ink-muted -mt-2">
-          Bu sayılar yalnızca Gün Sonu&apos;nda &quot;geldi&quot; olarak onaylanan randevuları kapsar — aşağıdaki randevular henüz onaylanmadı.
-        </p>
-      )}
 
       <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Profil</p>
@@ -272,7 +257,6 @@ export default function MusteriDetayClient({
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Randevu Geçmişi</p>
         {appointments.length === 0 && <p className="text-[13px] text-ink-muted">Henüz randevu kaydı yok.</p>}
         {appointments.map((a) => {
-          const attendance = a.attendance ? ATTENDANCE_LABELS[a.attendance] : null;
           const total = a.services.reduce((s, svc) => s + svc.price, 0);
           return (
             <div key={a.id} className="bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-1.5">
@@ -286,17 +270,9 @@ export default function MusteriDetayClient({
                 <p className="text-[12.5px] text-ink-muted truncate">
                   {a.services.map((s) => s.name).join(", ")}
                 </p>
-                {a.status === "cancelled" ? (
+                {a.status === "cancelled" && (
                   <span className="text-[11px] font-bold text-bad shrink-0">İptal</span>
-                ) : attendance ? (
-                  <span
-                    className={`text-[11px] font-bold shrink-0 ${
-                      attendance.tone === "good" ? "text-good-ink" : attendance.tone === "bad" ? "text-bad" : "text-ink-muted"
-                    }`}
-                  >
-                    {attendance.label}
-                  </span>
-                ) : null}
+                )}
               </div>
             </div>
           );

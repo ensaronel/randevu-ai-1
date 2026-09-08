@@ -43,19 +43,6 @@ async function loadUpcomingToday(
   return (data ?? []) as unknown as UpcomingApptRow[];
 }
 
-async function loadTodayReconciled(
-  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  businessId: string
-) {
-  const { data } = await supabase
-    .from("daily_financial_summaries")
-    .select("reconciled_at")
-    .eq("business_id", businessId)
-    .eq("summary_date", dateKeyTR(0))
-    .maybeSingle();
-  return !!data?.reconciled_at;
-}
-
 async function loadPendingSuggestions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
   businessId: string
@@ -90,6 +77,7 @@ async function loadTodaysFinanceNote(
 
 type ApptServiceRow = {
   planned_price: number;
+  final_price: number | null;
   staff_id: string;
   service: { duration_minutes: number } | { duration_minutes: number }[] | null;
 };
@@ -113,7 +101,7 @@ async function loadDayTotals(
 
   const { data } = await supabase
     .from("appointments")
-    .select("status, appointment_services(planned_price, staff_id, service:services(duration_minutes))")
+    .select("status, appointment_services(planned_price, final_price, staff_id, service:services(duration_minutes))")
     .eq("business_id", businessId)
     .gte("starts_at", startUtc)
     .lt("starts_at", endUtc);
@@ -123,7 +111,8 @@ async function loadDayTotals(
   const cancelled = appointments.filter((a) => a.status === "cancelled");
 
   const revenue = active.reduce(
-    (sum, a) => sum + a.appointment_services.reduce((s, svc) => s + Number(svc.planned_price), 0),
+    (sum, a) =>
+      sum + a.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
     0
   );
 
@@ -156,13 +145,12 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [today, financeNote, suggestions, upcomingToday, todayReconciled, weekTotals] =
+  const [today, financeNote, suggestions, upcomingToday, weekTotals] =
     await Promise.all([
       loadDayTotals(supabase, business.id, 0),
       loadTodaysFinanceNote(supabase, business.id),
       loadPendingSuggestions(supabase, business.id),
       loadUpcomingToday(supabase, business.id),
-      loadTodayReconciled(supabase, business.id),
       Promise.all(weekOffsets.map((offset) => loadDayTotals(supabase, business.id, offset))),
     ]);
   const weekChart = weekTotals.map((t, i) => {
@@ -205,8 +193,6 @@ export default async function DashboardPage() {
     onLeave: s.leave_dates?.includes(dateKeyTR(0)) ?? false,
     working: !isClosedToday && !!s.working_hours?.[weekdayKeyTR(0)],
   }));
-
-  const showReconcileReminder = !isClosedToday && today.appointmentCount > 0 && !todayReconciled;
 
   return (
     <AppShell businessName={business.name}>
@@ -297,21 +283,6 @@ export default async function DashboardPage() {
       </div>
 
       <WeekRevenueChart data={weekChart} />
-
-      {showReconcileReminder && (
-        <Link
-          href="/gun-sonu"
-          className="bg-accent2-soft border border-accent2/30 rounded-2xl p-4 flex items-center justify-between gap-3"
-        >
-          <div>
-            <p className="text-[12.5px] font-bold text-accent2-ink uppercase tracking-wide">Gün Sonu</p>
-            <p className="text-[13.5px] text-ink">Bugünü henüz kapatmadınız — ciro eksik görünebilir.</p>
-          </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent2-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </Link>
-      )}
 
       {/* Danışman sahnesi — referans 3'teki buyuk illustrasyonlu "start your
           day" karti gibi gercek bir sahne: buyuk maskot, zemin/gokyuzu

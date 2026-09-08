@@ -140,6 +140,21 @@ create table daily_financial_summaries (
 );
 
 -- ============================================================
+-- Kasa gider kalemleri — Kasa sayfasında kalem kalem gider takibi
+-- (daily_financial_summaries'in tek toplam sayısı yerine geçti)
+-- ============================================================
+create table expense_items (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  expense_date date not null,
+  description text not null,
+  amount numeric(12,2) not null,
+  created_at timestamptz not null default now()
+);
+
+create index idx_expense_items_business_date on expense_items(business_id, expense_date);
+
+-- ============================================================
 -- AI aksiyon nesnesi — öneri/gerekçe/onay/sonuç döngüsü (güven eğrisi altyapısı)
 -- ============================================================
 create table action_objects (
@@ -247,6 +262,7 @@ alter table customers enable row level security;
 alter table appointments enable row level security;
 alter table appointment_services enable row level security;
 alter table daily_financial_summaries enable row level security;
+alter table expense_items enable row level security;
 alter table action_objects enable row level security;
 alter table waitlist_entries enable row level security;
 alter table whatsapp_message_log enable row level security;
@@ -295,6 +311,10 @@ create policy "own appointment_services" on appointment_services
   );
 
 create policy "own daily_financial_summaries" on daily_financial_summaries
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());
+
+create policy "own expense_items" on expense_items
   for all using (business_id = current_business_id())
   with check (business_id = current_business_id());
 

@@ -15,7 +15,7 @@ export interface StaffItem {
   revenue: number;
   commission: number;
   occupancyPercent: number;
-  noShowRatePercent: number;
+  cancellationRatePercent: number;
 }
 
 const DEFAULT_HOURS: WorkingHours = Object.fromEntries(
@@ -146,9 +146,9 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
                   <div className="flex gap-4">
                     <Metric label="Bu ay ciro" value={formatTL(member.revenue)} />
                     <Metric
-                      label="No-show/iptal"
-                      value={`%${member.noShowRatePercent}`}
-                      warn={member.noShowRatePercent > 25}
+                      label="İptal oranı"
+                      value={`%${member.cancellationRatePercent}`}
+                      warn={member.cancellationRatePercent > 25}
                     />
                   </div>
                   <span className="text-[11.5px] text-ink-muted">

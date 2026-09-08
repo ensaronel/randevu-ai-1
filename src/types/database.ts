@@ -101,6 +101,15 @@ export interface DailyFinancialSummary {
   created_at: string;
 }
 
+export interface ExpenseItem {
+  id: string;
+  business_id: string;
+  expense_date: string;
+  description: string;
+  amount: number;
+  created_at: string;
+}
+
 export interface ActionObject {
   id: string;
   business_id: string;

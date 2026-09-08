@@ -7,23 +7,18 @@ type SupabaseClient = Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supab
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
-interface CommissionRow {
-  attendance: string | null;
+interface AppointmentRow {
+  status: string;
   appointment_services: {
     planned_price: number;
     final_price: number | null;
     staff_id: string;
     commission_rate_snapshot: number | null;
+    service: { duration_minutes: number } | { duration_minutes: number }[] | null;
   }[];
 }
 
-interface AttendanceRow {
-  status: string;
-  attendance: string | null;
-  appointment_services: { staff_id: string; service: { duration_minutes: number } | { duration_minutes: number }[] | null }[];
-}
-
-function serviceDuration(service: AttendanceRow["appointment_services"][number]["service"]): number {
+function serviceDuration(service: AppointmentRow["appointment_services"][number]["service"]): number {
   if (!service) return 0;
   return Array.isArray(service) ? service[0]?.duration_minutes ?? 0 : service.duration_minutes;
 }
@@ -36,8 +31,8 @@ export interface StaffMonthlyMetrics {
   availableMinutes: number;
   occupancyPercent: number;
   totalAssignments: number;
-  noShowOrCancelledCount: number;
-  noShowRatePercent: number;
+  cancelledCount: number;
+  cancellationRatePercent: number;
 }
 
 /** Ayın 1'inden bugüne (dahil) kaç gün geçtiğini, personelin o günkü izinli olup olmadığını hesaba katarak müsait dakikayı bulur. */
@@ -74,58 +69,43 @@ export async function loadStaffMonthlyMetrics(
 ): Promise<StaffMonthlyMetrics[]> {
   const { startUtc, endUtc } = monthRangeUtcISO();
 
-  const [{ data: commissionData }, { data: attendanceData }] = await Promise.all([
-    supabase
-      .from("appointments")
-      .select("attendance, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot)")
-      .eq("business_id", business.id)
-      .eq("attendance", "came")
-      .gte("starts_at", startUtc)
-      .lt("starts_at", endUtc),
-    supabase
-      .from("appointments")
-      .select("status, attendance, appointment_services(staff_id, service:services(duration_minutes))")
-      .eq("business_id", business.id)
-      .gte("starts_at", startUtc)
-      .lt("starts_at", endUtc),
-  ]);
+  const { data } = await supabase
+    .from("appointments")
+    .select(
+      "status, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot, service:services(duration_minutes))"
+    )
+    .eq("business_id", business.id)
+    .gte("starts_at", startUtc)
+    .lt("starts_at", endUtc);
 
-  const commissionRows = (commissionData ?? []) as unknown as CommissionRow[];
-  const attendanceRows = (attendanceData ?? []) as unknown as AttendanceRow[];
-  const NO_SHOW_VALUES = ["no_show_notified", "no_show_silent"];
+  const rows = (data ?? []) as unknown as AppointmentRow[];
 
   return staffList.map((staff) => {
     let revenue = 0;
     let commission = 0;
-    for (const row of commissionRows) {
+    let bookedMinutes = 0;
+    let totalAssignments = 0;
+    let cancelledCount = 0;
+
+    for (const row of rows) {
       for (const svc of row.appointment_services) {
         if (svc.staff_id !== staff.id) continue;
+        totalAssignments++;
+        if (row.status === "cancelled") {
+          cancelledCount++;
+          continue;
+        }
         const price = Number(svc.final_price ?? svc.planned_price);
         const rate = svc.commission_rate_snapshot ?? staff.commission_rate;
         revenue += price;
         commission += price * (Number(rate) / 100);
-      }
-    }
-
-    let bookedMinutes = 0;
-    let totalAssignments = 0;
-    let noShowOrCancelledCount = 0;
-    for (const row of attendanceRows) {
-      for (const svc of row.appointment_services) {
-        if (svc.staff_id !== staff.id) continue;
-        totalAssignments++;
-        if (row.status === "cancelled" || NO_SHOW_VALUES.includes(row.attendance ?? "")) {
-          noShowOrCancelledCount++;
-        }
-        if (row.status !== "cancelled") {
-          bookedMinutes += serviceDuration(svc.service);
-        }
+        bookedMinutes += serviceDuration(svc.service);
       }
     }
 
     const availableMinutes = computeAvailableMinutesMonthToDate(staff, business);
     const occupancyPercent = availableMinutes > 0 ? Math.round((bookedMinutes / availableMinutes) * 100) : 0;
-    const noShowRatePercent = totalAssignments > 0 ? Math.round((noShowOrCancelledCount / totalAssignments) * 100) : 0;
+    const cancellationRatePercent = totalAssignments > 0 ? Math.round((cancelledCount / totalAssignments) * 100) : 0;
 
     return {
       staffId: staff.id,
@@ -135,8 +115,8 @@ export async function loadStaffMonthlyMetrics(
       availableMinutes,
       occupancyPercent,
       totalAssignments,
-      noShowOrCancelledCount,
-      noShowRatePercent,
+      cancelledCount,
+      cancellationRatePercent,
     };
   });
 }

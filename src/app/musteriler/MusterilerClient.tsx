@@ -10,7 +10,6 @@ export interface CustomerListItem {
   id: string;
   full_name: string;
   phone: string;
-  noShowCount: number;
   totalSpent: number;
   lastVisitAt: string | null;
   hasAiFlag: boolean;
@@ -131,11 +130,6 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
                 {c.hasAiFlag && (
                   <span className="text-[10px] font-bold text-accent bg-accent-soft px-1.5 py-0.5 rounded-full shrink-0">
                     AI
-                  </span>
-                )}
-                {c.noShowCount >= 2 && (
-                  <span className="text-[10px] font-bold text-bad bg-bad-soft px-1.5 py-0.5 rounded-full shrink-0">
-                    ⚠
                   </span>
                 )}
               </div>

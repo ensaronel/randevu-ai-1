@@ -3,9 +3,29 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, dayRangeUtcISO } from "@/lib/date";
 import { generateFinanceCommentary } from "@/lib/ai/financeCommentary";
 
+type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
+
+/** İptal edilmeyen randevuların (final_price varsa o, yoksa planned_price) toplamı — uygulama genelinde tek ciro kuralı. */
+async function computeRevenueForRange(admin: AdminClient, businessId: string, startUtc: string, endUtc: string): Promise<number> {
+  const { data } = await admin
+    .from("appointments")
+    .select("status, appointment_services(planned_price, final_price)")
+    .eq("business_id", businessId)
+    .gte("starts_at", startUtc)
+    .lt("starts_at", endUtc);
+
+  return (data ?? [])
+    .filter((row) => row.status !== "cancelled")
+    .reduce(
+      (sum, row) =>
+        sum + row.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
+      0
+    );
+}
+
 // "Anlamlı sapma" eşiği — bunun altındaki farklar için yorum üretilmez (gürültü olmasın diye).
 const DEVIATION_THRESHOLD_PERCENT = 25;
-// Aylık ortalamayı anlamlı saymak için gereken minimum mutabakatlı gün sayısı.
+// Aylık ortalamayı anlamlı saymak için ay başından bu yana geçmesi gereken minimum gün sayısı.
 const MIN_MONTHLY_SAMPLE_SIZE = 3;
 
 export interface NightlySummaryResult {
@@ -24,9 +44,6 @@ export async function runNightlySummaryForBusiness(businessId: string): Promise<
   const admin = createAdminSupabaseClient();
 
   const yesterdayKey = dateKeyTR(-1);
-  const lastWeekKey = dateKeyTR(-8);
-  const [year, month] = yesterdayKey.split("-");
-  const monthStartKey = `${year}-${month}-01`;
 
   const { data: todaysNotes } = await admin
     .from("action_objects")
@@ -40,41 +57,25 @@ export async function runNightlySummaryForBusiness(businessId: string): Promise<
     return { businessId, created: false, reason: "bugün için zaten bir finans notu oluşturulmuş" };
   }
 
-  const { data: yesterdaySummary } = await admin
-    .from("daily_financial_summaries")
-    .select("actual_revenue, reconciled_at")
-    .eq("business_id", businessId)
-    .eq("summary_date", yesterdayKey)
-    .maybeSingle();
+  const yesterdayRange = dayRangeUtcISO(-1);
+  const yesterdayRevenue = await computeRevenueForRange(admin, businessId, yesterdayRange.startUtc, yesterdayRange.endUtc);
 
-  if (!yesterdaySummary || !yesterdaySummary.reconciled_at) {
-    return { businessId, created: false, reason: "dün için gün sonu mutabakatı yapılmamış" };
+  const lastWeekRange = dayRangeUtcISO(-8);
+  const lastWeekRevenue = await computeRevenueForRange(admin, businessId, lastWeekRange.startUtc, lastWeekRange.endUtc);
+
+  // Ay başından düne kadar (dün hariç, o zaten ayrı karşılaştırılıyor) günlük ortalama ciro.
+  const dayOfMonth = Number(yesterdayKey.split("-")[2]);
+  const daysBeforeYesterdayInMonth = dayOfMonth - 1;
+  let monthlyAverageRevenue: number | null = null;
+  if (daysBeforeYesterdayInMonth >= MIN_MONTHLY_SAMPLE_SIZE) {
+    const monthStartUtc = dayRangeUtcISO(-dayOfMonth).startUtc;
+    const monthEndUtc = yesterdayRange.startUtc;
+    const monthRevenue = await computeRevenueForRange(admin, businessId, monthStartUtc, monthEndUtc);
+    monthlyAverageRevenue = monthRevenue / daysBeforeYesterdayInMonth;
   }
-  const yesterdayRevenue = Number(yesterdaySummary.actual_revenue);
-
-  const { data: lastWeekSummary } = await admin
-    .from("daily_financial_summaries")
-    .select("actual_revenue")
-    .eq("business_id", businessId)
-    .eq("summary_date", lastWeekKey)
-    .not("reconciled_at", "is", null)
-    .maybeSingle();
-  const lastWeekRevenue = lastWeekSummary ? Number(lastWeekSummary.actual_revenue) : null;
-
-  const { data: monthRows } = await admin
-    .from("daily_financial_summaries")
-    .select("actual_revenue")
-    .eq("business_id", businessId)
-    .gte("summary_date", monthStartKey)
-    .lt("summary_date", yesterdayKey)
-    .not("reconciled_at", "is", null);
-  const monthlyAverageRevenue =
-    monthRows && monthRows.length >= MIN_MONTHLY_SAMPLE_SIZE
-      ? monthRows.reduce((sum, r) => sum + Number(r.actual_revenue), 0) / monthRows.length
-      : null;
 
   const diffs = [
-    lastWeekRevenue !== null ? percentDiff(yesterdayRevenue, lastWeekRevenue) : null,
+    percentDiff(yesterdayRevenue, lastWeekRevenue),
     monthlyAverageRevenue !== null ? percentDiff(yesterdayRevenue, monthlyAverageRevenue) : null,
   ].filter((d): d is number => d !== null);
 
@@ -93,8 +94,10 @@ export async function runNightlySummaryForBusiness(businessId: string): Promise<
     monthlyAverageRevenue,
   });
 
-  const reasoningParts = [`Dün: ${Math.round(yesterdayRevenue)} TL`];
-  if (lastWeekRevenue !== null) reasoningParts.push(`geçen hafta aynı gün: ${Math.round(lastWeekRevenue)} TL`);
+  const reasoningParts = [
+    `Dün: ${Math.round(yesterdayRevenue)} TL`,
+    `geçen hafta aynı gün: ${Math.round(lastWeekRevenue)} TL`,
+  ];
   if (monthlyAverageRevenue !== null) reasoningParts.push(`aylık ortalama: ${Math.round(monthlyAverageRevenue)} TL`);
 
   const { error: insertError } = await admin.from("action_objects").insert({

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTimeTR, formatTL } from "@/lib/date";
 import EmptyState from "@/components/EmptyState";
-import type { Attendance } from "@/types/database";
+import type { ExpenseItem } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
 
@@ -28,11 +28,10 @@ function parseTLInput(value: string): number {
   return Number(trimmed.replace(/\./g, ""));
 }
 
-export interface GunSonuAppointment {
+export interface KasaAppointment {
   id: string;
   starts_at: string;
   status: string;
-  attendance: Attendance;
   customer: OneOrMany<{ full_name: string; phone: string }>;
   appointment_services: {
     id: string;
@@ -49,53 +48,26 @@ function one<T>(value: OneOrMany<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-const ATTENDANCE_OPTIONS: { value: Attendance; label: string }[] = [
-  { value: "came", label: "Geldi" },
-  { value: "no_show_notified", label: "Haber Verdi" },
-  { value: "no_show_silent", label: "Habersiz" },
-];
-
-export default function GunSonuClient({
+export default function KasaClient({
   appointments,
   todayKey,
-  initialReconciledAt,
-  initialActualRevenue,
-  initialExpenses,
+  initialExpenseItems,
 }: {
-  appointments: GunSonuAppointment[];
+  appointments: KasaAppointment[];
   todayKey: string;
-  initialReconciledAt: string | null;
-  initialActualRevenue: number | null;
-  initialExpenses: number;
+  initialExpenseItems: ExpenseItem[];
 }) {
   const router = useRouter();
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
-  const [reconciling, setReconciling] = useState(false);
-  const [reconciledAt, setReconciledAt] = useState(initialReconciledAt);
-  const [actualRevenue, setActualRevenue] = useState(initialActualRevenue);
-  const [expenses, setExpenses] = useState(initialExpenses);
-  const [expenseDraft, setExpenseDraft] = useState(String(initialExpenses || ""));
-  const [isStale, setIsStale] = useState(false);
 
-  async function setAttendance(appointmentId: string, attendance: Attendance) {
-    setSavingId(appointmentId);
-    try {
-      const res = await fetch(`/api/appointments/${appointmentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attendance }),
-      });
-      if (res.ok) {
-        if (reconciledAt) setIsStale(true);
-        router.refresh();
-      }
-    } finally {
-      setSavingId(null);
-    }
-  }
+  const [expenseItems, setExpenseItems] = useState(initialExpenseItems);
+  const [expenseDescDraft, setExpenseDescDraft] = useState("");
+  const [expenseAmountDraft, setExpenseAmountDraft] = useState("");
+  const [addingExpense, setAddingExpense] = useState(false);
+  const [removingExpenseId, setRemovingExpenseId] = useState<string | null>(null);
 
   async function savePrice(serviceRowId: string) {
     const value = parseTLInput(priceDraft);
@@ -111,7 +83,6 @@ export default function GunSonuClient({
       if (res.ok) {
         setEditingServiceId(null);
         setNoteDraft("");
-        if (reconciledAt) setIsStale(true);
         router.refresh();
       }
     } finally {
@@ -119,28 +90,42 @@ export default function GunSonuClient({
     }
   }
 
-  async function reconcileDay() {
-    const parsedExpenses = parseTLInput(expenseDraft) || 0;
-    setReconciling(true);
+  async function addExpense() {
+    const amount = parseTLInput(expenseAmountDraft);
+    const description = expenseDescDraft.trim();
+    if (!description || Number.isNaN(amount) || amount < 0) return;
+
+    setAddingExpense(true);
     try {
-      const res = await fetch("/api/gun-sonu/reconcile", {
+      const res = await fetch("/api/kasa/expenses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: todayKey, expenses: parsedExpenses }),
+        body: JSON.stringify({ expense_date: todayKey, description, amount }),
       });
       if (res.ok) {
         const { data } = await res.json();
-        setReconciledAt(data.reconciled_at);
-        setActualRevenue(data.actual_revenue);
-        setExpenses(data.expenses);
-        setIsStale(false);
+        setExpenseItems((prev) => [...prev, data]);
+        setExpenseDescDraft("");
+        setExpenseAmountDraft("");
       }
     } finally {
-      setReconciling(false);
+      setAddingExpense(false);
     }
   }
 
-  const unmarkedCount = appointments.filter((a) => !a.attendance).length;
+  async function removeExpense(id: string) {
+    setRemovingExpenseId(id);
+    try {
+      const res = await fetch(`/api/kasa/expenses/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setExpenseItems((prev) => prev.filter((e) => e.id !== id));
+      }
+    } finally {
+      setRemovingExpenseId(null);
+    }
+  }
+
+  const expenseTotal = expenseItems.reduce((sum, e) => sum + Number(e.amount), 0);
 
   return (
     <>
@@ -218,78 +203,64 @@ export default function GunSonuClient({
                   );
                 })}
               </div>
-
-              <div className="flex gap-1.5 pt-1">
-                {ATTENDANCE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setAttendance(appt.id, opt.value)}
-                    disabled={savingId === appt.id}
-                    className={`flex-1 rounded-lg py-1.5 text-[12px] font-semibold border ${
-                      appt.attendance === opt.value
-                        ? opt.value === "came"
-                          ? "bg-good-ink/10 border-good-ink text-good-ink"
-                          : "bg-bad/10 border-bad text-bad"
-                        : "border-border text-ink-muted"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
             </div>
           );
         })}
       </div>
 
-      {appointments.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-1">
-          <div className="flex items-center justify-between gap-2">
-            <label className="text-[12.5px] text-ink-muted" htmlFor="gun-sonu-expenses">
-              Bugünkü giderler (TL)
-            </label>
-            <input
-              id="gun-sonu-expenses"
-              inputMode="decimal"
-              value={expenseDraft}
-              onChange={(e) => setExpenseDraft(e.target.value)}
-              placeholder="0"
-              className="w-24 border border-border rounded px-2 py-1 text-right text-[13px]"
-            />
-          </div>
+      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3 mt-1">
+        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugünkü Giderler</p>
 
-          {reconciledAt ? (
-            <>
-              {isStale && (
-                <p className="text-[12.5px] text-bad bg-bad/10 border border-bad/30 rounded-lg px-2.5 py-1.5">
-                  Bu gün kapatılmıştı, rakamlar güncel değil — aşağıdan Yeniden Hesapla&apos;ya bas.
-                </p>
-              )}
-              <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Gün Kapatıldı</p>
-              <p className="text-[21px] font-semibold font-display">{formatTL(actualRevenue ?? 0)}</p>
-              <p className="text-[13px] text-ink-muted">
-                Net kâr (ciro - gider): <span className="font-semibold text-ink">{formatTL((actualRevenue ?? 0) - expenses)}</span>
-              </p>
-              <button onClick={reconcileDay} disabled={reconciling} className="text-[12.5px] text-accent font-semibold self-start">
-                Yeniden Hesapla
-              </button>
-            </>
-          ) : (
-            <>
-              {unmarkedCount > 0 && (
-                <p className="text-[12.5px] text-ink-muted">{unmarkedCount} randevu için henüz durum işaretlenmedi.</p>
-              )}
-              <button
-                onClick={reconcileDay}
-                disabled={reconciling}
-                className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
-              >
-                {reconciling ? "..." : "Günü Kapat"}
-              </button>
-            </>
-          )}
+        {expenseItems.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {expenseItems.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-2 text-[13px]">
+                <span className="text-ink truncate">{e.description}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-semibold font-display">{formatTL(Number(e.amount))}</span>
+                  <button
+                    onClick={() => removeExpense(e.id)}
+                    disabled={removingExpenseId === e.id}
+                    aria-label="Gideri sil"
+                    className="text-ink-muted disabled:opacity-50"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
+              <span>Toplam</span>
+              <span className="font-display">{formatTL(expenseTotal)}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5">
+          <input
+            value={expenseDescDraft}
+            onChange={(e) => setExpenseDescDraft(e.target.value)}
+            placeholder="Açıklama (ör. Şampuan alımı)"
+            className="flex-1 min-w-0 border border-border rounded-lg px-2.5 py-2 text-[13px]"
+          />
+          <input
+            value={expenseAmountDraft}
+            onChange={(e) => setExpenseAmountDraft(e.target.value)}
+            inputMode="decimal"
+            placeholder="Tutar"
+            className="w-20 border border-border rounded-lg px-2 py-2 text-right text-[13px]"
+          />
+          <button
+            onClick={addExpense}
+            disabled={addingExpense || !expenseDescDraft.trim() || !expenseAmountDraft.trim()}
+            className="bg-accent text-white rounded-lg px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
+          >
+            Ekle
+          </button>
         </div>
-      )}
+      </div>
     </>
   );
 }
