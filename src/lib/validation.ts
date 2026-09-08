@@ -67,13 +67,24 @@ export const appointmentUpdateSchema = z.object({
 export const appointmentServiceUpdateSchema = z.object({
   final_price: z.number().nonnegative().optional().nullable(),
   adjustment_note: z.string().trim().max(500).optional().nullable(),
+  payment_method: z.enum(["nakit", "kart"]).optional().nullable(),
 });
+
+const expenseCategorySchema = z.enum(["kira", "fatura", "malzeme", "bakim", "diger"]).optional().nullable();
 
 export const fixedExpenseCreateSchema = z.object({
   description: z.string().trim().min(1).max(200),
   monthly_amount: z.number().nonnegative(),
+  category: expenseCategorySchema,
 });
 export const fixedExpenseUpdateSchema = fixedExpenseCreateSchema.partial();
+
+export const oneTimeExpenseCreateSchema = z.object({
+  expense_date: z.iso.date(),
+  description: z.string().trim().min(1).max(200),
+  amount: z.number().nonnegative(),
+  category: expenseCategorySchema,
+});
 
 export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),

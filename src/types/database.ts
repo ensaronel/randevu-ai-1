@@ -80,6 +80,8 @@ export interface Appointment {
   updated_at: string;
 }
 
+export type PaymentMethod = "nakit" | "kart" | null;
+
 export interface AppointmentService {
   id: string;
   appointment_id: string;
@@ -88,6 +90,7 @@ export interface AppointmentService {
   planned_price: number;
   final_price: number | null;
   adjustment_note: string | null;
+  payment_method: PaymentMethod;
   created_at: string;
 }
 
@@ -101,13 +104,26 @@ export interface DailyFinancialSummary {
   created_at: string;
 }
 
+export type ExpenseCategory = "kira" | "fatura" | "malzeme" | "bakim" | "diger" | null;
+
 export interface FixedExpense {
   id: string;
   business_id: string;
   description: string;
   monthly_amount: number;
+  category: ExpenseCategory;
   created_at: string;
   updated_at: string;
+}
+
+export interface OneTimeExpense {
+  id: string;
+  business_id: string;
+  expense_date: string;
+  description: string;
+  amount: number;
+  category: ExpenseCategory;
+  created_at: string;
 }
 
 export interface ActionObject {

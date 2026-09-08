@@ -119,6 +119,7 @@ create table appointment_services (
   adjustment_note text,                                 -- "50 TL oje eklendi" / "30 TL indirim"
   commission_rate_snapshot numeric(5,2),                -- randevu anındaki staff.commission_rate — sonradan oran
                                                          -- değişse bile geçmiş prim hesabı bozulmasın diye donduruldu
+  payment_method text check (payment_method in ('nakit','kart') or payment_method is null), -- Kasa'da nakit/kart kırılımı için
   created_at timestamptz not null default now()
 );
 
@@ -149,11 +150,30 @@ create table fixed_expenses (
   business_id uuid not null references businesses(id) on delete cascade,
   description text not null,
   monthly_amount numeric(12,2) not null,
+  category text check (category in ('kira','fatura','malzeme','bakim','diger') or category is null),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index idx_fixed_expenses_business on fixed_expenses(business_id);
+
+-- ============================================================
+-- Kasa tek seferlik giderleri — kira gibi tekrarlayan değil, bir kerelik
+-- (tamirat, ekipman alımı gibi) giderler. fixed_expenses'ten farkı: aylık
+-- tutar değil, belirli bir tarihte tek kalem tutar; tarih aralığı
+-- hesaplayıcısı sadece seçilen aralığa düşenleri toplar (oranlama yok).
+-- ============================================================
+create table one_time_expenses (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  expense_date date not null,
+  description text not null,
+  amount numeric(12,2) not null,
+  category text check (category in ('kira','fatura','malzeme','bakim','diger') or category is null),
+  created_at timestamptz not null default now()
+);
+
+create index idx_one_time_expenses_business_date on one_time_expenses(business_id, expense_date);
 
 -- ============================================================
 -- AI aksiyon nesnesi — öneri/gerekçe/onay/sonuç döngüsü (güven eğrisi altyapısı)
@@ -264,6 +284,7 @@ alter table appointments enable row level security;
 alter table appointment_services enable row level security;
 alter table daily_financial_summaries enable row level security;
 alter table fixed_expenses enable row level security;
+alter table one_time_expenses enable row level security;
 alter table action_objects enable row level security;
 alter table waitlist_entries enable row level security;
 alter table whatsapp_message_log enable row level security;
@@ -316,6 +337,10 @@ create policy "own daily_financial_summaries" on daily_financial_summaries
   with check (business_id = current_business_id());
 
 create policy "own fixed_expenses" on fixed_expenses
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());
+
+create policy "own one_time_expenses" on one_time_expenses
   for all using (business_id = current_business_id())
   with check (business_id = current_business_id());
 

@@ -38,6 +38,7 @@ type ApptServiceRow = {
   planned_price: number;
   final_price: number | null;
   adjustment_note: string | null;
+  payment_method: "nakit" | "kart" | null;
   service: ServiceInfo | ServiceInfo[] | null;
 };
 type ApptRow = {
@@ -70,7 +71,7 @@ export default async function TakvimPage({
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, staff_id, planned_price, final_price, adjustment_note, service:services(name, duration_minutes))"
+        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, staff_id, planned_price, final_price, adjustment_note, payment_method, service:services(name, duration_minutes))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)

@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL, formatTimeTR } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
+import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import type { Staff } from "@/types/database";
 
@@ -317,55 +317,6 @@ export default async function DashboardPage() {
 
       <SuggestionsClient items={suggestions} />
     </AppShell>
-  );
-}
-
-const BADGE_STAT_TONES = {
-  accentSoft: { bg: "bg-accent-soft", badge: "bg-white/70 text-accent" },
-  block2: { bg: "bg-block2", badge: "bg-white/60 text-block2-ink" },
-  warn: { bg: "bg-bad-soft", badge: "bg-white/60 text-bad" },
-} as const;
-
-const BADGE_STAT_ICONS: Record<string, ReactNode> = {
-  calendar: (
-    <>
-      <rect x="4" y="5.5" width="16" height="15" rx="3" />
-      <path d="M4 10h16M8 3v4M16 3v4" />
-    </>
-  ),
-  x: (
-    <>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M9.5 9.5l5 5M14.5 9.5l-5 5" />
-    </>
-  ),
-};
-
-/** Referans 1'deki "ikon dairesi + büyük sayı" istatistik örüntüsü. */
-function BadgeStat({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: keyof typeof BADGE_STAT_ICONS;
-  label: string;
-  value: string;
-  tone: keyof typeof BADGE_STAT_TONES;
-}) {
-  const { bg, badge } = BADGE_STAT_TONES[tone];
-  return (
-    <div className={`${bg} rounded-2xl p-4 flex flex-col gap-3`}>
-      <div className={`${badge} w-9 h-9 rounded-full flex items-center justify-center`}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          {BADGE_STAT_ICONS[icon]}
-        </svg>
-      </div>
-      <div>
-        <p className="text-[26px] font-bold font-display leading-none">{value}</p>
-        <p className="text-[12px] text-ink-muted mt-1">{label}</p>
-      </div>
-    </div>
   );
 }
 

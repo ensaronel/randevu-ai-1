@@ -39,6 +39,7 @@ export interface TakvimAppointment {
     planned_price: number;
     final_price: number | null;
     adjustment_note: string | null;
+    payment_method: "nakit" | "kart" | null;
     service: OneOrMany<{ name: string; duration_minutes: number }>;
   }[];
 }
@@ -62,6 +63,7 @@ export default function TakvimAppointmentBlocks({
   const [priceDraft, setPriceDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const openAppt = appointments.find((a) => a.id === openApptId) ?? null;
 
@@ -83,6 +85,20 @@ export default function TakvimAppointmentBlocks({
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function setPaymentMethod(serviceRowId: string, method: "nakit" | "kart") {
+    setPayingId(serviceRowId);
+    try {
+      const res = await fetch(`/api/appointment-services/${serviceRowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_method: method }),
+      });
+      if (res.ok) router.refresh();
+    } finally {
+      setPayingId(null);
     }
   }
 
@@ -216,6 +232,23 @@ export default function TakvimAppointmentBlocks({
                         <span className="text-[11.5px] text-ink-muted italic">{svc.adjustment_note}</span>
                       )
                     )}
+
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {(["nakit", "kart"] as const).map((method) => (
+                        <button
+                          key={method}
+                          onClick={() => setPaymentMethod(svc.id, method)}
+                          disabled={payingId === svc.id}
+                          className={`px-2.5 py-1 rounded-full text-[11.5px] font-semibold border ${
+                            svc.payment_method === method
+                              ? "bg-accent text-white border-accent"
+                              : "border-border text-ink-muted"
+                          }`}
+                        >
+                          {method === "nakit" ? "Nakit" : "Kart"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 );
               })}

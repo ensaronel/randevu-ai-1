@@ -53,6 +53,13 @@ export function daysBetweenKeys(fromKey: string, toKey: string): number {
   return Math.round((to - from) / (1000 * 60 * 60 * 24)) + 1;
 }
 
+/** "YYYY-MM-DD" tarihine gün ekler/çıkarır (negatif de olabilir). */
+export function addDaysToKey(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 function turkeyLocalBaseDate(offsetDays: number): Date {
@@ -71,6 +78,12 @@ export function weekdayKeyTR(offsetDays = 0): (typeof WEEKDAY_KEYS)[number] {
 /** leave_dates / closed_dates ile karşılaştırmak için "YYYY-MM-DD". */
 export function dateKeyTR(offsetDays = 0): string {
   return turkeyLocalBaseDate(offsetDays).toISOString().slice(0, 10);
+}
+
+/** Herhangi bir UTC ISO zaman damgasını Türkiye yerel "YYYY-MM-DD" anahtarına çevirir. */
+export function dateKeyFromIso(iso: string): string {
+  const turkeyLocal = new Date(new Date(iso).getTime() + TURKEY_UTC_OFFSET_MINUTES * 60000);
+  return turkeyLocal.toISOString().slice(0, 10);
 }
 
 export function formatTimeTR(iso: string): string {
