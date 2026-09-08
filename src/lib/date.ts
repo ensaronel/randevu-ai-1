@@ -41,6 +41,18 @@ export function monthRangeUtcISO(): { startUtc: string; endUtc: string } {
   };
 }
 
+/** Verilen iki "YYYY-MM-DD" (Türkiye yerel, ikisi de dahil) tarihi UTC ISO aralığına çevirir. */
+export function dateKeyRangeUtcISO(fromKey: string, toKey: string): { startUtc: string; endUtc: string } {
+  return { startUtc: `${fromKey}T00:00:00+03:00`, endUtc: `${toKey}T23:59:59.999+03:00` };
+}
+
+/** İki "YYYY-MM-DD" arasındaki (ikisi de dahil) gün sayısı — sabit gider payı oranlamak için. */
+export function daysBetweenKeys(fromKey: string, toKey: string): number {
+  const from = new Date(`${fromKey}T00:00:00Z`).getTime();
+  const to = new Date(`${toKey}T00:00:00Z`).getTime();
+  return Math.round((to - from) / (1000 * 60 * 60 * 24)) + 1;
+}
+
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 function turkeyLocalBaseDate(offsetDays: number): Date {

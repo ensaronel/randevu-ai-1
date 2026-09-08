@@ -1,9 +1,9 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, dateKeyTR, formatDateTR, formatTL } from "@/lib/date";
+import { dayRangeUtcISO, formatDateTR, formatTL } from "@/lib/date";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
 import AppShell from "@/components/AppShell";
 import KasaClient, { type KasaAppointment } from "@/app/kasa/KasaClient";
-import type { Business, ExpenseItem, Staff } from "@/types/database";
+import type { Business, FixedExpense, Staff } from "@/types/database";
 
 async function loadMonthlyCommissions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
@@ -22,9 +22,8 @@ async function loadMonthlyCommissions(
 export default async function KasaPage() {
   const { business, supabase } = await getBusinessOwnerForPage();
   const { startUtc, endUtc } = dayRangeUtcISO(0);
-  const todayKey = dateKeyTR(0);
 
-  const [{ data: apptData }, { data: expenseData }, commissions] = await Promise.all([
+  const [{ data: apptData }, { data: fixedExpenseData }, commissions] = await Promise.all([
     supabase
       .from("appointments")
       .select(
@@ -36,16 +35,15 @@ export default async function KasaPage() {
       .neq("status", "cancelled")
       .order("starts_at"),
     supabase
-      .from("expense_items")
+      .from("fixed_expenses")
       .select("*")
       .eq("business_id", business.id)
-      .eq("expense_date", todayKey)
       .order("created_at", { ascending: true }),
     loadMonthlyCommissions(supabase, business),
   ]);
 
   const appointments = (apptData ?? []) as unknown as KasaAppointment[];
-  const expenseItems = (expenseData ?? []) as ExpenseItem[];
+  const fixedExpenses = (fixedExpenseData ?? []) as FixedExpense[];
 
   return (
     <AppShell businessName={business.name}>
@@ -54,7 +52,7 @@ export default async function KasaPage() {
           <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
         </div>
 
-        <KasaClient appointments={appointments} todayKey={todayKey} initialExpenseItems={expenseItems} />
+        <KasaClient appointments={appointments} initialFixedExpenses={fixedExpenses} />
 
         {commissions.length > 0 && (
           <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-2">

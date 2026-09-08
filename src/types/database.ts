@@ -101,13 +101,13 @@ export interface DailyFinancialSummary {
   created_at: string;
 }
 
-export interface ExpenseItem {
+export interface FixedExpense {
   id: string;
   business_id: string;
-  expense_date: string;
   description: string;
-  amount: number;
+  monthly_amount: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ActionObject {

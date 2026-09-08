@@ -69,11 +69,11 @@ export const appointmentServiceUpdateSchema = z.object({
   adjustment_note: z.string().trim().max(500).optional().nullable(),
 });
 
-export const expenseItemCreateSchema = z.object({
-  expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+export const fixedExpenseCreateSchema = z.object({
   description: z.string().trim().min(1).max(200),
-  amount: z.number().nonnegative(),
+  monthly_amount: z.number().nonnegative(),
 });
+export const fixedExpenseUpdateSchema = fixedExpenseCreateSchema.partial();
 
 export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),
