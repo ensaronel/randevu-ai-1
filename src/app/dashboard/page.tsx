@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
+import CampaignSuggestionClient from "@/app/dashboard/CampaignSuggestionClient";
 import type { Staff } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
@@ -73,6 +74,22 @@ async function loadTodaysFinanceNote(
     .limit(1)
     .maybeSingle();
   return data?.suggestion ?? null;
+}
+
+async function loadPendingCampaignSuggestion(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { data } = await supabase
+    .from("action_objects")
+    .select("id, suggestion, reasoning")
+    .eq("business_id", businessId)
+    .eq("type", "campaign_suggestion")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
 }
 
 type ApptServiceRow = {
@@ -161,9 +178,10 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [weekTotalsByDate, financeNote, suggestions, upcomingToday] = await Promise.all([
+  const [weekTotalsByDate, financeNote, campaignSuggestion, suggestions, upcomingToday] = await Promise.all([
     loadWeekTotalsByDate(supabase, business.id, mondayOffset),
     loadTodaysFinanceNote(supabase, business.id),
+    loadPendingCampaignSuggestion(supabase, business.id),
     loadPendingSuggestions(supabase, business.id),
     loadUpcomingToday(supabase, business.id),
   ]);
@@ -331,6 +349,14 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+
+      {campaignSuggestion && (
+        <CampaignSuggestionClient
+          id={campaignSuggestion.id}
+          message={campaignSuggestion.suggestion}
+          reasoning={campaignSuggestion.reasoning}
+        />
+      )}
 
       <SuggestionsClient items={suggestions} />
     </AppShell>

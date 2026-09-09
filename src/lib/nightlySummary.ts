@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, dayRangeUtcISO } from "@/lib/date";
 import { generateFinanceCommentary } from "@/lib/ai/financeCommentary";
+import { generateCampaignSuggestion } from "@/lib/ai/campaignSuggestion";
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -27,6 +28,8 @@ async function computeRevenueForRange(admin: AdminClient, businessId: string, st
 const DEVIATION_THRESHOLD_PERCENT = 25;
 // Aylık ortalamayı anlamlı saymak için ay başından bu yana geçmesi gereken minimum gün sayısı.
 const MIN_MONTHLY_SAMPLE_SIZE = 3;
+// Kampanya önerisi haftada bir defadan fazla üretilmesin diye (art arda iyi günlerde spam olmasın).
+const CAMPAIGN_SUGGESTION_DEDUP_DAYS = 7;
 
 export interface NightlySummaryResult {
   businessId: string;
@@ -109,7 +112,67 @@ export async function runNightlySummaryForBusiness(businessId: string): Promise<
   });
   if (insertError) throw insertError;
 
+  await maybeCreateCampaignSuggestion(admin, businessId, {
+    yesterdayRevenue,
+    lastWeekRevenue,
+    monthlyAverageRevenue,
+    lastWeekDiff: percentDiff(yesterdayRevenue, lastWeekRevenue),
+    monthlyDiff: monthlyAverageRevenue !== null ? percentDiff(yesterdayRevenue, monthlyAverageRevenue) : null,
+  });
+
   return { businessId, created: true, reason: "anlamlı sapma tespit edildi, yorum oluşturuldu" };
+}
+
+/**
+ * Ciro belirgin şekilde YÜKSEK çıktığında (negatif sapmada değil) ek olarak bir
+ * kampanya taslağı önerisi üretir - finance_note'un tersine bu bir action_objects
+ * kaydı olarak Öneriler'de görünür ama onay/gönder akışına girmez (customer_message
+ * yok), sahibi metni kendi WhatsApp Business'ından elle kopyalayıp gönderir.
+ */
+async function maybeCreateCampaignSuggestion(
+  admin: AdminClient,
+  businessId: string,
+  input: {
+    yesterdayRevenue: number;
+    lastWeekRevenue: number;
+    monthlyAverageRevenue: number | null;
+    lastWeekDiff: number | null;
+    monthlyDiff: number | null;
+  }
+): Promise<void> {
+  const positiveDiff =
+    input.lastWeekDiff !== null && input.lastWeekDiff >= DEVIATION_THRESHOLD_PERCENT
+      ? { diff: input.lastWeekDiff, basisLabel: "geçen haftanın aynı günü" }
+      : input.monthlyDiff !== null && input.monthlyDiff >= DEVIATION_THRESHOLD_PERCENT
+        ? { diff: input.monthlyDiff, basisLabel: "bu ayki günlük ortalama" }
+        : null;
+  if (!positiveDiff) return;
+
+  const since = new Date(Date.now() - CAMPAIGN_SUGGESTION_DEDUP_DAYS * 24 * 60 * 60000).toISOString();
+  const { data: recent } = await admin
+    .from("action_objects")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("type", "campaign_suggestion")
+    .gte("created_at", since)
+    .limit(1);
+  if (recent && recent.length > 0) return;
+
+  const { data: business } = await admin.from("businesses").select("name").eq("id", businessId).single();
+
+  const comparisonDescription = `${positiveDiff.basisLabel}ne göre %${Math.round(positiveDiff.diff)} daha yüksek`;
+  const draft = await generateCampaignSuggestion({
+    businessName: business?.name ?? "İşletmeniz",
+    comparisonDescription,
+  });
+
+  await admin.from("action_objects").insert({
+    business_id: businessId,
+    type: "campaign_suggestion",
+    suggestion: draft.message,
+    reasoning: `Ciro ${comparisonDescription} (dün: ${Math.round(input.yesterdayRevenue)} TL). Önerilen hedef kitle: ${draft.targetSegment}.`,
+    status: "pending",
+  });
 }
 
 export async function runNightlySummaryForAllBusinesses(): Promise<NightlySummaryResult[]> {
