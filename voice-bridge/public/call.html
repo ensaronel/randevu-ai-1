@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Randevu AI — Sesli Test</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; text-align: center; }
+  button { font-size: 20px; padding: 16px 32px; border-radius: 12px; border: none; cursor: pointer; margin-top: 24px; }
+  #callBtn { background: #16a34a; color: white; }
+  #hangupBtn { background: #dc2626; color: white; display: none; }
+  #status { margin-top: 20px; color: #555; }
+</style>
+</head>
+<body>
+  <h2>Randevu AI — Sesli Test</h2>
+  <p>Mikrofon izni isteyecek. "Ara" ye basınca AI ile canlı konuşabilirsin.</p>
+  <button id="callBtn">📞 Ara</button>
+  <button id="hangupBtn">Kapat</button>
+  <div id="status">Hazır.</div>
+
+  <script src="https://sdk.twilio.com/js/voice/releases/2.11.1/twilio.min.js"></script>
+  <script>
+    const statusEl = document.getElementById("status");
+    const callBtn = document.getElementById("callBtn");
+    const hangupBtn = document.getElementById("hangupBtn");
+    let device = null;
+    let activeCall = null;
+
+    async function setupDevice() {
+      statusEl.textContent = "Jeton alınıyor...";
+      const res = await fetch("/voice-token");
+      const { token, error } = await res.json();
+      if (error) {
+        statusEl.textContent = "Hata: " + error;
+        throw new Error(error);
+      }
+      device = new Twilio.Device(token, { logLevel: "warn" });
+      device.on("error", (e) => (statusEl.textContent = "Cihaz hatası: " + e.message));
+    }
+
+    callBtn.addEventListener("click", async () => {
+      try {
+        if (!device) await setupDevice();
+        statusEl.textContent = "Aranıyor...";
+        callBtn.style.display = "none";
+        hangupBtn.style.display = "inline-block";
+        activeCall = await device.connect();
+        activeCall.on("accept", () => (statusEl.textContent = "Bağlandı — konuşabilirsin."));
+        activeCall.on("disconnect", resetUi);
+      } catch (e) {
+        statusEl.textContent = "Hata: " + e.message;
+        resetUi();
+      }
+    });
+
+    hangupBtn.addEventListener("click", () => {
+      activeCall?.disconnect();
+      resetUi();
+    });
+
+    function resetUi() {
+      callBtn.style.display = "inline-block";
+      hangupBtn.style.display = "none";
+      statusEl.textContent = "Kapandı.";
+    }
+  </script>
+</body>
+</html>

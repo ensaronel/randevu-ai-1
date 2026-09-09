@@ -2,6 +2,7 @@ import express from "express";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createServer } from "http";
 import { createHmac } from "crypto";
+import twilio from "twilio";
 import { VoiceCallSession } from "./geminiBridge.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -13,6 +14,7 @@ const app = express();
 // ve TÜM gerçek Twilio istekleri imza uyuşmazlığıyla reddedilir.
 app.set("trust proxy", true);
 app.use(express.urlencoded({ extended: false })); // Twilio form-encoded POST gönderir
+app.use(express.static("public")); // tarayıcıdan-arama test sayfası (public/call.html)
 
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: "/twilio/stream" });
@@ -65,6 +67,32 @@ app.post("/twilio/voice", (req, res) => {
 
 app.get("/", (_req, res) => {
   res.send("randevu-ai voice-bridge çalışıyor.");
+});
+
+/**
+ * Tarayıcı üzerinden test araması için Twilio Voice SDK'ye kısa ömürlü bir erişim
+ * jetonu üretir. Gerçek telefon numarası satın alma/doğrulama gerektirmeyen, deneme
+ * hesabında da tamamen çalışan bir test yolu — public/call.html bu jetonu kullanır.
+ */
+app.get("/voice-token", (_req, res) => {
+  const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWIML_APP_SID } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWIML_APP_SID) {
+    res.status(500).json({ error: "Twilio Voice SDK env değişkenleri eksik" });
+    return;
+  }
+
+  const AccessToken = twilio.jwt.AccessToken;
+  const VoiceGrant = AccessToken.VoiceGrant;
+
+  const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, {
+    identity: "test_kullanici",
+    ttl: 3600,
+  });
+  token.addGrant(
+    new VoiceGrant({ outgoingApplicationSid: TWIML_APP_SID, incomingAllow: false })
+  );
+
+  res.json({ token: token.toJwt() });
 });
 
 interface TwilioStreamMessage {
