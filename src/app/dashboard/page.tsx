@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, formatTL, formatTimeTR } from "@/lib/date";
+import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, dateKeyFromIso, formatTL, formatTimeTR } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
@@ -83,53 +83,69 @@ type ApptServiceRow = {
 };
 
 type ApptRow = {
+  starts_at: string;
   status: string;
   appointment_services: ApptServiceRow[];
 };
+
+interface DayTotals {
+  appointmentCount: number;
+  cancelledCount: number;
+  revenue: number;
+  bookedMinutesByStaffId: Record<string, number>;
+}
 
 function serviceDuration(service: ApptServiceRow["service"]): number {
   if (!service) return 0;
   return Array.isArray(service) ? service[0]?.duration_minutes ?? 0 : service.duration_minutes;
 }
 
-async function loadDayTotals(
+function emptyDayTotals(): DayTotals {
+  return { appointmentCount: 0, cancelledCount: 0, revenue: 0, bookedMinutesByStaffId: {} };
+}
+
+/**
+ * Bir haftalik araligin tum randevularini TEK sorguda cekip Turkiye yerel gune
+ * gore grupluyor - onceden her gun (bugun + haftanin 7 gunu) icin ayri ayri
+ * sorgu atiliyordu (8 ayri ag-round-trip'i, biri bugun icin iki kez), bu da
+ * sayfa yuklemesini gozle gorulur yavaslatiyordu.
+ */
+async function loadWeekTotalsByDate(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
   businessId: string,
-  offsetDays: number
-) {
-  const { startUtc, endUtc } = dayRangeUtcISO(offsetDays);
+  weekStartOffset: number
+): Promise<Map<string, DayTotals>> {
+  const { startUtc } = dayRangeUtcISO(weekStartOffset);
+  const { endUtc } = dayRangeUtcISO(weekStartOffset + 6);
 
   const { data } = await supabase
     .from("appointments")
-    .select("status, appointment_services(planned_price, final_price, staff_id, service:services(duration_minutes))")
+    .select(
+      "starts_at, status, appointment_services(planned_price, final_price, staff_id, service:services(duration_minutes))"
+    )
     .eq("business_id", businessId)
     .gte("starts_at", startUtc)
     .lt("starts_at", endUtc);
 
-  const appointments = (data ?? []) as unknown as ApptRow[];
-  const active = appointments.filter((a) => a.status !== "cancelled");
-  const cancelled = appointments.filter((a) => a.status === "cancelled");
+  const byDate = new Map<string, DayTotals>();
+  for (const appt of (data ?? []) as unknown as ApptRow[]) {
+    const key = dateKeyFromIso(appt.starts_at);
+    const totals = byDate.get(key) ?? emptyDayTotals();
 
-  const revenue = active.reduce(
-    (sum, a) =>
-      sum + a.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
-    0
-  );
-
-  const bookedMinutesByStaffId: Record<string, number> = {};
-  for (const appt of active) {
-    for (const svc of appt.appointment_services) {
-      bookedMinutesByStaffId[svc.staff_id] =
-        (bookedMinutesByStaffId[svc.staff_id] ?? 0) + serviceDuration(svc.service);
+    if (appt.status === "cancelled") {
+      totals.cancelledCount++;
+    } else {
+      totals.appointmentCount++;
+      for (const svc of appt.appointment_services) {
+        totals.revenue += Number(svc.final_price ?? svc.planned_price);
+        totals.bookedMinutesByStaffId[svc.staff_id] =
+          (totals.bookedMinutesByStaffId[svc.staff_id] ?? 0) + serviceDuration(svc.service);
+      }
     }
-  }
 
-  return {
-    appointmentCount: active.length,
-    cancelledCount: cancelled.length,
-    revenue,
-    bookedMinutesByStaffId,
-  };
+    byDate.set(key, totals);
+  }
+  return byDate;
 }
 
 export default async function DashboardPage() {
@@ -145,18 +161,19 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [today, financeNote, suggestions, upcomingToday, weekTotals] =
-    await Promise.all([
-      loadDayTotals(supabase, business.id, 0),
-      loadTodaysFinanceNote(supabase, business.id),
-      loadPendingSuggestions(supabase, business.id),
-      loadUpcomingToday(supabase, business.id),
-      Promise.all(weekOffsets.map((offset) => loadDayTotals(supabase, business.id, offset))),
-    ]);
-  const weekChart = weekTotals.map((t, i) => {
-    const offset = weekOffsets[i];
-    return { label: WEEKDAY_SHORT_TR[weekdayKeyTR(offset)], revenue: t.revenue, isToday: offset === 0 };
-  });
+  const [weekTotalsByDate, financeNote, suggestions, upcomingToday] = await Promise.all([
+    loadWeekTotalsByDate(supabase, business.id, mondayOffset),
+    loadTodaysFinanceNote(supabase, business.id),
+    loadPendingSuggestions(supabase, business.id),
+    loadUpcomingToday(supabase, business.id),
+  ]);
+
+  const today = weekTotalsByDate.get(dateKeyTR(0)) ?? emptyDayTotals();
+  const weekChart = weekOffsets.map((offset) => ({
+    label: WEEKDAY_SHORT_TR[weekdayKeyTR(offset)],
+    revenue: weekTotalsByDate.get(dateKeyTR(offset))?.revenue ?? 0,
+    isToday: offset === 0,
+  }));
 
   const { data: staffData } = await supabase
     .from("staff")
