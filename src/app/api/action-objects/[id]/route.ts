@@ -25,15 +25,19 @@ export async function PATCH(
 
     if (body.status === "approved") {
       const customer = (actionObject as unknown as { customer: { phone: string; full_name: string } | null }).customer;
-      if (customer?.phone) {
+      // suggestion sahibe gösterilen öneri metni — müşteriye AYNEN customer_message gider,
+      // ikisi farklı olabilir (ör. retention_risk/rhythm_invite'ta suggestion sahibe tavsiye).
+      if (!actionObject.customer_message) {
+        outcome = "gönderilecek müşteri mesajı tanımlı değil";
+      } else if (customer?.phone) {
         try {
-          await sendWhatsappTextMessage(customer.phone, actionObject.suggestion);
+          await sendWhatsappTextMessage(customer.phone, actionObject.customer_message);
           await supabase.from("whatsapp_message_log").insert({
             business_id: owner.business_id,
             customer_id: actionObject.related_customer_id,
             direction: "outbound",
             message_type: "system_notice",
-            body: actionObject.suggestion,
+            body: actionObject.customer_message,
           });
           outcome = "mesaj gönderildi";
         } catch (err) {

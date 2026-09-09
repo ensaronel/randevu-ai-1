@@ -49,7 +49,7 @@ async function loadPendingSuggestions(
 ) {
   const { data } = await supabase
     .from("action_objects")
-    .select("id, type, suggestion, reasoning")
+    .select("id, type, suggestion, customer_message, reasoning")
     .eq("business_id", businessId)
     .eq("status", "pending")
     .in("type", ["fill_gap", "retention_risk", "rhythm_invite"])

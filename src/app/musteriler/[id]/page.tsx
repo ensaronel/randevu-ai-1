@@ -85,6 +85,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     id: a.id,
     type: a.type,
     suggestion: a.suggestion,
+    customer_message: a.customer_message,
     reasoning: a.reasoning,
     status: a.status,
     outcome: a.outcome,

@@ -184,7 +184,8 @@ create table action_objects (
   type text not null,           -- 'fill_gap' | 'retention_risk' | 'rhythm_invite' | 'finance_note' | ...
   related_customer_id uuid references customers(id),
   related_appointment_id uuid references appointments(id),
-  suggestion text not null,      -- öneri metni
+  suggestion text not null,      -- işletme sahibine gösterilen öneri/özet metni
+  customer_message text,         -- onaylanınca müşteriye AYNEN gönderilecek metin (suggestion'dan farklı olabilir — ör. retention_risk/rhythm_invite'ta suggestion sahibe tavsiye, bu ise müşteriye gidecek gerçek mesaj)
   reasoning text not null,       -- gerekçe
   expected_impact text,          -- "tahmini 850 TL geri kazanım" gibi
   status text not null default 'pending'

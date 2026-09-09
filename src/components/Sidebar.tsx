@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Mascot from "@/components/Mascot";
 
 const items = [
   {
@@ -100,6 +101,16 @@ export default function Sidebar({ businessName }: { businessName: string }) {
           );
         })}
       </nav>
+
+      <Link
+        href="/asistan"
+        className={`mt-auto flex items-center gap-2.5 px-3 py-2.5 rounded-[10px] ${
+          pathname?.startsWith("/asistan") ? "bg-accent2-soft" : "hover:bg-bg"
+        }`}
+      >
+        <Mascot size={26} />
+        <span className="text-[12.5px] font-semibold text-accent2-ink">Danışmana Sor</span>
+      </Link>
     </aside>
   );
 }

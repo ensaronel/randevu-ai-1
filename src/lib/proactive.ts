@@ -78,7 +78,8 @@ export async function matchWaitlistForCancelledAppointment(businessId: string, a
       type: "fill_gap",
       related_customer_id: entry.customer_id,
       related_appointment_id: appointmentId,
-      suggestion: `Merhaba ${customerName}, bekleme listenizdeki ${serviceName} için bir yer boşaldı — halen istiyor musunuz?`,
+      suggestion: `${customerName} bekleme listesinde — boşalan ${serviceName} yerine davet edilsin mi?`,
+      customer_message: `Merhaba ${customerName}, bekleme listenizdeki ${serviceName} için bir yer boşaldı — halen istiyor musunuz?`,
       reasoning: `Bir randevu iptal oldu ve bekleme listesi kaydınızla (${range.days.join(", ")} ${range.from}-${range.to}) eşleşti.`,
       status: "pending",
     });
@@ -173,11 +174,19 @@ export async function runProactiveInsightsForBusiness(businessId: string): Promi
   const visitsByCustomer = await loadCameVisitsByCustomer(admin, businessId);
   const todayKey = dateKeyTR(0);
 
+  const { data: customerRows } = await admin
+    .from("customers")
+    .select("id, full_name")
+    .eq("business_id", businessId)
+    .in("id", Array.from(visitsByCustomer.keys()));
+  const customerNames = new Map((customerRows ?? []).map((c) => [c.id, c.full_name]));
+
   let retentionRisksCreated = 0;
   let rhythmInvitesCreated = 0;
 
   for (const [customerId, visits] of visitsByCustomer) {
     if (visits.length < 2) continue;
+    const customerName = customerNames.get(customerId) ?? "Müşteri";
 
     const intervals: number[] = [];
     for (let i = 1; i < visits.length; i++) {
@@ -198,6 +207,7 @@ export async function runProactiveInsightsForBusiness(businessId: string): Promi
           type: "retention_risk",
           related_customer_id: customerId,
           suggestion: "İndirimsiz, kişisel bir hatırlatma mesajı göndermeyi düşünebilirsin — uzun süredir gelmiyor.",
+          customer_message: `Merhaba ${customerName}, sizi bir süredir aramızda göremedik — nasılsınız? Ne zaman isterseniz buradayız 🙂`,
           reasoning: `Ortalama ziyaret aralığı ~${Math.round(avgInterval)} gün, son ziyaretten bu yana ${Math.round(daysSinceLastVisit)} gün geçti.`,
           status: "pending",
         });
@@ -228,6 +238,7 @@ export async function runProactiveInsightsForBusiness(businessId: string): Promi
               type: "rhythm_invite",
               related_customer_id: customerId,
               suggestion: "Alışılmış randevu zamanı yaklaşıyor — indirimsiz, kişisel bir davet göndermeyi düşünebilirsin.",
+              customer_message: `Merhaba ${customerName}, genelde ~${Math.round(avgRhythm)} günde bir bizi tercih ediyorsunuz — tekrar bir randevu ayarlamak ister misiniz?`,
               reasoning: `Son ${RHYTHM_MIN_VISITS} ziyaret aynı hizmet kombinasyonuyla, ~${Math.round(avgRhythm)} günlük düzenli ritimde. Ritim ${Math.round(daysUntilExpected)} gün içinde doluyor (bugün: ${todayKey}).`,
               status: "pending",
             });

@@ -7,6 +7,7 @@ export interface SuggestionItem {
   id: string;
   type: string;
   suggestion: string;
+  customer_message: string | null;
   reasoning: string;
 }
 
@@ -56,6 +57,11 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
           </span>
           <p className="text-[13.5px] text-ink">{item.suggestion}</p>
           <p className="text-[12px] text-ink-muted">{item.reasoning}</p>
+          {item.customer_message && (
+            <p className="text-[12.5px] text-ink-muted italic border-l-2 border-border pl-2.5">
+              &quot;{item.customer_message}&quot;
+            </p>
+          )}
           <div className="flex gap-2 pt-1">
             <button
               onClick={() => resolve(item.id, "approved")}

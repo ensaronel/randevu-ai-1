@@ -18,6 +18,7 @@ export interface ActionHistoryItem {
   id: string;
   type: string;
   suggestion: string;
+  customer_message: string | null;
   reasoning: string;
   status: string;
   outcome: string | null;
@@ -230,6 +231,11 @@ export default function MusteriDetayClient({
             </div>
             <p className="text-[13.5px] text-ink">{a.suggestion}</p>
             <p className="text-[12px] text-ink-muted">{a.reasoning}</p>
+            {a.customer_message && (
+              <p className="text-[12.5px] text-ink-muted italic border-l-2 border-border pl-2.5">
+                &quot;{a.customer_message}&quot;
+              </p>
+            )}
             <span
               className={`text-[12px] font-semibold ${
                 a.status === "pending" ? "text-accent" : a.status === "rejected" ? "text-bad" : "text-good-ink"

@@ -133,6 +133,7 @@ export interface ActionObject {
   related_customer_id: string | null;
   related_appointment_id: string | null;
   suggestion: string;
+  customer_message: string | null;
   reasoning: string;
   expected_impact: string | null;
   status: ActionObjectStatus;
