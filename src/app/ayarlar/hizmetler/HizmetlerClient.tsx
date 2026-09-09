@@ -73,7 +73,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5">
+      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 lg:max-w-md">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Hizmet</p>
         <input
           placeholder="Hizmet adı"
@@ -113,7 +113,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         {error && <p className="text-[12px] text-bad">{error}</p>}
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-2.5">
         {services.map((service) => (
           <div
             key={service.id}

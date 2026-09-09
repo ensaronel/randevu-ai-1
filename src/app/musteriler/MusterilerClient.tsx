@@ -108,7 +108,7 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
         </button>
       )}
 
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 lg:gap-3">
         {filtered.length === 0 && (
           <EmptyState
             message={

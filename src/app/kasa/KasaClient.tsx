@@ -606,15 +606,17 @@ export default function KasaClient({ initialFixedExpenses }: { initialFixedExpen
         range={range}
         summary={summary}
       />
-      {summary && summary.from === range.from && summary.to === range.to && (
-        <OneTimeExpensesSection
-          key={range.to}
-          range={range}
-          items={summary.oneTimeExpenses}
-          onChanged={() => setRefreshTick((t) => t + 1)}
-        />
-      )}
-      <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
+        {summary && summary.from === range.from && summary.to === range.to && (
+          <OneTimeExpensesSection
+            key={range.to}
+            range={range}
+            items={summary.oneTimeExpenses}
+            onChanged={() => setRefreshTick((t) => t + 1)}
+          />
+        )}
+        <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
+      </div>
     </>
   );
 }

@@ -58,7 +58,7 @@ export default async function BeklemeListesiPage() {
       {entries.length === 0 ? (
         <EmptyState message="Bir müşteri istediği tarihte uygun saat bulamayıp WhatsApp'tan beklemeyi kabul ederse burada görünecek — bir randevu iptal olduğunda sistem otomatik olarak eşleştirip Ana Sayfa'daki Öneriler'e ekliyor." />
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 lg:gap-3">
           {entries.map((entry) => {
             const customer = one(entry.customer);
             const service = one(entry.service);

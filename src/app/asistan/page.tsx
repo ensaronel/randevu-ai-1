@@ -20,7 +20,9 @@ export default async function AsistanPage() {
 
   return (
     <AppShell businessName={business.name}>
-      <AsistanClient initialMessages={initialMessages} />
+      <div className="flex-1 flex flex-col min-h-0 w-full lg:max-w-2xl lg:mx-auto">
+        <AsistanClient initialMessages={initialMessages} />
+      </div>
     </AppShell>
   );
 }

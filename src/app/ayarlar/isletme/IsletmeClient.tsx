@@ -59,7 +59,7 @@ export default function IsletmeClient({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
       <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Çalışma Saatleri</p>
         <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />

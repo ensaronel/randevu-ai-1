@@ -24,10 +24,12 @@ export default async function RandevuOlusturPage() {
 
   return (
     <AppShell businessName={business.name}>
-      <RandevuOlusturClient
-        services={(servicesData ?? []) as Service[]}
-        staff={(staffData ?? []) as Staff[]}
-      />
+      <div className="w-full lg:max-w-xl lg:mx-auto">
+        <RandevuOlusturClient
+          services={(servicesData ?? []) as Service[]}
+          staff={(staffData ?? []) as Staff[]}
+        />
+      </div>
     </AppShell>
   );
 }
