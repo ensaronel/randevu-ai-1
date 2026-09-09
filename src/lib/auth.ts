@@ -26,9 +26,14 @@ export async function requireBusinessOwner(): Promise<{
 }> {
   const supabase = await createServerSupabaseClient();
 
+  // getUser() degil getSession() - proxy.ts her istekte zaten getUser() ile
+  // gercek (agdan) dogrulama + gerekirse token yenileme yapiyor ve tazelenmis
+  // cerezi bu isteğe yaziyor; burada ayni ag-round-trip'i tekrarlamak yerine
+  // o zaten dogrulanmis cerezi yerelden okumak yeterli ve cok daha hizli.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) {
     throw new UnauthorizedError();
@@ -64,9 +69,12 @@ export async function getBusinessOwnerForPage(): Promise<{
 }> {
   const supabase = await createServerSupabaseClient();
 
+  // bkz. requireBusinessOwner'daki not - getSession() yeterli, proxy.ts zaten
+  // gercek dogrulamayi yapmis oluyor.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) redirect("/login");
 
