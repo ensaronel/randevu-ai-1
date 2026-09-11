@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { dateKeyRangeUtcISO, daysBetweenKeys, addDaysToKey, dateKeyFromIso } from "@/lib/date";
+import { isRealizedRevenue } from "@/lib/revenue";
 
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CHART_DAYS = 31;
@@ -9,12 +10,13 @@ const MAX_CHART_DAYS = 31;
 type ApptRow = {
   starts_at: string;
   status: string;
+  attendance: string | null;
   appointment_services: { planned_price: number; final_price: number | null; payment_method: string | null }[];
 };
 
 function revenueOf(appointments: ApptRow[]): number {
   return appointments
-    .filter((a) => a.status !== "cancelled")
+    .filter((a) => isRealizedRevenue(a.status, a.attendance, a.starts_at))
     .reduce(
       (sum, a) => sum + a.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
       0
@@ -52,13 +54,13 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabase
         .from("appointments")
-        .select("starts_at, status, appointment_services(planned_price, final_price, payment_method)")
+        .select("starts_at, status, attendance, appointment_services(planned_price, final_price, payment_method)")
         .eq("business_id", owner.business_id)
         .gte("starts_at", startUtc)
         .lte("starts_at", endUtc),
       supabase
         .from("appointments")
-        .select("starts_at, status, appointment_services(planned_price, final_price, payment_method)")
+        .select("starts_at, status, attendance, appointment_services(planned_price, final_price, payment_method)")
         .eq("business_id", owner.business_id)
         .gte("starts_at", prevStartUtc)
         .lte("starts_at", prevEndUtc),
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
     let cardRevenue = 0;
     let unspecifiedRevenue = 0;
     for (const appt of apptRows) {
-      if (appt.status === "cancelled") continue;
+      if (!isRealizedRevenue(appt.status, appt.attendance, appt.starts_at)) continue;
       for (const svc of appt.appointment_services) {
         const amount = Number(svc.final_price ?? svc.planned_price);
         if (svc.payment_method === "nakit") cashRevenue += amount;
@@ -109,7 +111,7 @@ export async function GET(request: NextRequest) {
         cursor = addDaysToKey(cursor, 1);
       }
       for (const appt of apptRows) {
-        if (appt.status === "cancelled") continue;
+        if (!isRealizedRevenue(appt.status, appt.attendance, appt.starts_at)) continue;
         const key = dateKeyFromIso(appt.starts_at);
         const apptRevenue = appt.appointment_services.reduce(
           (s, svc) => s + Number(svc.final_price ?? svc.planned_price),

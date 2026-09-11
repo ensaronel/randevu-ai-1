@@ -82,6 +82,11 @@ export async function matchWaitlistForCancelledAppointment(businessId: string, a
       customer_message: `Merhaba ${customerName}, bekleme listenizdeki ${serviceName} için bir yer boşaldı — halen istiyor musunuz?`,
       reasoning: `Bir randevu iptal oldu ve bekleme listesi kaydınızla (${range.days.join(", ")} ${range.from}-${range.to}) eşleşti.`,
       status: "pending",
+      // Bu musteri genelde uzun suredir yazmamis olabilir (Meta'nin 24 saatlik
+      // serbest-metin penceresi disinda) - onaylaninca serbest metin yerine
+      // onayli sablon gitsin diye (bkz. schema.sql'deki not).
+      whatsapp_template_name: "bekleme_listesi_bosluk",
+      whatsapp_template_params: [customerName, serviceName],
     });
   }
 }
@@ -210,6 +215,8 @@ export async function runProactiveInsightsForBusiness(businessId: string): Promi
           customer_message: `Merhaba ${customerName}, sizi bir süredir aramızda göremedik — nasılsınız? Ne zaman isterseniz buradayız 🙂`,
           reasoning: `Ortalama ziyaret aralığı ~${Math.round(avgInterval)} gün, son ziyaretten bu yana ${Math.round(daysSinceLastVisit)} gün geçti.`,
           status: "pending",
+          whatsapp_template_name: "musteri_ozlem_hatirlatma",
+          whatsapp_template_params: [customerName],
         });
         retentionRisksCreated++;
       }
@@ -241,6 +248,8 @@ export async function runProactiveInsightsForBusiness(businessId: string): Promi
               customer_message: `Merhaba ${customerName}, genelde ~${Math.round(avgRhythm)} günde bir bizi tercih ediyorsunuz — tekrar bir randevu ayarlamak ister misiniz?`,
               reasoning: `Son ${RHYTHM_MIN_VISITS} ziyaret aynı hizmet kombinasyonuyla, ~${Math.round(avgRhythm)} günlük düzenli ritimde. Ritim ${Math.round(daysUntilExpected)} gün içinde doluyor (bugün: ${todayKey}).`,
               status: "pending",
+              whatsapp_template_name: "_randevu_ritim_davet",
+              whatsapp_template_params: [customerName, String(Math.round(avgRhythm))],
             });
             rhythmInvitesCreated++;
           }

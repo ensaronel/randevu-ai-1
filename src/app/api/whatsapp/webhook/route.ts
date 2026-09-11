@@ -95,6 +95,7 @@ async function notifyOwnerOfSystemError(
     }
   } catch (err) {
     console.error("İşletme sahibine hata bildirimi gönderilemedi:", err);
+    Sentry.captureException(err);
   }
 }
 
@@ -218,9 +219,10 @@ export async function POST(request: NextRequest) {
 
             await ensureKvkkConsent(admin, business.id, customer);
 
-            await sendWhatsappTextMessage(message.from, UNSUPPORTED_MESSAGE_TYPE_FALLBACK).catch((err) =>
-              console.error("Desteklenmeyen mesaj türü fallback'i gönderilemedi:", err)
-            );
+            await sendWhatsappTextMessage(message.from, UNSUPPORTED_MESSAGE_TYPE_FALLBACK).catch((err) => {
+              console.error("Desteklenmeyen mesaj türü fallback'i gönderilemedi:", err);
+              Sentry.captureException(err);
+            });
             await admin.from("whatsapp_message_log").insert({
               business_id: business.id,
               customer_id: customer.id,
@@ -244,7 +246,10 @@ export async function POST(request: NextRequest) {
             await sendWhatsappTextMessage(
               message.from,
               "Kısa sürede çok fazla mesaj gönderdiniz, biraz bekleyip tekrar yazar mısınız? 🙏"
-            ).catch((err) => console.error("Rate limit mesajı gönderilemedi:", err));
+            ).catch((err) => {
+              console.error("Rate limit mesajı gönderilemedi:", err);
+              Sentry.captureException(err);
+            });
             continue;
           }
 
@@ -286,9 +291,18 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          await sendWhatsappTextMessage(message.from, aiReply.replyText).catch((err) =>
-            console.error("AI yanıtı gönderilemedi:", err)
-          );
+          await sendWhatsappTextMessage(message.from, aiReply.replyText).catch(async (err) => {
+            console.error("AI yanıtı gönderilemedi:", err);
+            Sentry.captureException(err);
+            // Musteri cevabi hic alamadi ve bunu fark edecek kimse yoktu (sessizce
+            // konsola dusuyordu) - sahibe de haber verilsin ki takip edebilsin.
+            await notifyOwnerOfSystemError(
+              admin,
+              business.id,
+              message.from,
+              `Yanıt gönderilemedi: ${err instanceof Error ? err.message : String(err)}`
+            );
+          });
 
           await admin.from("whatsapp_message_log").insert({
             business_id: business.id,
@@ -304,7 +318,10 @@ export async function POST(request: NextRequest) {
             await sendWhatsappTextMessage(
               aiReply.ownerPhone,
               ESCALATION_OWNER_TEMPLATE(message.from, aiReply.escalationReason ?? "belirtilmedi")
-            ).catch((err) => console.error("Eskalasyon bildirimi gönderilemedi:", err));
+            ).catch((err) => {
+              console.error("Eskalasyon bildirimi gönderilemedi:", err);
+              Sentry.captureException(err);
+            });
           }
         } catch (err) {
           // Bu mesajda ne olursa olsun (beklenmeyen DB/ağ hatası dahil) diğer

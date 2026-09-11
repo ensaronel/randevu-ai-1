@@ -12,7 +12,14 @@ export const AI_TOOLS: FunctionDeclaration[] = [
     name: "check_availability",
     description:
       "Belirli bir tarihte, istenen hizmet(ler) için uygun randevu saatlerini bulur. " +
-      "Müşteriye asla kendin bir saat uydurma — her zaman bu aracı kullan.",
+      "Müşteriye asla kendin bir saat uydurma — her zaman bu aracı kullan. Müşteriden mutlaka " +
+      "ÖNCE bir saat tercihi al, sonra bu aracı preferred_time ile çağır — sonuç, istenen saate " +
+      "EN YAKIN 3 seçeneği döner (öncesi veya sonrası fark etmeksizin), tam istenen saat " +
+      "boşsa bile o saate en yakın gerçek alternatifleri gösterir. Dönen her seçenekteki " +
+      "is_exact_requested_time alanını MUTLAKA oku ve buna göre konuş: true ise istenen saat " +
+      "TAM MÜSAİT — 'dolu' deme, doğrudan olumlu onayla; false ise istenen saat müsait DEĞİL, " +
+      "bu sadece en yakın alternatif — önce 'o saat dolu' de, sonra bu alternatifi sun. Bunu " +
+      "kendi başına tahmin etme, sadece bu alana bak.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -24,6 +31,14 @@ export const AI_TOOLS: FunctionDeclaration[] = [
         date: {
           type: "string",
           description: "YYYY-MM-DD formatında tarih (Türkiye yerel tarihi)",
+        },
+        preferred_time: {
+          type: "string",
+          description:
+            "HH:MM formatında, müşterinin tercih ettiği saat (Türkiye yerel saati) — ör. " +
+            "'öğleden sonra' -> '14:00', 'akşama doğru' -> '17:00', 'saat 14 gibi' -> '14:00'. " +
+            "Dönen sonuçlar bu saate EN YAKIN olanlardır. Müşteri gerçekten hiçbir tercih " +
+            "belirtmediyse (örn. 'ne zaman olursa olsun') boş bırak.",
         },
       },
       required: ["service_names", "date"],
@@ -58,21 +73,40 @@ export const AI_TOOLS: FunctionDeclaration[] = [
   {
     name: "list_my_appointments",
     description:
-      "Müşterinin yaklaşan (henüz gerçekleşmemiş) randevularını listeler. İptal veya erteleme " +
-      "talebi geldiğinde, hangi randevudan bahsettiğini netleştirmek için önce bunu çağır.",
+      "Müşterinin yaklaşan (henüz gerçekleşmemiş) randevularını, her birinin appointment_id'siyle " +
+      "birlikte listeler. İptal veya erteleme talebi geldiğinde, hangi randevudan bahsettiğini " +
+      "netleştirmek ve doğru appointment_id'yi almak için önce bunu çağır.",
     parametersJsonSchema: { type: "object", properties: {} },
   },
   {
     name: "cancel_appointment",
     description:
       "list_my_appointments'ın döndürdüğü bir randevuyu iptal eder. Müşteri açıkça iptal istemeden " +
-      "asla çağırma. Erteleme talebinde önce bunu, sonra check_availability + create_appointment'ı kullan.",
+      "asla çağırma. Erteleme talebinde (yeni bir güne/saate TAŞIMA) bunu DEĞİL, reschedule_appointment'ı kullan.",
     parametersJsonSchema: {
       type: "object",
       properties: {
-        starts_at: { type: "string", description: "list_my_appointments'tan dönen iptal edilecek randevunun starts_at değeri (ISO)" },
+        appointment_id: { type: "string", description: "list_my_appointments'tan dönen iptal edilecek randevunun appointment_id değeri" },
       },
-      required: ["starts_at"],
+      required: ["appointment_id"],
+    },
+  },
+  {
+    name: "reschedule_appointment",
+    description:
+      "list_my_appointments ile bulunan bir randevuyu, check_availability'nin önerdiği YENİ bir " +
+      "saate taşır — TEK bir işlemdir (randevu asla silinip yeniden oluşturulmaz, bu yüzden yeni " +
+      "saat herhangi bir sebeple alınamazsa bile eski randevu olduğu gibi kalır). Müşteri 'ertele', " +
+      "'değiştir', 'başka güne al' derse cancel_appointment DEĞİL bunu kullan. starts_at/ends_at " +
+      "değerlerini check_availability'nin döndürdüğü değerlerle BİREBİR aynı gönder.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "string", description: "list_my_appointments'tan dönen, ertelenecek randevunun appointment_id değeri" },
+        starts_at: { type: "string", description: "check_availability'den dönen yeni saatin starts_at değeri (ISO)" },
+        ends_at: { type: "string", description: "check_availability'den dönen yeni saatin ends_at değeri (ISO)" },
+      },
+      required: ["appointment_id", "starts_at", "ends_at"],
     },
   },
   {
@@ -135,6 +169,9 @@ export async function executeAiTool(
   if (name === "cancel_appointment") {
     return { result: await runCancelAppointment(input, exec), escalated: false };
   }
+  if (name === "reschedule_appointment") {
+    return { result: await runRescheduleAppointment(input, exec), escalated: false };
+  }
   if (name === "join_waitlist") {
     return { result: await runJoinWaitlist(input, exec), escalated: false };
   }
@@ -157,7 +194,18 @@ function addDaysToDateKey(dateKey: string, days: number): string {
   return next.toISOString().slice(0, 10);
 }
 
-async function findSlotsForDate(dateKey: string, requestedServices: AiBusinessContext["services"], exec: ToolExecContext) {
+function parseTimeToMinutesOrUndefined(value: unknown): number | undefined {
+  if (typeof value !== "string" || !/^\d{1,2}:\d{2}$/.test(value)) return undefined;
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+async function findSlotsForDate(
+  dateKey: string,
+  requestedServices: AiBusinessContext["services"],
+  exec: ToolExecContext,
+  preferredStartMinutes: number | undefined
+) {
   const admin = createAdminSupabaseClient();
   const { data: appointments } = await admin
     .from("appointments")
@@ -173,12 +221,14 @@ async function findSlotsForDate(dateKey: string, requestedServices: AiBusinessCo
     expertise: exec.ctx.expertise,
     existingAppointments: (appointments ?? []) as (Appointment & { appointment_services: AppointmentService[] })[],
     dateKey,
+    preferredStartMinutes,
   });
 }
 
 async function runCheckAvailability(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
   const serviceNames = (input.service_names as string[] | undefined) ?? [];
   const requestedDateKey = String(input.date ?? "");
+  const preferredStartMinutes = parseTimeToMinutesOrUndefined(input.preferred_time);
 
   const normalizedRequested = serviceNames.map((n) => n.trim().toLowerCase());
   const requestedServices = exec.ctx.services.filter((s) => normalizedRequested.includes(s.name.trim().toLowerCase()));
@@ -193,7 +243,7 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
 
   for (let offset = 0; offset <= LOOKAHEAD_DAYS; offset++) {
     const dateKey = offset === 0 ? requestedDateKey : addDaysToDateKey(requestedDateKey, offset);
-    const slots = await findSlotsForDate(dateKey, requestedServices, exec);
+    const slots = await findSlotsForDate(dateKey, requestedServices, exec, preferredStartMinutes);
 
     if (slots.length > 0) {
       return JSON.stringify({
@@ -204,6 +254,9 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
           ends_at: slot.endsAt,
           display: `${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
           assignments: slot.assignments.map((a) => ({ service_name: a.serviceName, staff_name: a.staffName })),
+          // true ise: musterinin istedigi saat TAM MUSAIT, "dolu" DEME, dogrudan onayla.
+          // false ise: istenen saat musait DEGIL, bu en yakin alternatif, "dolu ama" diyerek sun.
+          is_exact_requested_time: slot.isExactPreferredTime,
         })),
       });
     }
@@ -274,7 +327,7 @@ async function runListMyAppointments(exec: ToolExecContext): Promise<string> {
   const admin = createAdminSupabaseClient();
   const { data: appointments } = await admin
     .from("appointments")
-    .select("starts_at, ends_at, status, appointment_services(services(name), staff(full_name))")
+    .select("id, starts_at, ends_at, status, appointment_services(services(name), staff(full_name))")
     .eq("business_id", exec.ctx.business.id)
     .eq("customer_id", exec.customerId)
     .in("status", ["scheduled", "confirmed"])
@@ -287,6 +340,7 @@ async function runListMyAppointments(exec: ToolExecContext): Promise<string> {
 
   return JSON.stringify({
     appointments: appointments.map((a) => ({
+      appointment_id: a.id,
       starts_at: a.starts_at,
       display: `${formatDateTR(a.starts_at)} ${formatTimeTR(a.starts_at)}`,
       services: (a.appointment_services as unknown as { services: { name: string } | null; staff: { full_name: string } | null }[]).map(
@@ -297,15 +351,20 @@ async function runListMyAppointments(exec: ToolExecContext): Promise<string> {
 }
 
 async function runCancelAppointment(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
-  const startsAt = String(input.starts_at ?? "");
+  const appointmentId = String(input.appointment_id ?? "");
   const admin = createAdminSupabaseClient();
 
+  // appointment_id ile aranıyor - onceden starts_at BIREBIR metin eslesmesine
+  // guveniyordu, modelin (ozellikle sesli tarafta) bu ISO degeri hatasiz
+  // hatirlamasi/yeniden uretmesi gerekiyordu, ufak bir formatlama farki
+  // musterinin GERCEK randevusu icin "bulunamadi" cevabina yol aciyordu
+  // (2026-09-11 denetiminde bulundu).
   const { data: appointment } = await admin
     .from("appointments")
-    .select("id, status")
+    .select("id, status, starts_at")
     .eq("business_id", exec.ctx.business.id)
     .eq("customer_id", exec.customerId)
-    .eq("starts_at", startsAt)
+    .eq("id", appointmentId)
     .maybeSingle();
 
   if (!appointment) {
@@ -327,11 +386,71 @@ async function runCancelAppointment(input: Record<string, unknown>, exec: ToolEx
 
   void sendPushToBusiness(exec.ctx.business.id, {
     title: "Randevu iptal edildi (WhatsApp)",
-    body: `${exec.customerName} — ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} randevusunu iptal etti`,
+    body: `${exec.customerName} — ${formatDateTR(appointment.starts_at)} ${formatTimeTR(appointment.starts_at)} randevusunu iptal etti`,
     url: "/takvim",
   }).catch((err) => console.error("push gönderilemedi (randevu iptali)", err));
 
   return JSON.stringify({ success: true });
+}
+
+async function runRescheduleAppointment(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
+  const appointmentId = String(input.appointment_id ?? "");
+  const startsAt = String(input.starts_at ?? "");
+  const endsAt = String(input.ends_at ?? "");
+  if (!appointmentId || !startsAt || !endsAt) {
+    return JSON.stringify({ error: "appointment_id, starts_at ve ends_at gerekli." });
+  }
+
+  const admin = createAdminSupabaseClient();
+
+  // reschedule_appointment_with_check sadece business_id'yi dogrular (owner
+  // tarafi icin dogru - owner butun randevulari yonetebilir) - musteri tarafi
+  // icin BURADA AYRICA customer_id sahipligi kontrol ediliyor, aksi halde bir
+  // musteri (modeli konusmayla yanlis yonlendirip) baska bir musterinin
+  // appointment_id'sini vererek onun randevusunu tasiyabilirdi.
+  const { data: ownedAppointment } = await admin
+    .from("appointments")
+    .select("id")
+    .eq("business_id", exec.ctx.business.id)
+    .eq("customer_id", exec.customerId)
+    .eq("id", appointmentId)
+    .maybeSingle();
+  if (!ownedAppointment) {
+    return JSON.stringify({ error: "Bu randevu bulunamadı, önce list_my_appointments ile kontrol et." });
+  }
+
+  // ONCEDEN musteri tarafinda erteleme "once iptal et, sonra check_availability +
+  // create_appointment ile yeniden olustur" seklinde iki AYRI, atomik OLMAYAN
+  // adimda yapiliyordu - iptal basarili olup yeniden olusturma (ör. o saat de
+  // az once dolmussa) basarisiz olursa musteri TAMAMEN randevusuz kalabiliyordu
+  // (2026-09-11 denetiminde bulundu, hic gerceklesmis bir vaka degil ama gercek
+  // bir risk). Owner tarafinin zaten kullandigi AYNI atomik RPC'ye (tek
+  // transaction icinde kilit + cakisma kontrolu + guncelleme) gecildi - eski
+  // randevu SADECE yeni saat gercekten basariyla ayrilabilirse degisiyor.
+  const { error } = await admin.rpc("reschedule_appointment_with_check", {
+    p_appointment_id: appointmentId,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_business_id: exec.ctx.business.id,
+  });
+
+  if (error) {
+    if (error.message?.includes("staff_conflict")) {
+      return JSON.stringify({ error: "Bu saat az önce başka bir randevuyla doldu, lütfen tekrar check_availability çağır." });
+    }
+    if (error.message?.includes("not_found")) {
+      return JSON.stringify({ error: "Bu randevu bulunamadı, önce list_my_appointments ile kontrol et." });
+    }
+    return JSON.stringify({ error: "Erteleme yapılamadı, randevunuz DEĞİŞMEDEN olduğu gibi duruyor, lütfen tekrar dene." });
+  }
+
+  void sendPushToBusiness(exec.ctx.business.id, {
+    title: "Randevu ertelendi (WhatsApp)",
+    body: `${exec.customerName} — randevusunu ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} saatine erteledi`,
+    url: "/takvim",
+  }).catch((err) => console.error("push gönderilemedi (randevu erteleme)", err));
+
+  return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
 }
 
 async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {

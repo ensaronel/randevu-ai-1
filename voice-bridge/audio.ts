@@ -58,16 +58,37 @@ export function pcm16ToMuLawBuffer(pcm: Int16Array): Buffer {
 /** Basit lineer enterpolasyonla örnekleme oranı dönüşümü (ör. 8000 -> 16000, 24000 -> 8000). */
 export function resamplePcm16(input: Int16Array, fromRate: number, toRate: number): Int16Array {
   if (fromRate === toRate) return input;
+
+  // Örnekleme oranı DÜŞÜRÜLÜYORSA (ör. tarayıcının 48kHz mikrofonundan Gemini'nin
+  // istediği 16kHz'e), önce basit bir alçak-geçiren filtre uygulanmalı — aksi halde
+  // Nyquist sınırının (toRate/2) üzerindeki frekanslar (Türkçe'deki "s/ş/ç" gibi tiz
+  // sessizler tam da bu bantta) katlanıp (aliasing) gürültüye dönüşüyor, bu da konuşma
+  // tanımayı bozup modelin yanlış/anlamsız şeyler duymasına yol açıyor (2026-09-09'da
+  // gözlemlendi: transkriptte anlamsız/yabancı kelimeler çıkıyordu). Yükseltme
+  // (upsampling, ör. Twilio'nun 8kHz'i) için filtreye gerek yok, aliasing riski yok.
+  let source = input;
+  if (toRate < fromRate) {
+    const cutoffHz = toRate / 2;
+    const alpha = 1 - Math.exp((-2 * Math.PI * cutoffHz) / fromRate);
+    const filtered = new Int16Array(input.length);
+    let prev = input[0] ?? 0;
+    for (let i = 0; i < input.length; i++) {
+      prev = prev + alpha * (input[i] - prev);
+      filtered[i] = Math.round(prev);
+    }
+    source = filtered;
+  }
+
   const ratio = toRate / fromRate;
-  const outLength = Math.round(input.length * ratio);
+  const outLength = Math.round(source.length * ratio);
   const output = new Int16Array(outLength);
 
   for (let i = 0; i < outLength; i++) {
     const srcPos = i / ratio;
     const srcIndex = Math.floor(srcPos);
     const frac = srcPos - srcIndex;
-    const s0 = input[srcIndex] ?? input[input.length - 1] ?? 0;
-    const s1 = input[srcIndex + 1] ?? s0;
+    const s0 = source[srcIndex] ?? source[source.length - 1] ?? 0;
+    const s1 = source[srcIndex + 1] ?? s0;
     output[i] = Math.round(s0 + (s1 - s0) * frac);
   }
   return output;

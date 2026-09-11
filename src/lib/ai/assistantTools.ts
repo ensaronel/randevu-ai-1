@@ -1,6 +1,7 @@
 import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseTimeToMinutes } from "@/lib/capacity";
+import { isRealizedRevenue } from "@/lib/revenue";
 import { formatDateTR, formatTimeTR, dayRangeUtcISO } from "@/lib/date";
 import { findAvailableSlots } from "@/lib/ai/availability";
 import { loadBusinessContext } from "@/lib/ai/context";
@@ -474,7 +475,7 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
 
   const { data } = await admin
     .from("appointments")
-    .select("status, appointment_services(planned_price, final_price)")
+    .select("status, attendance, starts_at, appointment_services(planned_price, final_price)")
     .eq("business_id", ctx.businessId)
     .gte("starts_at", startUtc)
     .lte("starts_at", endUtc);
@@ -490,6 +491,7 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
       continue;
     }
     appointmentCount++;
+    if (!isRealizedRevenue(row.status, row.attendance, row.starts_at)) continue;
     for (const svc of row.appointment_services) {
       revenue += Number(svc.final_price ?? svc.planned_price);
     }
@@ -666,7 +668,7 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   const { startUtc, endUtc } = rangeToUtc(from, to);
   const { data: apptRows } = await admin
     .from("appointments")
-    .select("status, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
+    .select("status, attendance, starts_at, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
     .eq("business_id", ctx.businessId)
     .gte("starts_at", startUtc)
     .lte("starts_at", endUtc);
@@ -684,6 +686,7 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
         cancelledCount++;
         continue;
       }
+      if (!isRealizedRevenue(row.status, row.attendance, row.starts_at)) continue;
       const service = Array.isArray(svc.service) ? svc.service[0] : svc.service;
       bookedMinutes += service?.duration_minutes ?? 0;
       revenue += Number(svc.final_price ?? svc.planned_price);

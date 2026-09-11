@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { actionObjectUpdateSchema } from "@/lib/validation";
-import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
+import { sendWhatsappTextMessage, sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
 
 export async function PATCH(
   request: NextRequest,
@@ -31,13 +31,29 @@ export async function PATCH(
         outcome = "gönderilecek müşteri mesajı tanımlı değil";
       } else if (customer?.phone) {
         try {
-          await sendWhatsappTextMessage(customer.phone, actionObject.customer_message);
+          // fill_gap/retention_risk/rhythm_invite musterileri cogunlukla Meta'nin
+          // 24 saatlik serbest-metin penceresi disinda (ozelligin amaci zaten
+          // uzun suredir yazmamis musteriyi bulmak) - whatsapp_template_name
+          // doluysa onayli sablon kullanilir, yoksa (ör. eski/sablonsuz kayitlar
+          // veya musteri zaten 24 saat icinde yazdiysa gecerli olan) serbest
+          // metne dusulur. Bkz. supabase/schema.sql'deki not.
+          if (actionObject.whatsapp_template_name) {
+            await sendWhatsappTemplateMessage(
+              customer.phone,
+              actionObject.whatsapp_template_name,
+              "tr",
+              (actionObject.whatsapp_template_params as string[] | null) ?? []
+            );
+          } else {
+            await sendWhatsappTextMessage(customer.phone, actionObject.customer_message);
+          }
           await supabase.from("whatsapp_message_log").insert({
             business_id: owner.business_id,
             customer_id: actionObject.related_customer_id,
             direction: "outbound",
             message_type: "system_notice",
             body: actionObject.customer_message,
+            template_name: actionObject.whatsapp_template_name,
           });
           outcome = "mesaj gönderildi";
         } catch (err) {

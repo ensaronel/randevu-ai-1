@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
@@ -97,6 +98,7 @@ async function sendReminderBatch(
       sentCount++;
     } catch (err) {
       console.error("hatırlatma gönderilemedi", appt.id, err);
+      Sentry.captureException(err);
     }
 
     // Gönderim başarısız olsa bile tekrar tekrar denenip müşteriye aynı

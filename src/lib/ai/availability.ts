@@ -50,6 +50,13 @@ export interface SlotCandidate {
   startsAt: string;
   endsAt: string;
   assignments: SlotAssignment[];
+  /**
+   * Müşterinin istediği saatle BİREBİR aynı mı — AI'nin yorum yapmasına
+   * bırakmak yerine (denendi, model tutarsız cümle kuruyordu: "14:00 dolu
+   * ama 14:00 müsait" gibi çelişkili ifadeler üretiyordu, 2026-09-10),
+   * veride açıkça işaretleniyor ki cevap metni ondan doğrudan okunsun.
+   */
+  isExactPreferredTime: boolean;
 }
 
 interface FindSlotsParams {
@@ -59,6 +66,16 @@ interface FindSlotsParams {
   expertise: { staff_id: string; service_id: string }[];
   existingAppointments: (Appointment & { appointment_services: AppointmentService[] })[];
   dateKey: string;
+  /**
+   * Müşteri "öğleden sonra", "akşama doğru" gibi bir tercih belirttiğinde, taramanın
+   * günün AÇILIŞINDAN değil bu dakikadan (yerel saat, gece yarısından itibaren dakika)
+   * başlaması için. Olmadan tarama hep açılıştan başlar ve MAX_CANDIDATES'e ulaşır
+   * ulaşmaz durur — personel hep sabah açtığı için bu, gerçekte öğleden sonra da boş
+   * yer varken bile "sadece sabah var" gibi yanlış bir sonuca yol açıyordu (2026-09-09'da
+   * sesli arama testinde yakalandı: müşteri Cuma öğleden sonra istedi, sistem hiç
+   * bakmadan sadece sabah 09-11 saatlerini önerdi).
+   */
+  preferredStartMinutes?: number;
 }
 
 /** Bir hizmeti yapabilecek personel — o hizmet için hiç uzmanlık kaydı yoksa tüm aktif personel yapabilir sayılır. */
@@ -185,9 +202,19 @@ function tryAssignServices(
  * eşzamanlı) karşılayabilecek 3'e kadar aday saat döner. Her aday: her hizmet
  * için o hizmeti yapabilen, o gün çalışan, izinli olmayan ve o saatte başka
  * randevusu olmayan bir personel bulunduğunda geçerli sayılır.
+ *
+ * preferredStartMinutes verildiğinde, dönen adaylar o saate EN YAKIN olanlardır
+ * (öncesi veya sonrası fark etmeksizin) — önceden sadece o saatten SONRAsı
+ * taranıyordu, bu da müşteri "14:00" isteyip günün geri kalanı doluysa (ama
+ * 13:00'te yer varsa) hiçbir şey bulunamayışına, direkt ertesi güne atlanmasına
+ * yol açıyordu. Artık gün baştan sona (MAX_CANDIDATES sınırı olmadan) taranıp
+ * istenen saate mesafeye göre en yakın 3 aday seçiliyor, sonra sunum için
+ * kronolojik sıraya diziliyor. preferredStartMinutes yoksa (müşteri bir tercih
+ * belirtmediyse) hedef "en erken uygun an" olur — bu da eski "en erkenden
+ * başla" davranışıyla birebir aynı sonucu verir.
  */
 export function findAvailableSlots(params: FindSlotsParams): SlotCandidate[] {
-  const { business, requestedServices, dateKey } = params;
+  const { business, requestedServices, dateKey, preferredStartMinutes } = params;
 
   if (business.closed_dates.includes(dateKey)) return [];
 
@@ -201,32 +228,56 @@ export function findAvailableSlots(params: FindSlotsParams): SlotCandidate[] {
   // Bugün için, saati çoktan geçmiş bir başlangıç önerilmesin — bir sonraki
   // tam saate yuvarlanır (STEP_MINUTES zaten 60 olduğundan bu doğal bir grid noktası).
   const now = nowInTurkey();
-  const startMin =
+  const earliestAllowed =
     dateKey === now.dateKey
       ? Math.max(openMin, Math.ceil(now.minutesOfDay / STEP_MINUTES) * STEP_MINUTES)
       : openMin;
 
-  const candidates: SlotCandidate[] = [];
-  let lastCandidateStart = -Infinity;
-
-  for (let t = startMin; t + maxDuration <= closeMin; t += STEP_MINUTES) {
-    if (t - lastCandidateStart < MIN_GAP_BETWEEN_CANDIDATES_MINUTES) continue;
-
+  const allCandidates: { t: number; assignments: SlotAssignment[] }[] = [];
+  for (let t = earliestAllowed; t + maxDuration <= closeMin; t += STEP_MINUTES) {
     const assignments = tryAssignServices(requestedServices, 0, t, weekdayKey, new Set(), params);
+    if (assignments) allCandidates.push({ t, assignments });
+  }
+  if (allCandidates.length === 0) return [];
 
-    if (assignments) {
-      const overallEnd = t + maxDuration;
-      candidates.push({
-        startsAt: turkeyLocalMinutesToUtcISO(dateKey, t),
-        endsAt: turkeyLocalMinutesToUtcISO(dateKey, overallEnd),
-        assignments,
-      });
-      lastCandidateStart = t;
-      if (candidates.length >= MAX_CANDIDATES) break;
+  const target = preferredStartMinutes !== undefined ? Math.max(preferredStartMinutes, earliestAllowed) : earliestAllowed;
+
+  // Müşteri belirli bir saat istedi VE o saat TAM olarak müsaitse, sadece onu döneriz —
+  // "belki bunu da ister misin" diye alternatiflerle kalabalık etmeye gerek yok. Alternatif
+  // saatler SADECE istenen saat gerçekten dolu olduğunda anlamlı (2026-09-10'da kullanıcı
+  // geri bildirimiyle netleşti: "saat 4'te boş yer var ama diğer saatleri de öneriyor").
+  if (preferredStartMinutes !== undefined) {
+    const exactMatch = allCandidates.find((c) => c.t === target);
+    if (exactMatch) {
+      return [
+        {
+          startsAt: turkeyLocalMinutesToUtcISO(dateKey, exactMatch.t),
+          endsAt: turkeyLocalMinutesToUtcISO(dateKey, exactMatch.t + maxDuration),
+          assignments: exactMatch.assignments,
+          isExactPreferredTime: true,
+        },
+      ];
     }
   }
 
-  return candidates;
+  const byProximity = [...allCandidates].sort(
+    (a, b) => Math.abs(a.t - target) - Math.abs(b.t - target) || a.t - b.t
+  );
+
+  const picked: typeof allCandidates = [];
+  for (const c of byProximity) {
+    if (picked.some((p) => Math.abs(p.t - c.t) < MIN_GAP_BETWEEN_CANDIDATES_MINUTES)) continue;
+    picked.push(c);
+    if (picked.length >= MAX_CANDIDATES) break;
+  }
+  picked.sort((a, b) => a.t - b.t); // sunum icin kronolojik sira
+
+  return picked.map(({ t, assignments }) => ({
+    startsAt: turkeyLocalMinutesToUtcISO(dateKey, t),
+    endsAt: turkeyLocalMinutesToUtcISO(dateKey, t + maxDuration),
+    assignments,
+    isExactPreferredTime: false, // buraya düşüldüyse zaten exact match yoktu (üstteki blok döner)
+  }));
 }
 
 export { dayRangeUtcISO as dayRangeUtcISOForDate, weekdayKeyForDate };

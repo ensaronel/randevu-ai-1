@@ -1,6 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { monthRangeUtcISO, dateKeyTR } from "@/lib/date";
 import { parseTimeToMinutes } from "@/lib/capacity";
+import { isRealizedRevenue } from "@/lib/revenue";
 import type { Business, Staff } from "@/types/database";
 
 type SupabaseClient = Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"];
@@ -9,6 +10,8 @@ const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 interface AppointmentRow {
   status: string;
+  attendance: string | null;
+  starts_at: string;
   appointment_services: {
     planned_price: number;
     final_price: number | null;
@@ -72,7 +75,7 @@ export async function loadStaffMonthlyMetrics(
   const { data } = await supabase
     .from("appointments")
     .select(
-      "status, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot, service:services(duration_minutes))"
+      "status, attendance, starts_at, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot, service:services(duration_minutes))"
     )
     .eq("business_id", business.id)
     .gte("starts_at", startUtc)
@@ -95,6 +98,7 @@ export async function loadStaffMonthlyMetrics(
           cancelledCount++;
           continue;
         }
+        if (!isRealizedRevenue(row.status, row.attendance, row.starts_at)) continue;
         const price = Number(svc.final_price ?? svc.planned_price);
         const rate = svc.commission_rate_snapshot ?? staff.commission_rate;
         revenue += price;

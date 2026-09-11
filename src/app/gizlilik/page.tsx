@@ -3,14 +3,16 @@ export default function GizlilikPolitikasi() {
     <div className="flex flex-col flex-1 bg-bg text-ink">
       <main className="max-w-2xl w-full mx-auto px-6 py-16 flex flex-col gap-6">
         <h1 className="font-display text-3xl font-semibold">Gizlilik Politikası</h1>
-        <p className="text-sm text-ink-muted">Son güncelleme: 5 Eylül 2026</p>
+        <p className="text-sm text-ink-muted">Son güncelleme: 11 Eylül 2026</p>
 
         <section className="flex flex-col gap-2">
           <h2 className="font-display text-lg font-semibold">Hangi bilgileri topluyoruz</h2>
           <p className="text-ink-muted">
             Randevu AI, hizmet verdiği işletmelerin (kuaför/güzellik salonu) müşterileriyle WhatsApp
-            üzerinden randevu almasını sağlar. Bu süreçte müşterinin telefon numarası, adı, randevu
-            geçmişi ve WhatsApp üzerinden gönderdiği mesajlar ilgili işletme adına saklanır.
+            ve/veya telefonla sesli arama üzerinden randevu almasını sağlar. Bu süreçte müşterinin
+            telefon numarası, adı, randevu geçmişi, WhatsApp üzerinden gönderdiği mesajlar ve — sesli
+            arama özelliği kullanılıyorsa — telefon görüşmesinin sesi/dökümü ilgili işletme adına
+            saklanır.
           </p>
         </section>
 
@@ -34,8 +36,13 @@ export default function GizlilikPolitikasi() {
               <strong>Meta / WhatsApp</strong> — mesajlaşmanın gerçekleştiği iletişim kanalı.
             </li>
             <li>
-              <strong>Google (Gemini AI)</strong> — WhatsApp mesajınızı anlayıp uygun randevu yanıtını
-              üretmek için mesaj içeriği bu yapay zeka servisine iletilir (yurt dışı, ABD merkezli).
+              <strong>Twilio</strong> — sesli arama özelliği kullanan işletmelerde telefon
+              hattını sağlayan ve görüşme sesini ilettiğimiz altyapı (yurt dışı, ABD merkezli).
+            </li>
+            <li>
+              <strong>Google (Gemini AI)</strong> — WhatsApp mesajınızı veya sesli görüşmenizi anlayıp
+              uygun randevu yanıtını üretmek için mesaj/ses içeriği bu yapay zeka servisine iletilir
+              (yurt dışı, ABD merkezli).
             </li>
             <li>
               <strong>Supabase</strong> — tüm verilerin güvenli şekilde saklandığı veritabanı altyapısı
