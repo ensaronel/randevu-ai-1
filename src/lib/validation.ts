@@ -116,3 +116,26 @@ export const pushSubscribeSchema = z.object({
     auth: z.string().trim().min(1),
   }),
 });
+
+export const adminCreateBusinessSchema = z
+  .object({
+    business_name: z.string().trim().min(1).max(120),
+    owner_full_name: z.string().trim().min(1).max(120),
+    owner_email: z.string().trim().email(),
+    owner_phone: z.string().trim().max(30).optional(),
+    package: z.enum(["whatsapp_only", "whatsapp_and_voice"]),
+    voice_number_mode: z.enum(["existing_forwarded", "twilio_new"]).optional(),
+    business_own_number: z.string().trim().max(30).optional(),
+  })
+  .refine((v) => v.package === "whatsapp_only" || v.voice_number_mode !== undefined, {
+    message: "Sesli paket seçildiyse voice_number_mode zorunlu",
+    path: ["voice_number_mode"],
+  })
+  .refine((v) => v.voice_number_mode !== "existing_forwarded" || !!v.business_own_number, {
+    message: "existing_forwarded modunda business_own_number zorunlu",
+    path: ["business_own_number"],
+  });
+
+export const confirmPaymentSchema = z.object({
+  method: z.enum(["eft", "nakit"]),
+});

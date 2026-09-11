@@ -192,10 +192,26 @@ create table action_objects (
     check (status in ('pending','approved','rejected','auto_sent')),
   outcome text,                  -- sonuç (ör. "müşteri onayladı, randevu oluştu")
   created_at timestamptz not null default now(),
-  resolved_at timestamptz
+  resolved_at timestamptz,
+  whatsapp_template_name text,   -- doluysa onaylaninca customer_message YERINE bu Meta sablonu gonderilir (bkz. asagidaki not)
+  whatsapp_template_params jsonb -- sablonun {{1}},{{2}}... yer tutucularina sirali karsilik gelen metin dizisi
 );
 
 create index idx_action_objects_business_status on action_objects(business_id, status);
+
+-- ============================================================
+-- Proaktif oneriler icin onaylanmis WhatsApp sablonlari (2026-09-11).
+-- fill_gap/retention_risk/rhythm_invite musterileri COGU ZAMAN Meta'nin 24
+-- saatlik "customer service window"i DISINDA (uzun suredir yazmamis musteri
+-- - zaten ozelligin butun amaci bu) - src/app/api/action-objects/[id]/route.ts
+-- onceden HER ZAMAN serbest metin (sendWhatsappTextMessage) kullaniyordu, bu
+-- da tam bu senaryoda Meta tarafindan SESSIZCE reddediliyordu ("mesaj
+-- gonderildi" gorunup aslinda hic gitmemis olabilirdi). whatsapp_template_name
+-- doluysa route artik sendWhatsappTemplateMessage kullaniyor - bkz.
+-- src/lib/proactive.ts'in bu 3 action_object turu icin sablon adi/parametre
+-- doldurdugu satirlar. finance_note/campaign_suggestion musteriye degil
+-- isletme sahibine gosterildigi icin sablon gerektirmez, bu alan onlarda hep null.
+-- ============================================================
 
 -- ============================================================
 -- Bekleme listesi (boşluk doldurma için)
@@ -609,3 +625,89 @@ grant select, insert, update, delete on all tables in schema public to authentic
 --   );
 --   $$
 -- );
+
+-- ============================================================
+-- Ödeme + numara sağlama akışı (2026-09-10). Platform admin (Ensar) yüz yüze
+-- sattığı yeni işletmeyi "ödeme bekleniyor" durumunda ekliyor, ödeme (banka
+-- havalesi) geldiğinde admin panelinde "Ödeme Alındı" ile onaylıyor — bu da
+-- sesli arama numarasını otomatik bağlıyor (işletmenin zaten var olan
+-- numarasını Twilio'ya yönlendirme talimatı VEYA yoksa Twilio'dan yeni bir
+-- TR numarası satın alıp atama). WhatsApp numarası ayrı, hâlâ manuel (Meta
+-- Business Manager) bağlanıyor — bkz. whatsapp_phone_number_id.
+--
+-- subscription_status varsayılanı 'active' — mevcut satırlar (pilot dahil)
+-- bu akışa hiç girmediği için geriye dönük olarak aktif kabul edilmeli,
+-- sadece BUNDAN SONRA admin panelinden eklenen işletmeler 'pending_payment'
+-- ile başlayacak.
+--
+-- ÖNEMLİ TASARIM NOTU: her iki modda (existing_forwarded / twilio_new) da
+-- BİZİM bir Twilio numarası satın almamız gerekiyor — "mevcut numarayı
+-- yönlendir" modunda bile, Twilio'nun webhook'una gelen aramayı HANGİ
+-- işletmeye ait olduğunu ayırt edebilmemiz için (aranan numaraya bakarak)
+-- her işletmenin kendine özel, arka planda gizli bir Twilio numarası olması
+-- şart — paylaşılan tek bir Twilio numarası kullanılırsa işletmeler ayırt
+-- edilemez. Fark sadece NE GÖSTERİLDİĞİ: existing_forwarded'da müşteri hâlâ
+-- business_own_number'ı arıyor (o numara arkada twilio_number'a yönleniyor,
+-- twilio_number hiç görünmüyor); twilio_new'de müşteriye doğrudan
+-- twilio_number veriliyor, business_own_number boş kalıyor.
+-- ============================================================
+alter table businesses add column package text check (package in ('whatsapp_only','whatsapp_and_voice'));
+alter table businesses add column subscription_status text not null default 'active'
+  check (subscription_status in ('pending_payment','active','suspended'));
+alter table businesses add column voice_number_mode text
+  check (voice_number_mode in ('existing_forwarded','twilio_new'));
+alter table businesses add column business_own_number text; -- musterinin bildigi/aradigi numara (sadece existing_forwarded'da dolu)
+alter table businesses add column twilio_number text; -- Twilio'dan satin alinan gercek numara (her iki modda da dolu)
+alter table businesses add column twilio_number_sid text; -- Twilio yonetimi (silme/guncelleme) icin
+
+-- ============================================================
+-- Aylık ödeme takibi (2026-09-11). Ödeme EFT/nakit ile elle tahsil
+-- ediliyor (bir ödeme sağlayıcısı entegre değil) — admin panelinde
+-- "Bu ayın ödemesini onayla" ile her ay elle onaylanıyor, bu da
+-- next_payment_due_date'i 1 ay ileri alır ve payments'a bir satır
+-- ekler. Fiyatlar src/lib/billing.ts'deki PACKAGE_PRICES_TL'den,
+-- işletme oluşturulurken monthly_price_tl'e ANLIK DEĞER olarak
+-- yazılır (sonradan fiyat sabitleri değişse bile mevcut müşterinin
+-- fiyatı değişmez).
+--
+-- next_payment_due_date + PAYMENT_GRACE_DAYS (src/lib/billing.ts)
+-- geçtiği halde hâlâ ödeme onaylanmamışsa src/app/api/cron/suspend-overdue
+-- işletmeyi otomatik olarak subscription_status='suspended' VE
+-- is_active=false yapar — is_active zaten webhook/dashboard'da mevcut
+-- "elle kapatma anahtarı" olarak kullanıldığı için (bkz. src/lib/auth.ts,
+-- src/app/api/whatsapp/webhook/route.ts) ayrı bir engelleme kodu
+-- eklemeye gerek yok, aynı kill-switch'i otomatik tetiklemiş oluyoruz.
+-- ============================================================
+alter table businesses add column monthly_price_tl integer;
+alter table businesses add column next_payment_due_date date;
+
+-- ============================================================
+-- WhatsApp amaçlı ayrı Twilio numarası (2026-09-11). Önceden sadece sesli
+-- paket için 1 numara alınıyordu; artık HER paket için (whatsapp_only dahil)
+-- bir WhatsApp numarası da otomatik satın alınıyor — whatsapp_and_voice'ta
+-- toplam 2 numara (biri WhatsApp, biri sesli) alınmış olur. Bu, o numarayı
+-- Meta Business Manager'da WhatsApp için KAYDETMEZ — Meta'nın kendi
+-- doğrulama süreci (SMS/arama OTP + işletme doğrulaması) hâlâ manuel,
+-- bkz. src/app/api/admin/businesses/[id]/confirm-payment/route.ts'in yorumu.
+-- whatsapp_phone_number_id o manuel kayıt tamamlanınca ayrıca set edilir.
+-- ============================================================
+alter table businesses add column whatsapp_twilio_number text;
+alter table businesses add column whatsapp_twilio_number_sid text;
+
+create table payments (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  amount_tl integer not null,
+  method text not null check (method in ('eft','nakit')),
+  covers_until date not null, -- bu odeme hangi tarihe kadar hizmeti kapsiyor (yeni next_payment_due_date ile ayni)
+  confirmed_by_email text not null, -- odemeyi onaylayan platform admini
+  created_at timestamptz not null default now()
+);
+
+alter table payments enable row level security;
+-- Bilinçli olarak hiç RLS politikası eklenmedi: bu tabloya sadece admin
+-- panelinin service-role client'ı (RLS'i tamamen atlar) erişiyor, normal
+-- 'authenticated' kullanıcılar (işletme sahipleri) için satır bazlı bir
+-- ödeme geçmişi görüntüleme özelliği henüz yok — RLS açık + politika yok
+-- = service-role dışında kimse hiçbir satır göremez/yazamaz (güvenli varsayılan).
+grant select, insert, update, delete on payments to service_role;

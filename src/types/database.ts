@@ -14,8 +14,28 @@ export interface Business {
   working_hours: Record<string, [string, string]>;
   closed_dates: string[];
   is_active: boolean;
+  package: "whatsapp_only" | "whatsapp_and_voice" | null;
+  subscription_status: "pending_payment" | "active" | "suspended";
+  voice_number_mode: "existing_forwarded" | "twilio_new" | null;
+  business_own_number: string | null;
+  twilio_number: string | null;
+  twilio_number_sid: string | null;
+  whatsapp_twilio_number: string | null;
+  whatsapp_twilio_number_sid: string | null;
+  monthly_price_tl: number | null;
+  next_payment_due_date: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Payment {
+  id: string;
+  business_id: string;
+  amount_tl: number;
+  method: "eft" | "nakit";
+  covers_until: string;
+  confirmed_by_email: string;
+  created_at: string;
 }
 
 export interface BusinessOwner {
@@ -140,6 +160,8 @@ export interface ActionObject {
   outcome: string | null;
   created_at: string;
   resolved_at: string | null;
+  whatsapp_template_name: string | null;
+  whatsapp_template_params: string[] | null;
 }
 
 export interface WaitlistEntry {
