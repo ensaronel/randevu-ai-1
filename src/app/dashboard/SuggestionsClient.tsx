@@ -21,9 +21,11 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   async function resolve(id: string, status: "approved" | "rejected") {
     setBusyId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/action-objects/${id}`, {
         method: "PATCH",
@@ -33,7 +35,11 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
       if (res.ok) {
         setResolvedIds((prev) => new Set(prev).add(id));
         router.refresh();
+      } else {
+        setError("İşlem yapılamadı, lütfen tekrar dene.");
       }
+    } catch {
+      setError("İşlem yapılamadı, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -44,6 +50,7 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
   return (
     <div className="flex flex-col gap-2.5">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Öneriler</p>
+      {error && <p className="text-[12px] text-bad">{error}</p>}
       {visible.length === 0 && (
         <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl p-4">
           Şu an bekleyen öneri yok — AI, boşalan randevuları bekleme listesindekilerle eşleştirdiğinde veya

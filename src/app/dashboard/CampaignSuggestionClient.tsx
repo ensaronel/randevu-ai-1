@@ -15,6 +15,7 @@ export default function CampaignSuggestionClient({
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function copy() {
     try {
@@ -28,6 +29,7 @@ export default function CampaignSuggestionClient({
 
   async function dismiss() {
     setDismissing(true);
+    setError(null);
     try {
       const res = await fetch(`/api/action-objects/${id}`, {
         method: "PATCH",
@@ -35,6 +37,9 @@ export default function CampaignSuggestionClient({
         body: JSON.stringify({ status: "approved" }),
       });
       if (res.ok) router.refresh();
+      else setError("Kapatılamadı, lütfen tekrar dene.");
+    } catch {
+      setError("Kapatılamadı, lütfen tekrar dene.");
     } finally {
       setDismissing(false);
     }
@@ -63,6 +68,7 @@ export default function CampaignSuggestionClient({
           Kapat
         </button>
       </div>
+      {error && <p className="text-[12px] text-bad">{error}</p>}
     </div>
   );
 }

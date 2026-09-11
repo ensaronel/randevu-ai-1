@@ -2,29 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { formatTL } from "@/lib/date";
+import { parseTLInput } from "@/lib/money";
 import BadgeStat from "@/components/BadgeStat";
 import EmptyState from "@/components/EmptyState";
 import type { ExpenseCategory, FixedExpense, OneTimeExpense } from "@/types/database";
-
-/**
- * Türkçe para girişini (binlik ayraç "." + ondalık ayraç ",") sayıya çevirir.
- * Virgül varsa noktalar binlik ayraç sayılıp silinir. Virgül yoksa ve tek bir
- * nokta 1-2 haneli bir kesirle bitiyorsa ("45.5" gibi) ondalık ayraç kabul
- * edilir, aksi halde ("1.234" gibi) binlik ayraç sayılıp silinir.
- */
-function parseTLInput(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) return NaN;
-  if (trimmed.includes(",")) {
-    return Number(trimmed.replace(/\./g, "").replace(",", "."));
-  }
-  const dotMatches = trimmed.match(/\./g);
-  if (dotMatches?.length === 1) {
-    const decimalPart = trimmed.split(".")[1];
-    if (decimalPart.length <= 2) return Number(trimmed);
-  }
-  return Number(trimmed.replace(/\./g, ""));
-}
 
 /** Tarayıcının yerel (Türkiye) gününe göre "YYYY-MM-DD" — toISOString() UTC'ye kaydırdığı için kullanılmadı. */
 function toDateKey(d: Date): string {
@@ -188,6 +169,8 @@ function RangeCalculator({
   setCustomTo,
   range,
   summary,
+  fetchError,
+  onRetry,
 }: {
   preset: PresetKey;
   setPreset: (p: PresetKey) => void;
@@ -197,6 +180,8 @@ function RangeCalculator({
   setCustomTo: (v: string) => void;
   range: { from: string; to: string };
   summary: RangeSummary | null;
+  fetchError: boolean;
+  onRetry: () => void;
 }) {
   const isStale = !summary || summary.from !== range.from || summary.to !== range.to;
   const hasPaymentSplit = summary && (summary.cashRevenue > 0 || summary.cardRevenue > 0 || summary.unspecifiedRevenue > 0);
@@ -237,6 +222,13 @@ function RangeCalculator({
 
       {range.from > range.to ? (
         <p className="text-[12.5px] text-bad">Bitiş tarihi başlangıçtan önce olamaz.</p>
+      ) : fetchError ? (
+        <div className="flex items-center gap-2">
+          <p className="text-[12.5px] text-bad">Ciro hesaplanamadı, bağlantını kontrol edip tekrar dene.</p>
+          <button onClick={onRetry} className="text-[12.5px] font-semibold text-accent shrink-0">
+            Tekrar dene
+          </button>
+        </div>
       ) : isStale ? (
         <p className="text-[12.5px] text-ink-muted">Hesaplanıyor…</p>
       ) : (
@@ -297,6 +289,7 @@ function OneTimeExpensesSection({
   const [categoryDraft, setCategoryDraft] = useState("diger");
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const total = items.reduce((sum, e) => sum + Number(e.amount), 0);
 
@@ -306,6 +299,7 @@ function OneTimeExpensesSection({
     if (!description || Number.isNaN(amount) || amount < 0 || !dateDraft) return;
 
     setAdding(true);
+    setError(null);
     try {
       const res = await fetch("/api/kasa/one-time-expenses", {
         method: "POST",
@@ -316,7 +310,11 @@ function OneTimeExpensesSection({
         setDescDraft("");
         setAmountDraft("");
         onChanged();
+      } else {
+        setError("Gider eklenemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Gider eklenemedi, lütfen tekrar dene.");
     } finally {
       setAdding(false);
     }
@@ -324,9 +322,13 @@ function OneTimeExpensesSection({
 
   async function removeExpense(id: string) {
     setRemovingId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/kasa/one-time-expenses/${id}`, { method: "DELETE" });
       if (res.ok) onChanged();
+      else setError("Gider silinemedi, lütfen tekrar dene.");
+    } catch {
+      setError("Gider silinemedi, lütfen tekrar dene.");
     } finally {
       setRemovingId(null);
     }
@@ -402,6 +404,7 @@ function OneTimeExpensesSection({
             Ekle
           </button>
         </div>
+        {error && <p className="text-[12px] text-bad">{error}</p>}
       </div>
     </div>
   );
@@ -416,6 +419,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmountDraft, setEditAmountDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const total = items.reduce((sum, e) => sum + Number(e.monthly_amount), 0);
 
@@ -425,6 +429,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
     if (!description || Number.isNaN(amount) || amount < 0) return;
 
     setAdding(true);
+    setError(null);
     try {
       const res = await fetch("/api/kasa/fixed-expenses", {
         method: "POST",
@@ -436,7 +441,11 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
         setItems((prev) => [...prev, data]);
         setDescDraft("");
         setAmountDraft("");
+      } else {
+        setError("Gider eklenemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Gider eklenemedi, lütfen tekrar dene.");
     } finally {
       setAdding(false);
     }
@@ -447,6 +456,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
     if (Number.isNaN(amount) || amount < 0) return;
 
     setBusyId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/kasa/fixed-expenses/${id}`, {
         method: "PATCH",
@@ -457,7 +467,11 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
         const { data } = await res.json();
         setItems((prev) => prev.map((e) => (e.id === id ? data : e)));
         setEditingId(null);
+      } else {
+        setError("Tutar güncellenemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Tutar güncellenemedi, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -465,11 +479,16 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
 
   async function removeFixedExpense(id: string) {
     setBusyId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/kasa/fixed-expenses/${id}`, { method: "DELETE" });
       if (res.ok) {
         setItems((prev) => prev.filter((e) => e.id !== id));
+      } else {
+        setError("Gider silinemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Gider silinemedi, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -567,6 +586,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
             Ekle
           </button>
         </div>
+        {error && <p className="text-[12px] text-bad">{error}</p>}
       </div>
     </div>
   );
@@ -577,6 +597,7 @@ export default function KasaClient({ initialFixedExpenses }: { initialFixedExpen
   const [customFrom, setCustomFrom] = useState(toDateKey(new Date()));
   const [customTo, setCustomTo] = useState(toDateKey(new Date()));
   const [summary, setSummary] = useState<RangeSummary | null>(null);
+  const [fetchError, setFetchError] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   const range = preset === "custom" ? { from: customFrom, to: customTo } : presetRange(preset);
@@ -584,10 +605,16 @@ export default function KasaClient({ initialFixedExpenses }: { initialFixedExpen
   useEffect(() => {
     if (range.from > range.to) return;
     let cancelled = false;
+    setFetchError(false);
     fetch(`/api/kasa/range-summary?from=${range.from}&to=${range.to}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
-        if (!cancelled && body?.data) setSummary(body.data);
+        if (cancelled) return;
+        if (body?.data) setSummary(body.data);
+        else setFetchError(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError(true);
       });
     return () => {
       cancelled = true;
@@ -605,6 +632,8 @@ export default function KasaClient({ initialFixedExpenses }: { initialFixedExpen
         setCustomTo={setCustomTo}
         range={range}
         summary={summary}
+        fetchError={fetchError}
+        onRetry={() => setRefreshTick((t) => t + 1)}
       />
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
         {summary && summary.from === range.from && summary.to === range.to && (

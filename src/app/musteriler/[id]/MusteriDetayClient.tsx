@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatTL, formatDateTR, formatTimeTR } from "@/lib/date";
 import BadgeStat from "@/components/BadgeStat";
+import EmptyState from "@/components/EmptyState";
 import type { Customer } from "@/types/database";
 
 export interface AppointmentHistoryItem {
@@ -218,9 +219,7 @@ export default function MusteriDetayClient({
 
       <div className="flex flex-col gap-2.5">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">AI Öneri Geçmişi</p>
-        {actionHistory.length === 0 && (
-          <p className="text-[13px] text-ink-muted">Bu müşteri için henüz AI önerisi yok.</p>
-        )}
+        {actionHistory.length === 0 && <EmptyState message="Bu müşteri için henüz AI önerisi yok." />}
         {actionHistory.map((a) => (
           <div key={a.id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -268,7 +267,7 @@ export default function MusteriDetayClient({
 
       <div className="flex flex-col gap-2.5">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Randevu Geçmişi</p>
-        {appointments.length === 0 && <p className="text-[13px] text-ink-muted">Henüz randevu kaydı yok.</p>}
+        {appointments.length === 0 && <EmptyState message="Henüz randevu kaydı yok." />}
         {appointments.map((a) => {
           const total = a.services.reduce((s, svc) => s + svc.price, 0);
           return (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTL, formatTimeTR } from "@/lib/date";
+import { parseTLInput } from "@/lib/money";
 import { colorForStaffIndex } from "@/lib/serviceColors";
 
 type OneOrMany<T> = T | T[] | null;
@@ -10,23 +11,6 @@ type OneOrMany<T> = T | T[] | null;
 function one<T>(value: OneOrMany<T>): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-/**
- * Türkçe para girişini (binlik ayraç "." + ondalık ayraç ",") sayıya çevirir.
- */
-function parseTLInput(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) return NaN;
-  if (trimmed.includes(",")) {
-    return Number(trimmed.replace(/\./g, "").replace(",", "."));
-  }
-  const dotMatches = trimmed.match(/\./g);
-  if (dotMatches?.length === 1) {
-    const decimalPart = trimmed.split(".")[1];
-    if (decimalPart.length <= 2) return Number(trimmed);
-  }
-  return Number(trimmed.replace(/\./g, ""));
 }
 
 export interface TakvimAppointment {
@@ -64,6 +48,7 @@ export default function TakvimAppointmentBlocks({
   const [noteDraft, setNoteDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const openAppt = appointments.find((a) => a.id === openApptId) ?? null;
 
@@ -72,6 +57,7 @@ export default function TakvimAppointmentBlocks({
     if (Number.isNaN(value) || value < 0) return;
 
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/appointment-services/${serviceRowId}`, {
         method: "PATCH",
@@ -82,7 +68,11 @@ export default function TakvimAppointmentBlocks({
         setEditingServiceId(null);
         setNoteDraft("");
         router.refresh();
+      } else {
+        setError("Fiyat kaydedilemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Fiyat kaydedilemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -90,6 +80,7 @@ export default function TakvimAppointmentBlocks({
 
   async function setPaymentMethod(serviceRowId: string, method: "nakit" | "kart") {
     setPayingId(serviceRowId);
+    setError(null);
     try {
       const res = await fetch(`/api/appointment-services/${serviceRowId}`, {
         method: "PATCH",
@@ -97,6 +88,9 @@ export default function TakvimAppointmentBlocks({
         body: JSON.stringify({ payment_method: method }),
       });
       if (res.ok) router.refresh();
+      else setError("Ödeme yöntemi kaydedilemedi, lütfen tekrar dene.");
+    } catch {
+      setError("Ödeme yöntemi kaydedilemedi, lütfen tekrar dene.");
     } finally {
       setPayingId(null);
     }
@@ -253,6 +247,7 @@ export default function TakvimAppointmentBlocks({
                 );
               })}
             </div>
+            {error && <p className="text-[12px] text-bad">{error}</p>}
           </div>
         </div>
       )}

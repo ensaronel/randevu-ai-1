@@ -35,7 +35,7 @@ export default function WorkingHoursEditor({
         const shift = value[day.key];
         const closed = !shift;
         return (
-          <div key={day.key} className="flex items-center gap-2">
+          <div key={day.key} className="flex items-center flex-wrap gap-2">
             <label className="flex items-center gap-1.5 w-28 shrink-0 text-[12.5px]">
               <input type="checkbox" checked={!closed} onChange={(e) => setDay(day.key, !e.target.checked)} />
               {day.label}

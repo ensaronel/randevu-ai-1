@@ -32,10 +32,12 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newLeaveDate, setNewLeaveDate] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function addStaff() {
     if (!name.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/staff", {
         method: "POST",
@@ -48,7 +50,11 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
         setWorkingHours(DEFAULT_HOURS);
         setShowAddForm(false);
         router.refresh();
+      } else {
+        setError("Personel eklenemedi, lütfen tekrar dene.");
       }
+    } catch {
+      setError("Personel eklenemedi, lütfen tekrar dene.");
     } finally {
       setSaving(false);
     }
@@ -56,6 +62,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
 
   async function updateStaff(id: string, body: Record<string, unknown>) {
     setBusyId(id);
+    setError(null);
     try {
       const res = await fetch(`/api/staff/${id}`, {
         method: "PATCH",
@@ -63,6 +70,9 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
         body: JSON.stringify(body),
       });
       if (res.ok) router.refresh();
+      else setError("Güncellenemedi, lütfen tekrar dene.");
+    } catch {
+      setError("Güncellenemedi, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -76,6 +86,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {error && <p className="text-[12px] text-bad">{error}</p>}
       {showAddForm ? (
         <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
           <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Personel</p>

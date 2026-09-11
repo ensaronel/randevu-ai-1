@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTL } from "@/lib/date";
+import { parseTLInput } from "@/lib/money";
 
 export interface ServiceItem {
   id: string;
@@ -33,7 +34,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         body: JSON.stringify({
           name: form.name.trim(),
           duration_minutes: Number(form.duration_minutes),
-          price: Number(form.price.replace(",", ".")),
+          price: parseTLInput(form.price),
           category: form.category.trim() || null,
         }),
       });
