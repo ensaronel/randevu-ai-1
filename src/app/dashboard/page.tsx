@@ -7,6 +7,7 @@ import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
 import CampaignSuggestionClient from "@/app/dashboard/CampaignSuggestionClient";
+import DailySurveyClient from "@/app/dashboard/DailySurveyClient";
 import type { Staff } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
@@ -50,12 +51,16 @@ async function loadPendingSuggestions(
 ) {
   const { data } = await supabase
     .from("action_objects")
-    .select("id, type, suggestion, customer_message, reasoning")
+    .select("id, type, suggestion, customer_message, reasoning, customer:customers(full_name)")
     .eq("business_id", businessId)
     .eq("status", "pending")
     .in("type", ["fill_gap", "retention_risk", "rhythm_invite"])
     .order("created_at", { ascending: false });
-  return data ?? [];
+  return (data ?? []).map((row) => {
+    const customer = row.customer as unknown as { full_name: string } | { full_name: string }[] | null;
+    const customerName = customer ? (Array.isArray(customer) ? customer[0]?.full_name : customer.full_name) : null;
+    return { ...row, customer_name: customerName ?? null };
+  });
 }
 
 async function loadTodaysFinanceNote(
@@ -74,6 +79,22 @@ async function loadTodaysFinanceNote(
     .limit(1)
     .maybeSingle();
   return data?.suggestion ?? null;
+}
+
+async function loadPendingDailySurvey(
+  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
+  businessId: string
+) {
+  const { data } = await supabase
+    .from("action_objects")
+    .select("id, suggestion")
+    .eq("business_id", businessId)
+    .eq("type", "daily_survey")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ?? null;
 }
 
 async function loadPendingCampaignSuggestion(
@@ -178,10 +199,11 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [weekTotalsByDate, financeNote, campaignSuggestion, suggestions, upcomingToday] = await Promise.all([
+  const [weekTotalsByDate, financeNote, campaignSuggestion, dailySurvey, suggestions, upcomingToday] = await Promise.all([
     loadWeekTotalsByDate(supabase, business.id, mondayOffset),
     loadTodaysFinanceNote(supabase, business.id),
     loadPendingCampaignSuggestion(supabase, business.id),
+    loadPendingDailySurvey(supabase, business.id),
     loadPendingSuggestions(supabase, business.id),
     loadUpcomingToday(supabase, business.id),
   ]);
@@ -357,6 +379,8 @@ export default async function DashboardPage() {
           reasoning={campaignSuggestion.reasoning}
         />
       )}
+
+      {dailySurvey && <DailySurveyClient id={dailySurvey.id} suggestion={dailySurvey.suggestion} />}
 
       <SuggestionsClient items={suggestions} />
     </AppShell>

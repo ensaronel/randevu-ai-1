@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/suspend-overdue",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/daily-survey",
+      "schedule": "0 17 * * *"
     }
   ]
 }

@@ -3,6 +3,7 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { actionObjectUpdateSchema } from "@/lib/validation";
 import { sendWhatsappTextMessage, sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
+import { dayRangeUtcISO } from "@/lib/date";
 
 export async function PATCH(
   request: NextRequest,
@@ -22,6 +23,59 @@ export async function PATCH(
     if (loadError) throw loadError;
 
     let outcome = body.status === "rejected" ? "reddedildi" : "onaylandı";
+
+    // daily_survey tek bir musteriye degil, o gun ugrayan TUM musterilere gider -
+    // related_customer_id burada null (bkz. dailySurvey.ts), bu yuzden asagidaki
+    // tekli-musteri gonderim mantigindan tamamen ayri, kendi fan-out'una sahip.
+    if (body.status === "approved" && actionObject.type === "daily_survey") {
+      const { startUtc, endUtc } = dayRangeUtcISO(0);
+      const { data: todaysAppts } = await supabase
+        .from("appointments")
+        .select("customer_id, customer:customers(phone, full_name)")
+        .eq("business_id", owner.business_id)
+        .neq("status", "cancelled")
+        .gte("starts_at", startUtc)
+        .lt("starts_at", endUtc)
+        .lt("starts_at", new Date().toISOString());
+
+      const seen = new Set<string>();
+      let sent = 0;
+      let failed = 0;
+      for (const row of todaysAppts ?? []) {
+        if (seen.has(row.customer_id)) continue;
+        seen.add(row.customer_id);
+        const customer = (row as unknown as { customer: { phone: string; full_name: string } | null }).customer;
+        if (!customer?.phone) continue;
+        try {
+          await sendWhatsappTextMessage(
+            customer.phone,
+            `Merhaba ${customer.full_name}, bugünkü ziyaretiniz nasıldı? Bizi daha iyi hale getirmemiz için bir öneriniz varsa duymak isteriz 🙂`
+          );
+          await supabase.from("whatsapp_message_log").insert({
+            business_id: owner.business_id,
+            customer_id: row.customer_id,
+            direction: "outbound",
+            message_type: "system_notice",
+            body: "Günlük anket mesajı gönderildi",
+          });
+          sent++;
+        } catch (err) {
+          failed++;
+          console.error("anket mesajı gönderilemedi", customer.phone, err);
+        }
+      }
+      outcome = `${sent} müşteriye anket mesajı gönderildi${failed > 0 ? `, ${failed} başarısız` : ""}`;
+
+      const { data, error } = await supabase
+        .from("action_objects")
+        .update({ status: body.status, outcome, resolved_at: new Date().toISOString() })
+        .eq("business_id", owner.business_id)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return NextResponse.json({ data });
+    }
 
     if (body.status === "approved") {
       const customer = (actionObject as unknown as { customer: { phone: string; full_name: string } | null }).customer;

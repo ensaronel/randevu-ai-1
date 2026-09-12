@@ -195,7 +195,7 @@ export default async function TakvimPage({
         {staffList.length === 0 ? (
           <EmptyState message="Henüz aktif personel yok — Ayarlar'dan personel ekleyince burada görünecek." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-visible">
             <div className="flex" style={{ minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8 }}>
               <div style={{ width: 42, flexShrink: 0 }} />
               <div className="flex flex-1" style={{ gap: 8 }}>
@@ -217,7 +217,17 @@ export default async function TakvimPage({
               </div>
             </div>
 
-            <div className="flex relative" style={{ minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8 }}>
+            <div
+              className="flex relative"
+              style={{
+                minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8,
+                // Son saat etiketi ("19:00" gibi) tam kapsayıcının alt kenarına denk
+                // gelip kırpılmasın diye altta biraz boşluk bırakılıyor — etiket
+                // dikey ortalamak için -6px yukarı kayıyor (bkz. aşağıdaki top hesabı),
+                // bu boşluk olmazsa en alttaki etiketin metni kesiliyordu.
+                paddingBottom: 20,
+              }}
+            >
               {showNowLine && (
                 <div
                   className="absolute z-10 pointer-events-none flex items-center"
