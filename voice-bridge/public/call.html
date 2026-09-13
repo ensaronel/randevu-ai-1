@@ -14,6 +14,12 @@
 <body>
   <h2>Randevu AI — Sesli Test</h2>
   <p>Mikrofon izni isteyecek. "Ara" ye basınca AI ile canlı konuşabilirsin. (Twilio yok — doğrudan tarayıcı mikrofonundan test)</p>
+  <p style="font-size: 13px; color: #888;">
+    Test telefon numarası (aramalar arası aynı kalır, "tekrar arayan müşteri" senaryosunu
+    test etmek için — boş bırakırsan her aramada yeni/tanınmayan bir müşteri olursun):
+  </p>
+  <input id="testPhone" type="text" placeholder="ör. 905551234567" style="font-size: 15px; padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; width: 220px;" />
+  <br />
   <button id="callBtn">📞 Ara</button>
   <button id="hangupBtn">Kapat</button>
   <div id="status">Hazır.</div>
@@ -22,6 +28,11 @@
     const statusEl = document.getElementById("status");
     const callBtn = document.getElementById("callBtn");
     const hangupBtn = document.getElementById("hangupBtn");
+    const testPhoneEl = document.getElementById("testPhone");
+    testPhoneEl.value = localStorage.getItem("randevu_ai_test_phone") || "";
+    testPhoneEl.addEventListener("input", () => {
+      localStorage.setItem("randevu_ai_test_phone", testPhoneEl.value.trim());
+    });
 
     let ws = null;
     let micCtx = null;
@@ -88,7 +99,7 @@
       ws.binaryType = "arraybuffer";
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "start", sampleRate: micCtx.sampleRate }));
+        ws.send(JSON.stringify({ type: "start", sampleRate: micCtx.sampleRate, testPhone: testPhoneEl.value.trim() }));
         statusEl.textContent = "Bağlandı — konuşabilirsin.";
 
         const source = micCtx.createMediaStreamSource(micStream);

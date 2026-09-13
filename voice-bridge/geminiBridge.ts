@@ -1,7 +1,13 @@
-import { GoogleGenAI, Modality, EndSensitivity, StartSensitivity, type Session } from "@google/genai";
+import { GoogleGenAI, Modality, EndSensitivity, StartSensitivity, ActivityHandling, type Session } from "@google/genai";
 import { createAdminSupabaseClient } from "../src/lib/supabase/admin.js";
 import { loadBusinessContext } from "../src/lib/ai/context.js";
 import { executeAiTool } from "../src/lib/ai/tools.js";
+import {
+  shouldBlockMutation,
+  AMBIGUOUS_REPLY_ERROR,
+  shouldBlockAvailabilityCheck,
+  NO_SERVICE_MENTIONED_ERROR,
+} from "../src/lib/ai/safetyGate.js";
 import { buildVoiceSystemPrompt } from "./voicePrompt.js";
 import { LIVE_TOOLS } from "./toolsAdapter.js";
 import { findOrCreateCustomerByPhone } from "./customerLookup.js";
@@ -46,6 +52,7 @@ export class VoiceCallSession {
   private session: Session | null = null;
   private customerId = "";
   private customerName = "";
+  private customerPhone = "";
   private businessId: string;
   private handlers: CallHandlers;
   private ready: Promise<void>;
@@ -60,6 +67,44 @@ export class VoiceCallSession {
   private awaitingFirstResponseAudio = true;
   private toolCallStartedAt = 0;
   private stoppedByUs = false;
+  // Kullanıcının isteği üzerine (2026-09-12): AI sözünü bitirdikten sonra müşteriden
+  // makul bir süre (8sn) hiç ses gelmezse, sessizce beklemek yerine nazikçe tekrar sorsun.
+  private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly SILENCE_NUDGE_MS = 8000;
+  // silenceTimer SADECE "AI sözünü bitirdi, müşteri sessiz kaldı" durumunu kapsar (yalnızca
+  // bir AI turnComplete'inden SONRA yeniden kuruluyor). 2026-09-12'de canlı testte yakalandı:
+  // müşteri art arda/karışık bir şey söyleyince (ör. aynı cümleyi birkaç kez tekrarlayınca)
+  // Gemini'nin kendi konuşma-bitti algısı hiç tetiklenmemiş olabilir — bu durumda AI turu
+  // HİÇ tamamlanmıyor, silenceTimer da hiç yeniden kurulmuyor (çünkü kurulması bir
+  // turnComplete'e bağlı) ve arama SONSUZA KADAR sessiz kalabiliyor, müşteri hattaymış gibi
+  // görünüp kimseden hiçbir şey duymuyor. deadAirTimer bunun genel bir güvenlik ağı: kimden
+  // geldiği (AI/müşteri) fark etmeksizin HERHANGİ bir olay geldiğinde sıfırlanır; hiçbir şey
+  // gelmezse (Gemini'nin kendisi tıkanmış olabilir) görüşme nazikçe sonlandırılır ve sahibe
+  // haber verilir — müşteri süresiz sessizlikte terk edilmez.
+  private deadAirTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly DEAD_AIR_TIMEOUT_MS = 20000;
+  // Kullanıcının bizzat gördüğü gerçek bir olay üzerine eklendi (2026-09-12): model,
+  // müşterinin söylediği anlamsız/alakasız bir şeyi ("all would be shout out to the"
+  // gibi net bir gürültü/anlamsız cümle) saat onayı SANIP randevu oluşturdu, hatta bir
+  // sonraki turda müşteri yine anlamsız bir şey söyleyince UYDURMA bir isim yazıp
+  // create_appointment'ı GERÇEKTEN çağırdı. Salt prompt talimatı ("belirsiz cevabı onay
+  // sayma") bunu ÖNLEYEMEDİ — model olasılıksal, bazen talimatı atlıyor. Bu yüzden
+  // create_appointment/cancel_appointment/reschedule_appointment için KOD SEVİYESİNDE
+  // bir son kontrol eklendi: müşterinin bu turda söylediği son şeyde en azından bir
+  // sayı/saat kelimesi/evet-benzeri bir işaret yoksa, araç hiç çalıştırılmadan model'e
+  // "net anlaşılamadı, tekrar sor" hatası döndürülüyor - bkz. isLikelyMeaningfulReply.
+  private currentUtteranceBuffer = "";
+  // Sadece TEK son turu değil son İKİ turu birlikte kontrol ediyoruz - çünkü onay
+  // ("evet o saat olsun") ve isim ("Ayşe Kaya") ayrı turlarda gelebilir (bkz.
+  // voicePrompt.ts'teki "tek soru sor" kuralı) - sadece son turu kontrol etsek,
+  // isim TEK BAŞINA hiçbir rakam/onay kelimesi içermediği için MEŞRU bir randevuyu
+  // bile yanlışlıkla engellerdik.
+  private recentUtterances: string[] = [];
+  // recentUtterances'tan FARKLI olarak görüşmenin BAŞINDAN İTİBAREN TÜMÜ (kırpılmıyor) —
+  // hizmet genelde bir kez söylenir ve tekrar edilmesi beklenmez, bu yüzden "hizmet hiç
+  // bahsedilmedi mi" kontrolü sadece son 1-2 tura değil TÜM görüşmeye bakmalı (bkz.
+  // safetyGate.ts'teki shouldBlockAvailabilityCheck).
+  private fullTranscript: string[] = [];
 
   constructor(
     businessId: string,
@@ -74,6 +119,22 @@ export class VoiceCallSession {
   }
 
   private async setup(callerIdentifier: string): Promise<void> {
+    try {
+      await this.setupOrThrow(callerIdentifier);
+    } catch (err) {
+      // ÇOK ÖNEMLİ — burada hatayı yutup this.ready'yi REJECT ETMEDEN bitiriyoruz:
+      // pushAudio() her ses parçasında "await this.ready" yapıyor ve reddedilen bir
+      // promise burada YAKALANMAZSA (server.ts "void callSession.pushAudio(...)" ile
+      // sonucu hiç beklemiyor) Node'da yakalanmamış bir promise reddi TÜM sunucu
+      // sürecini çökertip aktif diğer görüşmeleri de keser. Bunun yerine context
+      // yüklenemediğinde görüşme burada nazikçe (ve sadece bu arama için) sonlandırılır,
+      // sahibe bildirim gider — müşteriye sessiz/yanlış bir cevap gitmez.
+      console.error("[voice] kurulum başarısız, görüşme sonlandırılıyor:", (err as Error).message);
+      this.handleUnexpectedSessionEnd(`kurulum hatası: ${(err as Error).message}`);
+    }
+  }
+
+  private async setupOrThrow(callerIdentifier: string): Promise<void> {
     const admin = createAdminSupabaseClient();
 
     const [ctx, customer] = await Promise.all([
@@ -82,6 +143,7 @@ export class VoiceCallSession {
     ]);
     this.customerId = customer.id;
     this.customerName = customer.full_name;
+    this.customerPhone = customer.phone;
     // Yeni musteri kaydi customerLookup.ts'de full_name=phone olarak olusturuluyor
     // (WhatsApp'taki gibi bir profil-adi kaynagi yok) - bu esitlik, ismin hala
     // hic sorulmamis oldugunun guvenilir bir isareti (bkz. voicePrompt.ts).
@@ -104,9 +166,23 @@ export class VoiceCallSession {
         // cümlesi yarıda kesiliyor olabilir. 350ms, agresif hız kazanımının büyük
         // kısmını korurken (100ms'e göre yalnızca ~250ms ek gecikme) yanlış-pozitif
         // kesilme riskini belirgin şekilde azaltan bir orta nokta.
+        //
+        // startOfSpeechSensitivity 2026-09-12'de HIGH'dan LOW'a düşürüldü: gerçek test
+        // loglarında arka plan gürültüsünün (özellikle tarayıcı test aracının laptop
+        // mikrofonunda) "müşteri konuşuyor" sanılıp modele anlamsız transkript olarak
+        // gittiği görüldü (ör. "talk", "Doriar med mitt nya hjärta" gibi hiçbir müşterinin
+        // söylemediği parçalar) — model bunları yorumlamaya çalışınca konu dışına çıkıp
+        // kafası karışıyordu. LOW, daha net/yüksek sesli konuşmayı bekler, zayıf/belirsiz
+        // sesleri konuşma başlangıcı saymaz.
+        // activityHandling: NO_INTERRUPTION — kullanıcının isteği üzerine (2026-09-12)
+        // AI konuşurken müşteriden gelen hiçbir ses onu KESMEZ artık ("barge-in" kapalı).
+        // AI cümlesini her zaman sonuna kadar bitirir, ancak SONRA müşteriyi dinlemeye
+        // geçer. Müşteri AI konuşurken bir şey söylerse bu kaybolmaz — VAD onu yine de
+        // algılar, sadece modelin o anki yanıtını kesip yarıda bırakmaz.
         realtimeInputConfig: {
+          activityHandling: ActivityHandling.NO_INTERRUPTION,
           automaticActivityDetection: {
-            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
+            startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
             endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
             prefixPaddingMs: 50,
             silenceDurationMs: 350,
@@ -130,12 +206,36 @@ export class VoiceCallSession {
         },
       },
     });
+
+    // Kullanıcının isteği üzerine (2026-09-12): telefonu AI kendi açsın, müşterinin
+    // önce bir şey söylemesini beklemesin. [SESSİZLİK]/[TEMSİLCİYE_YÖNLENDİR] ile
+    // aynı sentetik-tur deseni — voicePrompt.ts modele bunun karşılığında sabit bir
+    // karşılama cümlesi söylemesi gerektiğini öğretiyor.
+    this.session?.sendClientContent({
+      turns: [{ role: "user", parts: [{ text: "[ARAMA_BAŞLADI]" }] }],
+      turnComplete: true,
+    });
+    this.armDeadAirTimer();
+  }
+
+  private armDeadAirTimer(): void {
+    if (this.deadAirTimer) clearTimeout(this.deadAirTimer);
+    this.deadAirTimer = setTimeout(() => {
+      this.deadAirTimer = null;
+      if (this.stoppedByUs) return;
+      console.error("[voice] ÖLÜ HAVA: Gemini'den/müşteriden uzun süre hiçbir olay gelmedi, görüşme sonlandırılıyor");
+      this.handleUnexpectedSessionEnd("uzun süre hiçbir taraftan yanıt gelmedi (dead air)");
+    }, VoiceCallSession.DEAD_AIR_TIMEOUT_MS);
   }
 
   private handleGeminiMessage(
     message: import("@google/genai").LiveServerMessage,
     ctx: Awaited<ReturnType<typeof loadBusinessContext>>
   ) {
+    // Gemini'den GERÇEKTEN bir şey geldi (ne olursa olsun) - bağlantı hâlâ canlı,
+    // "ölü hava" bekçisini sıfırla.
+    this.armDeadAirTimer();
+
     // Kullanıcı araya girdiyse (barge-in) - AI'nin kuyruktaki sesini hemen kes,
     // aksi halde AI konuşmaya devam ederken üstüne binen tuhaf bir gecikme olur.
     if (message.serverContent?.interrupted) {
@@ -144,6 +244,12 @@ export class VoiceCallSession {
 
     if (message.serverContent?.inputTranscription?.text) {
       console.log(`[voice][transkript] MÜŞTERİ: ${message.serverContent.inputTranscription.text}`);
+      this.currentUtteranceBuffer += message.serverContent.inputTranscription.text;
+      // Müşteriden gerçek bir şey geldi - bekleyen "sessizlik" zaman aşımını iptal et.
+      if (this.silenceTimer) {
+        clearTimeout(this.silenceTimer);
+        this.silenceTimer = null;
+      }
     }
     if (message.serverContent?.outputTranscription?.text) {
       console.log(`[voice][transkript] AI: ${message.serverContent.outputTranscription.text}`);
@@ -168,6 +274,7 @@ export class VoiceCallSession {
     if (message.serverContent?.turnComplete) {
       this.lastTurnEndAt = Date.now();
       this.awaitingFirstResponseAudio = true;
+      this.armSilenceTimer();
     }
 
     const functionCalls = message.toolCall?.functionCalls ?? [];
@@ -189,6 +296,16 @@ export class VoiceCallSession {
     // burada ayrıca yakalanıyor.
     let shouldEndCall = false;
 
+    // Bu turun birikmiş metnini son-2 penceresine ekleyip sıfırlıyoruz, araç
+    // çağrılarını değerlendirmeden ÖNCE (aşağıdaki döngü sırasında yeni ses gelip
+    // currentUtteranceBuffer değişebilir).
+    if (this.currentUtteranceBuffer) {
+      this.recentUtterances.push(this.currentUtteranceBuffer);
+      if (this.recentUtterances.length > 2) this.recentUtterances.shift();
+      this.fullTranscript.push(this.currentUtteranceBuffer);
+      this.currentUtteranceBuffer = "";
+    }
+
     const responses = await Promise.all(
       functionCalls.map(async (call) => {
         if (call.name === "end_call") {
@@ -204,12 +321,43 @@ export class VoiceCallSession {
           }
           return { id: call.id, name: call.name, response: { result: "Kaydedildi." } };
         }
-        const { result } = await executeAiTool(call.name ?? "", call.args ?? {}, {
+        if (
+          call.name === "check_availability" &&
+          shouldBlockAvailabilityCheck((call.args?.service_names as string[] | undefined) ?? [], this.fullTranscript.join(" "))
+        ) {
+          console.warn(
+            `[voice] GÜVENLİK: check_availability engellendi - istenen hizmet(ler) (${JSON.stringify(call.args?.service_names)}) müşterinin söylediği hiçbir şeyde geçmiyor`
+          );
+          return {
+            id: call.id,
+            name: call.name,
+            response: { result: JSON.stringify({ error: NO_SERVICE_MENTIONED_ERROR }) },
+          };
+        }
+        if (shouldBlockMutation(call.name ?? "", this.recentUtterances)) {
+          console.warn(
+            `[voice] GÜVENLİK: ${call.name} engellendi - müşterinin son sözleri (${JSON.stringify(this.recentUtterances)}) anlamlı bir onay/seçim gibi görünmüyor`
+          );
+          return {
+            id: call.id,
+            name: call.name,
+            response: { result: JSON.stringify({ error: AMBIGUOUS_REPLY_ERROR }) },
+          };
+        }
+        const { result, escalated, escalationReason } = await executeAiTool(call.name ?? "", call.args ?? {}, {
           ctx,
           customerId: this.customerId,
           customerName: this.customerName,
+          customerPhone: this.customerPhone,
+          channel: "voice",
         });
         console.log(`[voice][zamanlama] araç sonucu (${call.name}): ${result}`);
+        // BUG (2026-09-12'ye kadar): escalate aracı çağrıldığında AI müşteriye "işletme
+        // sahibine iletildi" diyordu ama WhatsApp tarafının aksine (webhook route.ts)
+        // sesli tarafta bunu gerçekten iletecek bir kod hiç yoktu - sahip hiçbir zaman
+        // haberdar olmuyordu. Diğer escalate tetikleyicileriyle (DTMF "0") aynı
+        // bildirim yolunu paylaşsın diye notifyOwnerEscalation'a çıkarıldı.
+        if (escalated) this.notifyOwnerEscalation(escalationReason ?? "belirtilmedi");
         return { id: call.id, name: call.name, response: { result } };
       })
     );
@@ -243,8 +391,60 @@ export class VoiceCallSession {
 
   async stop(): Promise<void> {
     this.stoppedByUs = true;
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+    if (this.deadAirTimer) {
+      clearTimeout(this.deadAirTimer);
+      this.deadAirTimer = null;
+    }
     await this.ready.catch(() => undefined);
     this.session?.close();
+  }
+
+  /**
+   * AI sözünü bitirip müşteriyi dinlemeye geçtiğinde çağrılır. Belirli bir süre içinde
+   * müşteriden ses gelmezse (inputTranscription yoksa), modele "[SESSİZLİK]" sentetik
+   * bir tur gönderip nazikçe tekrar sormasını sağlar — bkz. voicePrompt.ts'teki bu
+   * kalıbın nasıl yorumlanacağına dair talimat.
+   */
+  private armSilenceTimer(): void {
+    if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.silenceTimer = setTimeout(() => {
+      this.silenceTimer = null;
+      if (this.stoppedByUs) return;
+      this.session?.sendClientContent({
+        turns: [{ role: "user", parts: [{ text: "[SESSİZLİK]" }] }],
+        turnComplete: true,
+      });
+    }, VoiceCallSession.SILENCE_NUDGE_MS);
+  }
+
+  /** escalate aracı VEYA DTMF "0" tetiklendiğinde işletme sahibine bildirim gönderir. */
+  private notifyOwnerEscalation(reason: string): void {
+    void sendPushToBusiness(this.businessId, {
+      title: "Sesli arama sizi bekliyor",
+      body: `${this.customerName || "Bir müşteri"} ile görüşmede AI yardımcı olamadı (${reason}) — müşteriyi geri aramak isteyebilirsiniz.`,
+      url: "/takvim",
+    }).catch((err) => console.error("[voice] push bildirimi gönderilemedi (escalate):", err));
+  }
+
+  /**
+   * Kullanıcının isteği üzerine (2026-09-12): müşteri her an "0" tuşuna basarak
+   * doğrudan bir yetkiliye yönlendirilmeyi isteyebilir — bu, AI'nin konuşmayı doğru
+   * anlayıp escalate aracını çağırmasına bağlı DEĞİL, sunucu tarafında DTMF sinyaliyle
+   * doğrudan tetiklenen, modelden bağımsız güvenilir bir çıkış kapısı (bkz. server.ts).
+   * AI'ye SADECE kısa bir kapanış cümlesi söyletmek için sentetik bir tur gönderiyoruz
+   * (aynı [SESSİZLİK] deseni) — asıl bildirim burada, modelin bunu doğru yorumlamasına
+   * bağlı olmadan zaten gönderiliyor.
+   */
+  escalateToHuman(reason: string): void {
+    this.notifyOwnerEscalation(reason);
+    this.session?.sendClientContent({
+      turns: [{ role: "user", parts: [{ text: "[TEMSİLCİYE_YÖNLENDİR]" }] }],
+      turnComplete: true,
+    });
   }
 
   /**
@@ -255,6 +455,15 @@ export class VoiceCallSession {
    * push bildirimiyle haber veriliyor.
    */
   private handleUnexpectedSessionEnd(reason: string): void {
+    this.stoppedByUs = true;
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+    if (this.deadAirTimer) {
+      clearTimeout(this.deadAirTimer);
+      this.deadAirTimer = null;
+    }
     this.handlers.endCall();
     void sendPushToBusiness(this.businessId, {
       title: "Sesli arama teknik sorun yaşadı",

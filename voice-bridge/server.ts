@@ -142,10 +142,11 @@ app.get("/voice-token", (_req, res) => {
 });
 
 interface TwilioStreamMessage {
-  event: "connected" | "start" | "media" | "stop" | "mark";
+  event: "connected" | "start" | "media" | "stop" | "mark" | "dtmf";
   start?: { streamSid: string; customParameters?: Record<string, string> };
   media?: { payload: string };
   mark?: { name: string };
+  dtmf?: { digit: string };
   streamSid?: string;
 }
 
@@ -196,6 +197,12 @@ wss.on("connection", (ws: WebSocket) => {
       console.log(`[voice] Arama başladı — arayan: ${from || "(bilinmiyor)"}`);
     } else if (msg.event === "media" && msg.media && callSession) {
       void callSession.pushAudio(msg.media.payload);
+    } else if (msg.event === "dtmf" && msg.dtmf?.digit === "0" && callSession) {
+      // Kullanıcının isteği üzerine (2026-09-12): müşteri istediği an "0"a basarak
+      // AI'nin konuşmayı doğru anlamasına bağlı olmadan, modelden bağımsız güvenilir
+      // bir yolla doğrudan bir yetkiliye yönlendirilmeyi isteyebilir.
+      console.log("[voice] Müşteri 0 tuşuna bastı, yetkiliye yönlendiriliyor");
+      callSession.escalateToHuman("müşteri 0 tuşuna bastı");
     } else if (msg.event === "mark" && msg.mark?.name === CALL_END_MARK_NAME) {
       console.log("[voice] Veda sesi çalındı, AI hattı kapatıyor");
       ws.close();
@@ -229,7 +236,7 @@ browserWss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    let msg: { type: string; sampleRate?: number };
+    let msg: { type: string; sampleRate?: number; testPhone?: string };
     try {
       msg = JSON.parse(raw.toString());
     } catch {
@@ -243,9 +250,16 @@ browserWss.on("connection", (ws: WebSocket) => {
         return;
       }
       sourceSampleRate = msg.sampleRate ?? 48000;
+      // testPhone doluysa (bkz. call.html'deki kalıcı alan) aramalar arasında AYNI
+      // müşteri kimliğiyle bağlanır - "tekrar arayan müşteri" senaryosunu test etmek
+      // için gerekli (2026-09-12'de fark edildi: her "Ara" tıklaması varsayılan olarak
+      // Date.now() ile YENİ bir sahte numara üretiyordu, önceki aramada oluşturulan
+      // randevuyu bir SONRAKİ aramada asla bulamıyordu - gerçek Twilio hattında numara
+      // sabit olduğu için bu sorun yaşanmaz, sadece bu devtool'a özgüydü).
+      const callerIdentifier = msg.testPhone?.trim() || `browser_test_${Date.now()}`;
       callSession = new VoiceCallSession(
         VOICE_TEST_BUSINESS_ID,
-        `browser_test_${Date.now()}`,
+        callerIdentifier,
         {
           sendAudioToClient: (base64Pcm24k) => {
             if (ws.readyState !== ws.OPEN) return;
