@@ -2,7 +2,7 @@ import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { parseTimeToMinutes } from "@/lib/capacity";
 import { isRealizedRevenue } from "@/lib/revenue";
-import { formatDateTR, formatTimeTR, dayRangeUtcISO } from "@/lib/date";
+import { formatDateTR, formatTimeTR, dayRangeUtcISO, dateKeyTR } from "@/lib/date";
 import { findAvailableSlots } from "@/lib/ai/availability";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { matchWaitlistForCancelledAppointment, hasUpcomingAppointment } from "@/lib/proactive";
@@ -99,6 +99,21 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
         to: { type: "string", description: "YYYY-MM-DD" },
       },
       required: ["from", "to"],
+    },
+  },
+  {
+    name: "get_survey_feedback",
+    description:
+      "Gün sonu değerlendirme anketine müşterilerden gelen serbest metin geri bildirimlerini, " +
+      "müşteri adı ve tarihle birlikte listeler. \"Anket sonuçları\", \"müşteriler ne dedi\", " +
+      "\"geri bildirimler nasıl\" gibi sorularda kullan.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD, belirtilmezse son 30 gün kullanılır" },
+        to: { type: "string", description: "YYYY-MM-DD, belirtilmezse bugün kullanılır" },
+      },
+      required: [],
     },
   },
   {
@@ -216,6 +231,7 @@ export async function executeAssistantTool(name: string, input: Record<string, u
   if (name === "get_revenue_summary") return getRevenueSummary(input, ctx);
   if (name === "get_popular_services") return getPopularServices(input, ctx);
   if (name === "get_busy_hours") return getBusyHours(input, ctx);
+  if (name === "get_survey_feedback") return getSurveyFeedback(input, ctx);
   if (name === "get_lost_customers") return getLostCustomers(input, ctx);
   if (name === "get_staff_performance") return getStaffPerformance(input, ctx);
   if (name === "get_customer_info") return getCustomerInfo(input, ctx);
@@ -576,6 +592,39 @@ async function getBusyHours(input: Record<string, unknown>, ctx: ToolContext): P
     .map(([hour, appointment_count]) => ({ hour_range: HOUR_LABEL(hour), appointment_count }));
 
   return JSON.stringify({ from, to, busy_hours: ranked });
+}
+
+async function getSurveyFeedback(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const to = String(input.to ?? "") || dateKeyTR(0);
+  const from = String(input.from ?? "") || dateKeyTR(-30);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
+  }
+  const { startUtc, endUtc } = rangeToUtc(from, to);
+  const admin = createAdminSupabaseClient();
+
+  const { data } = await admin
+    .from("action_objects")
+    .select("reasoning, created_at, customer:customers(full_name)")
+    .eq("business_id", ctx.businessId)
+    .eq("type", "survey_feedback")
+    .gte("created_at", startUtc)
+    .lte("created_at", endUtc)
+    .order("created_at", { ascending: false });
+
+  if (!data || data.length === 0) {
+    return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç anket geri bildirimi yok." });
+  }
+
+  return JSON.stringify({
+    from,
+    to,
+    feedback: data.map((row) => ({
+      customer_name: one(row.customer)?.full_name ?? "Müşteri",
+      date: formatDateTR(row.created_at),
+      message: row.reasoning,
+    })),
+  });
 }
 
 async function getLostCustomers(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {

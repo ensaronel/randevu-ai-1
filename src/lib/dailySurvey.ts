@@ -3,6 +3,20 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dayRangeUtcISO, dateKeyTR } from "@/lib/date";
 
 /**
+ * whatsapp_message_log.body'de bu TAM metinle yazılır (bkz. action-objects/[id]/
+ * route.ts'teki daily_survey fan-out) - webhook handler, bir müşteriden gelen
+ * cevabın anket geri bildirimi mi yoksa normal bir randevu mesajı mı olduğunu
+ * bu satırın varlığına (ve ne zaman gönderildiğine) bakarak ayırt eder. Yeni bir
+ * message_type eklemek (ör. 'survey_sent') schema.sql'deki CHECK kısıtını
+ * değiştirecek bir migration gerektirirdi - mevcut 'system_notice' + sabit metin
+ * eşleşmesi aynı işi migrationsız görüyor.
+ */
+export const DAILY_SURVEY_SENT_LOG_BODY = "Günlük anket mesajı gönderildi";
+
+/** Bir müşteriye gün sonu anketi gönderildikten sonra kaç saat içindeki cevabı geri bildirim sayalım. */
+export const SURVEY_FEEDBACK_WINDOW_HOURS = 48;
+
+/**
  * Gün sonu cron'unda çağrılır (bkz. vercel.json). O gün en az bir randevusu
  * gerçekleşmiş (iptal olmayan, saati geçmiş) işletmeler için, kapanışta müşterilere
  * bir anket/öneri mesajı gönderilsin mi diye SORAN tek bir öneri kartı üretir —

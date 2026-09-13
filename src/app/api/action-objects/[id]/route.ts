@@ -4,6 +4,7 @@ import { handleRoute } from "@/lib/api-response";
 import { actionObjectUpdateSchema } from "@/lib/validation";
 import { sendWhatsappTextMessage, sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
 import { dayRangeUtcISO } from "@/lib/date";
+import { DAILY_SURVEY_SENT_LOG_BODY } from "@/lib/dailySurvey";
 
 export async function PATCH(
   request: NextRequest,
@@ -56,7 +57,7 @@ export async function PATCH(
             customer_id: row.customer_id,
             direction: "outbound",
             message_type: "system_notice",
-            body: "Günlük anket mesajı gönderildi",
+            body: DAILY_SURVEY_SENT_LOG_BODY,
           });
           sent++;
         } catch (err) {

@@ -5,6 +5,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { generateAiReply } from "@/lib/ai/respond";
 import { aiReplyLimiter, isRateLimited } from "@/lib/rateLimit";
+import { DAILY_SURVEY_SENT_LOG_BODY, SURVEY_FEEDBACK_WINDOW_HOURS } from "@/lib/dailySurvey";
 import type { Business } from "@/types/database";
 
 /** Zamanlama saldırısına karşı sabit-zamanlı karşılaştırma — uzunluk farklıysa direkt false döner. */
@@ -76,6 +77,32 @@ const SYSTEM_ERROR_CUSTOMER_FALLBACK =
   "Şu an sistemimizde teknik bir sorun oluştu, ekibimiz en kısa sürede size dönüş yapacak. 🙏";
 
 const UNSUPPORTED_MESSAGE_TYPE_FALLBACK = "Şu an sadece yazılı mesajları okuyabiliyorum 🙏";
+
+const SURVEY_FEEDBACK_THANK_YOU = "Değerli geri bildiriminiz için çok teşekkür ederiz! 🙏";
+
+/**
+ * Bu müşteriye SURVEY_FEEDBACK_WINDOW_HOURS içinde gün sonu anketi gönderildi mi?
+ * Gönderildiyse, müşterinin bu penceredeki cevabı normal randevu AI'ına değil,
+ * doğrudan bir geri bildirim olarak ele alınır (bkz. POST handler).
+ */
+async function findRecentSurveySend(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  businessId: string,
+  customerId: string
+) {
+  const cutoff = new Date(Date.now() - SURVEY_FEEDBACK_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const { data } = await admin
+    .from("whatsapp_message_log")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("customer_id", customerId)
+    .eq("direction", "outbound")
+    .eq("body", DAILY_SURVEY_SENT_LOG_BODY)
+    .gte("created_at", cutoff)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
 
 /** Beklenmeyen bir hata olduğunda işletme sahibini WhatsApp'tan uyarır — best-effort, kendi hatası bile olsa akışı kesmez. */
 async function notifyOwnerOfSystemError(
@@ -229,6 +256,43 @@ export async function POST(request: NextRequest) {
               direction: "outbound",
               message_type: "system_notice",
               body: UNSUPPORTED_MESSAGE_TYPE_FALLBACK,
+            });
+            continue;
+          }
+
+          // Gun sonu anketi gonderilmis bir musteriden gelen cevap, normal randevu
+          // AI'ina hic gitmez - anlamsizca "nasil yardimci olabilirim" gibi bir
+          // cevap uretmesin diye, dogrudan geri bildirim olarak kaydedilip
+          // musteriye kisa bir tesekkur mesaji gonderilir.
+          if (await findRecentSurveySend(admin, business.id, customer.id)) {
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "inbound",
+              message_type: "freeform",
+              body,
+            });
+
+            await admin.from("action_objects").insert({
+              business_id: business.id,
+              type: "survey_feedback",
+              related_customer_id: customer.id,
+              suggestion: "Müşteri anket geri bildirimi",
+              reasoning: body,
+              status: "resolved",
+              resolved_at: new Date().toISOString(),
+            });
+
+            await sendWhatsappTextMessage(message.from, SURVEY_FEEDBACK_THANK_YOU).catch((err) => {
+              console.error("Anket teşekkür mesajı gönderilemedi:", err);
+              Sentry.captureException(err);
+            });
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "outbound",
+              message_type: "system_notice",
+              body: SURVEY_FEEDBACK_THANK_YOU,
             });
             continue;
           }
