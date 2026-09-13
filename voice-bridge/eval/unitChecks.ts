@@ -8,6 +8,7 @@
  */
 import { loadBusinessContext } from "../../src/lib/ai/context.js";
 import { findAvailableSlots, explainUnavailability } from "../../src/lib/ai/availability.js";
+import { shouldBlockUnverifiedSlot, parseVerifiedSlotsFromResult } from "../../src/lib/ai/safetyGate.js";
 import type { Business, Staff, Service, Appointment, AppointmentService } from "../../src/types/database.js";
 
 export interface CheckResult {
@@ -345,6 +346,79 @@ function checkUnavailabilityReasons(): void {
   );
 }
 
+/**
+ * 2026-09-13'te canlı testte yakalandı: müşteri hizmet adını hiç söylemedi, üç
+ * check_availability denemesi de doğru şekilde engellendi (shouldBlockAvailabilityCheck) —
+ * ama model bunu görmezden gelip saat/personel UYDURUP create_appointment'ı GERÇEKTEN
+ * çağırdı (o anki şans eseri o saat boştu, garanti değildi). shouldBlockUnverifiedSlot
+ * bunu, önerilen saat/personel/hizmet kombinasyonunun GERÇEKTEN başarılı bir
+ * check_availability sonucunda yer aldığını doğrulayarak önlemeli.
+ */
+function checkUnverifiedSlotIsBlocked(): void {
+  // Hiç check_availability başarılı olmadı (verifiedSlots boş) - AI direkt create_appointment
+  // çağırmaya çalışıyor, uydurma bir saat/personelle.
+  const blockedWithNoVerification = shouldBlockUnverifiedSlot(
+    "create_appointment",
+    {
+      startsAt: "2026-09-14T15:00:00.000Z",
+      endsAt: "2026-09-14T16:00:00.000Z",
+      assignments: [{ serviceName: "Saç Kesimi", staffName: "Ahmet Usta" }],
+    },
+    []
+  );
+  record(
+    "safetyGate: hiç doğrulanmamış bir saat/personelle create_appointment engelleniyor",
+    blockedWithNoVerification,
+    `beklenen=true (engellenmeli), gerçekleşen=${blockedWithNoVerification}`
+  );
+
+  // check_availability GERÇEKTEN başarılı oldu ve TAM BU slotu döndürdü - engellenmemeli.
+  const realResult = JSON.stringify({
+    date: "2026-09-14",
+    is_alternate_date: false,
+    slots: [
+      {
+        starts_at: "2026-09-14T15:00:00.000Z",
+        ends_at: "2026-09-14T16:00:00.000Z",
+        display: "14 Eylül Pazartesi 18:00",
+        assignments: [{ service_name: "Saç Kesimi", staff_name: "Ahmet Usta" }],
+        is_exact_requested_time: true,
+      },
+    ],
+  });
+  const verified = parseVerifiedSlotsFromResult(realResult);
+  const notBlockedWhenVerified = shouldBlockUnverifiedSlot(
+    "create_appointment",
+    {
+      startsAt: "2026-09-14T15:00:00.000Z",
+      endsAt: "2026-09-14T16:00:00.000Z",
+      assignments: [{ serviceName: "Saç Kesimi", staffName: "Ahmet Usta" }],
+    },
+    verified
+  );
+  record(
+    "safetyGate: GERÇEKTEN doğrulanmış bir saat/personelle create_appointment engellenmiyor",
+    !notBlockedWhenVerified,
+    `beklenen=false (engellenmemeli), gerçekleşen=${notBlockedWhenVerified}`
+  );
+
+  // Doğrulanmış slot BAŞKA bir personel için - farklı personelle uydurma engellenmeli.
+  const blockedDifferentStaff = shouldBlockUnverifiedSlot(
+    "create_appointment",
+    {
+      startsAt: "2026-09-14T15:00:00.000Z",
+      endsAt: "2026-09-14T16:00:00.000Z",
+      assignments: [{ serviceName: "Saç Kesimi", staffName: "Mehmet Usta" }],
+    },
+    verified
+  );
+  record(
+    "safetyGate: doğrulanmış saatte AMA BAŞKA personelle create_appointment engelleniyor",
+    blockedDifferentStaff,
+    `beklenen=true (engellenmeli), gerçekleşen=${blockedDifferentStaff}`
+  );
+}
+
 export async function runUnitChecks(): Promise<CheckResult[]> {
   await checkContextFailsLoudlyOnError();
   checkLeastBusyStaffRecommendedFirst();
@@ -353,5 +427,6 @@ export async function runUnitChecks(): Promise<CheckResult[]> {
   checkLastSlotIsOneHourBeforeShiftEnd();
   checkPastPreferredTimeNeverMarkedExact();
   checkUnavailabilityReasons();
+  checkUnverifiedSlotIsBlocked();
   return results;
 }

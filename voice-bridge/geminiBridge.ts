@@ -7,6 +7,10 @@ import {
   AMBIGUOUS_REPLY_ERROR,
   shouldBlockAvailabilityCheck,
   NO_SERVICE_MENTIONED_ERROR,
+  shouldBlockUnverifiedSlot,
+  UNVERIFIED_SLOT_ERROR,
+  parseVerifiedSlotsFromResult,
+  type VerifiedSlot,
 } from "../src/lib/ai/safetyGate.js";
 import { buildVoiceSystemPrompt } from "./voicePrompt.js";
 import { LIVE_TOOLS } from "./toolsAdapter.js";
@@ -105,6 +109,12 @@ export class VoiceCallSession {
   // bahsedilmedi mi" kontrolü sadece son 1-2 tura değil TÜM görüşmeye bakmalı (bkz.
   // safetyGate.ts'teki shouldBlockAvailabilityCheck).
   private fullTranscript: string[] = [];
+  // check_availability GERÇEKTEN başarılı (hatasız) döndüğünde biriken doğrulanmış
+  // saat/personel seçenekleri — create_appointment/reschedule_appointment'ın önerdiği
+  // slotun GERÇEKTEN buradan geldiğini doğrulamak için (bkz. safetyGate.ts'teki
+  // shouldBlockUnverifiedSlot; 2026-09-13'te canlı testte AI, engellenen bir
+  // check_availability sonucunu görmezden gelip saat/personel UYDURUP randevu oluşturdu).
+  private verifiedSlots: VerifiedSlot[] = [];
 
   constructor(
     businessId: string,
@@ -344,6 +354,28 @@ export class VoiceCallSession {
             response: { result: JSON.stringify({ error: AMBIGUOUS_REPLY_ERROR }) },
           };
         }
+        if (
+          shouldBlockUnverifiedSlot(
+            call.name ?? "",
+            {
+              startsAt: String(call.args?.starts_at ?? ""),
+              endsAt: String(call.args?.ends_at ?? ""),
+              assignments: (call.args?.assignments as { service_name: string; staff_name: string }[] | undefined ?? []).map(
+                (a) => ({ serviceName: a.service_name, staffName: a.staff_name })
+              ),
+            },
+            this.verifiedSlots
+          )
+        ) {
+          console.warn(
+            `[voice] GÜVENLİK: ${call.name} engellendi - önerilen saat/personel gerçekten başarılı bir check_availability sonucunda yok (${JSON.stringify(call.args)})`
+          );
+          return {
+            id: call.id,
+            name: call.name,
+            response: { result: JSON.stringify({ error: UNVERIFIED_SLOT_ERROR }) },
+          };
+        }
         const { result, escalated, escalationReason } = await executeAiTool(call.name ?? "", call.args ?? {}, {
           ctx,
           customerId: this.customerId,
@@ -352,6 +384,9 @@ export class VoiceCallSession {
           channel: "voice",
         });
         console.log(`[voice][zamanlama] araç sonucu (${call.name}): ${result}`);
+        if (call.name === "check_availability" && !result.includes('"error"')) {
+          this.verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
+        }
         // BUG (2026-09-12'ye kadar): escalate aracı çağrıldığında AI müşteriye "işletme
         // sahibine iletildi" diyordu ama WhatsApp tarafının aksine (webhook route.ts)
         // sesli tarafta bunu gerçekten iletecek bir kod hiç yoktu - sahip hiçbir zaman

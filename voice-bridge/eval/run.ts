@@ -20,6 +20,10 @@ import {
   AMBIGUOUS_REPLY_ERROR,
   shouldBlockAvailabilityCheck,
   NO_SERVICE_MENTIONED_ERROR,
+  shouldBlockUnverifiedSlot,
+  UNVERIFIED_SLOT_ERROR,
+  parseVerifiedSlotsFromResult,
+  type VerifiedSlot,
 } from "../../src/lib/ai/safetyGate.js";
 import { findOrCreateCustomerByPhone } from "../customerLookup.js";
 import { SCENARIOS, type Scenario, type ScenarioLog } from "./scenarios.js";
@@ -69,6 +73,7 @@ async function runScenario(
   const log: ScenarioLog = { toolCalls: [], aiTexts: [] };
   const recentUtterances: string[] = [];
   const fullTranscript: string[] = [];
+  const verifiedSlots: VerifiedSlot[] = [];
   let customerName = customer.full_name;
   const needsCallerName = customer.full_name === customer.phone;
 
@@ -145,6 +150,30 @@ async function runScenario(
           continue;
         }
 
+        if (
+          shouldBlockUnverifiedSlot(
+            name,
+            {
+              startsAt: String(args.starts_at ?? ""),
+              endsAt: String(args.ends_at ?? ""),
+              assignments: ((args.assignments as { service_name: string; staff_name: string }[] | undefined) ?? []).map(
+                (a) => ({ serviceName: a.service_name, staffName: a.staff_name })
+              ),
+            },
+            verifiedSlots
+          )
+        ) {
+          functionResponseParts.push({
+            functionResponse: {
+              name,
+              response: { result: JSON.stringify({ error: UNVERIFIED_SLOT_ERROR }) },
+              id: call.id,
+            },
+          });
+          log.toolCalls.push({ name, args, blocked: true, resultPreview: "BLOCKED_UNVERIFIED_SLOT" });
+          continue;
+        }
+
         const { result } = await executeAiTool(name, args, {
           ctx,
           customerId: customer.id,
@@ -152,6 +181,9 @@ async function runScenario(
           customerPhone: customer.phone,
           channel: "voice",
         });
+        if (name === "check_availability" && !result.includes('"error"')) {
+          verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
+        }
         functionResponseParts.push({ functionResponse: { name, response: { result }, id: call.id } });
         log.toolCalls.push({ name, args, blocked: false, resultPreview: result.slice(0, 200) });
       }

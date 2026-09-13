@@ -4,6 +4,16 @@ import { loadBusinessContext } from "@/lib/ai/context";
 import { AI_TOOLS, executeAiTool } from "@/lib/ai/tools";
 import { AI_MODEL } from "@/lib/ai/model";
 import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
+import {
+  shouldBlockMutation,
+  AMBIGUOUS_REPLY_ERROR,
+  shouldBlockAvailabilityCheck,
+  NO_SERVICE_MENTIONED_ERROR,
+  shouldBlockUnverifiedSlot,
+  UNVERIFIED_SLOT_ERROR,
+  parseVerifiedSlotsFromResult,
+  type VerifiedSlot,
+} from "@/lib/ai/safetyGate";
 import type { Business, Customer } from "@/types/database";
 
 const MAX_TOOL_ITERATIONS = 6;
@@ -78,7 +88,14 @@ KURALLAR:
      personeli TEKRAR SÖYLEYİP "bu şekilde onaylıyor musun?" diye SON BİR KEZ teyit iste. Müşteri bu son
      teyide de açıkça evet dedikten SONRA create_appointment'ı çağır. Bu çift teyit, yanlış anlaşılan bir
      saatin sehven kaydedilmesini önlemek için ZORUNLU, atlama.
-  5. create_appointment ALTERNATİF bir güne (is_alternate_date:true olan bir seçeneğe) yapıldıysa,
+  5. Müşterinin adını bu konuşmada YENİ öğrendiysen (sistemde kayıtlı değildi, az önce sordun), ismi
+     aldıktan SONRA create_appointment'ı çağırmadan ÖNCE ismi VE randevu detaylarını (tarih/saat/hizmet/
+     personel) BİRLİKTE tek bir cümlede tekrar söyleyip son bir kez teyit al (ör. "Ayşe Kaya adına, yarın
+     saat 14:00'te Saç Kesimi için Mehmet Usta'yla randevu oluşturuyorum, doğru mu?") — (4)'teki saat
+     teyidi TEK BAŞINA YETERLİ DEĞİL, çünkü isim yanlış anlaşılmış olabilir (ör. müşteri "Sarkan" dedi,
+     senin duyduğun "Serkan" olabilir) ve bunu yakalayacak başka bir şans olmaz. Müşteri zaten sistemde
+     kayıtlıysa (adını yeniden sormadıysan) bu ek teyide gerek yok, (4) yeterli.
+  6. create_appointment ALTERNATİF bir güne (is_alternate_date:true olan bir seçeneğe) yapıldıysa,
      randevu oluştuktan SONRA müşteriye ilk istediği günü DOĞAL şekilde söyleyerek sor — o gün bugünse
      "bugün" de, değilse o günün adını (ör. "Pazartesi") söyle, ASLA "orijinal gün" gibi teknik bir ifade
      kullanma. Örnek: "İsterseniz bugün için de sizi bekleme listesine alayım, boşluk çıkarsa hemen haber
@@ -138,6 +155,19 @@ export async function generateAiReply(
     tools: [{ functionDeclarations: AI_TOOLS }],
   };
 
+  // Sesli tarafta (geminiBridge.ts) zaten var olan güvenlik kapılarının (safetyGate.ts)
+  // WhatsApp tarafında HİÇ olmaması 2026-09-13'te fark edildi — aynı model/risk sınıfı
+  // burada da geçerli. history sadece müşterinin gönderdiği metinleri (role: "user")
+  // içerdiği için recentUtterances/fullTranscript'i ondan türetiyoruz. verifiedSlots ise
+  // sadece BU ÇAĞRININ kendi araç-döngüsü içinde (bu mesaja verilen yanıt boyunca) tutulur -
+  // WhatsApp her mesajda sıfırdan başladığı için önceki mesajlardaki ham araç sonuçları
+  // (whatsapp_message_log'da sadece okunabilir metin tutuluyor) burada mevcut değil; bu
+  // yine de AYNI mesaj içinde check+create art arda denendiğinde uydurmayı yakalar.
+  const inboundHistoryTexts = history.filter((c) => c.role === "user").map((c) => c.parts?.[0]?.text ?? "");
+  const fullTranscript = [...inboundHistoryTexts, incomingText];
+  const recentUtterances = fullTranscript.slice(-2);
+  const verifiedSlots: VerifiedSlot[] = [];
+
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
 
@@ -159,13 +189,54 @@ export async function generateAiReply(
     const functionResponseParts: Content["parts"] = [];
 
     for (const call of functionCalls) {
-      const { result, escalated, escalationReason } = await executeAiTool(
-        call.name ?? "",
-        (call.args as Record<string, unknown>) ?? {},
-        { ctx, customerId: customer.id, customerName: customer.full_name, customerPhone: customer.phone, channel: "whatsapp" }
-      );
+      const name = call.name ?? "";
+      const args = (call.args as Record<string, unknown>) ?? {};
+
+      if (name === "check_availability" && shouldBlockAvailabilityCheck((args.service_names as string[] | undefined) ?? [], fullTranscript.join(" "))) {
+        functionResponseParts!.push({
+          functionResponse: { name, response: { result: JSON.stringify({ error: NO_SERVICE_MENTIONED_ERROR }) }, id: call.id },
+        });
+        continue;
+      }
+
+      if (shouldBlockMutation(name, recentUtterances)) {
+        functionResponseParts!.push({
+          functionResponse: { name, response: { result: JSON.stringify({ error: AMBIGUOUS_REPLY_ERROR }) }, id: call.id },
+        });
+        continue;
+      }
+
+      if (
+        shouldBlockUnverifiedSlot(
+          name,
+          {
+            startsAt: String(args.starts_at ?? ""),
+            endsAt: String(args.ends_at ?? ""),
+            assignments: ((args.assignments as { service_name: string; staff_name: string }[] | undefined) ?? []).map(
+              (a) => ({ serviceName: a.service_name, staffName: a.staff_name })
+            ),
+          },
+          verifiedSlots
+        )
+      ) {
+        functionResponseParts!.push({
+          functionResponse: { name, response: { result: JSON.stringify({ error: UNVERIFIED_SLOT_ERROR }) }, id: call.id },
+        });
+        continue;
+      }
+
+      const { result, escalated, escalationReason } = await executeAiTool(name, args, {
+        ctx,
+        customerId: customer.id,
+        customerName: customer.full_name,
+        customerPhone: customer.phone,
+        channel: "whatsapp",
+      });
+      if (name === "check_availability" && !result.includes('"error"')) {
+        verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
+      }
       functionResponseParts!.push({
-        functionResponse: { name: call.name, response: { result }, id: call.id },
+        functionResponse: { name, response: { result }, id: call.id },
       });
       if (escalated) escalation = { reason: escalationReason ?? "belirtilmedi" };
     }

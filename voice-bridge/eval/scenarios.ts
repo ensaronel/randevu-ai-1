@@ -209,4 +209,32 @@ export const SCENARIOS: Scenario[] = [
       }
     },
   },
+  {
+    name: "no-verified-checkavailability-blocks-create-appointment",
+    origin:
+      '2026-09-13 canlı testte yakalandı: müşteri hizmet adını hiç söylemedi, üç check_availability ' +
+      "denemesi de (doğru şekilde) shouldBlockAvailabilityCheck tarafından engellendi — ama AI " +
+      "engellenen sonucu görmezden gelip saat/personel UYDURDU ve create_appointment'ı GERÇEKTEN " +
+      "çağırdı (o anki şans eseri boştu, garanti değildi). Kod seviyesinde shouldBlockUnverifiedSlot " +
+      "eklendi: create_appointment/reschedule_appointment'ın önerdiği slot, GERÇEKTEN başarılı bir " +
+      "check_availability sonucunda yer almalı, yoksa engellenir.",
+    turns: [
+      "Saat 6'da yeriniz var mı?",
+      "só esquecer mesmo",
+      "सर्च केसी में",
+      "Evet.",
+      "oluştur",
+    ],
+    assert: (log) => {
+      const succeededCreate = log.toolCalls.some(
+        (c) => c.name === "create_appointment" && !c.blocked && !c.resultPreview.includes('"error"')
+      );
+      if (succeededCreate) {
+        throw new Error(
+          "Hiçbir gerçek/başarılı check_availability çağrısı olmadan (müşteri hizmet adını hiç " +
+            "söylemedi) create_appointment BAŞARIYLA çağrıldı — AI saat/personel uydurmuş olmalı."
+        );
+      }
+    },
+  },
 ];

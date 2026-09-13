@@ -24,7 +24,7 @@ export const BOOKING_MUTATION_TOOLS = new Set([
  * en bariz gürültü/hiçbir-ilgisi-olmayan-metin durumunda son bir fren olmak.
  */
 const PLAUSIBLE_REPLY_PATTERN =
-  /\d|evet|tamam|olur|olsun|peki|tabi|uyar|onay|kabul|doğru|kaydet|istiyorum|isterim|alay[ıi]m|ok\b|yes\b|sure\b|hayır|yok\b|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|buçuk|sabah|öğle|akşam|bugün|yarın|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar/i;
+  /\d|evet|tamam|olur|olsun|peki|tabi|uyar|onay|kabul|doğru|kaydet|oluştur|ayarla|istiyorum|isterim|alay[ıi]m|ok\b|yes\b|sure\b|hayır|yok\b|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on\b|buçuk|sabah|öğle|akşam|bugün|yarın|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar/i;
 
 function isPlausibleStandalone(text: string): boolean {
   const trimmed = text.trim();
@@ -104,4 +104,67 @@ function serviceMentionedAnywhere(serviceName: string, fullTranscript: string): 
 export function shouldBlockAvailabilityCheck(serviceNames: string[], fullTranscript: string): boolean {
   if (serviceNames.length === 0) return false;
   return !serviceNames.some((name) => serviceMentionedAnywhere(name, fullTranscript));
+}
+
+export interface VerifiedSlot {
+  startsAt: string;
+  endsAt: string;
+  assignments: { serviceName: string; staffName: string }[];
+}
+
+/**
+ * check_availability BAŞARILI (hatasız) döndüğünde, dönen slotları bu şekle çevirir —
+ * create_appointment/reschedule_appointment'ın önerdiği saat/personelin GERÇEKTEN
+ * doğrulanmış bir sonuçtan gelip gelmediğini kontrol etmek için kullanılır.
+ */
+export function parseVerifiedSlotsFromResult(resultJson: string): VerifiedSlot[] {
+  try {
+    const parsed = JSON.parse(resultJson) as {
+      slots?: { starts_at: string; ends_at: string; assignments: { service_name: string; staff_name: string }[] }[];
+    };
+    return (parsed.slots ?? []).map((s) => ({
+      startsAt: s.starts_at,
+      endsAt: s.ends_at,
+      assignments: s.assignments.map((a) => ({ serviceName: a.service_name, staffName: a.staff_name })),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export const UNVERIFIED_SLOT_ERROR =
+  "Bu saat/personel kombinasyonu doğrulanmadı — önce check_availability çağırıp GERÇEKTEN dönen bir seçeneği kullan, kendin uydurma.";
+
+/**
+ * 2026-09-13'te canlı testte yakalandı: müşteri hizmet adını hiç söylemedi, üç
+ * check_availability denemesi de (doğru şekilde) shouldBlockAvailabilityCheck tarafından
+ * engellendi — ama model engellenen sonucu görmezden gelip "saat 6'da Ahmet Usta boş"
+ * diye KENDİLİĞİNDEN UYDURDU ve bu uydurma bilgiyle create_appointment'ı GERÇEKTEN
+ * çağırdı (o anki şans eseri o saat gerçekten boştu, ama garanti değildi). Bu, hizmet-
+ * uydurma kapısının kendisinden TAMAMEN BAĞIMSIZ bir hata sınıfı — kapı check_availability'yi
+ * doğru engelliyor ama model onu görmezden gelip konuşmaya/rezervasyona devam edebiliyor.
+ * Bu fonksiyon, create_appointment/reschedule_appointment'ın önerdiği TAM saat+personel+
+ * hizmet kombinasyonunun, o çağrı/görüşme boyunca GERÇEKTEN BAŞARILI olmuş bir
+ * check_availability sonucunda yer aldığını doğrular — yoksa engeller.
+ */
+export function shouldBlockUnverifiedSlot(
+  toolName: string,
+  proposed: { startsAt: string; endsAt: string; assignments: { serviceName: string; staffName: string }[] },
+  verifiedSlots: VerifiedSlot[]
+): boolean {
+  if (toolName !== "create_appointment" && toolName !== "reschedule_appointment") return false;
+  if (proposed.assignments.length === 0) return false; // reschedule_appointment assignments göndermez, bkz. çağrı yeri
+
+  const normalize = (v: string) => v.trim().toLowerCase();
+  const matches = verifiedSlots.some(
+    (slot) =>
+      slot.startsAt === proposed.startsAt &&
+      slot.endsAt === proposed.endsAt &&
+      proposed.assignments.every((p) =>
+        slot.assignments.some(
+          (a) => normalize(a.serviceName) === normalize(p.serviceName) && normalize(a.staffName) === normalize(p.staffName)
+        )
+      )
+  );
+  return !matches;
 }
