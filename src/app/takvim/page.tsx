@@ -19,13 +19,6 @@ function shiftDateKey(dateKey: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** Türkiye yerel saatine göre gece yarısından bu yana geçen dakika (UTC+3 sabit ofset, bkz. lib/date.ts notu). */
-function turkeyNowMinutesOfDay(): number {
-  const turkeyMs = Date.now() + 3 * 60 * 60000;
-  const d = new Date(turkeyMs);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
-}
-
 function weekdayLabel(dateKey: string): string {
   const [y, m, d] = dateKey.split("-").map(Number);
   return WEEKDAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
@@ -101,10 +94,6 @@ export default async function TakvimPage({
       ? Math.ceil(Math.max(...candidateShifts.map((s) => parseTimeToMinutes(s[1]))) / 60)
       : DEFAULT_GRID_END_HOUR;
   const gridMinutes = (GRID_END_HOUR - GRID_START_HOUR) * 60;
-
-  const isToday = dateKey === dateKeyTR(0);
-  const nowLineTop = turkeyNowMinutesOfDay() - GRID_START_HOUR * 60;
-  const showNowLine = isToday && nowLineTop >= 0 && nowLineTop <= gridMinutes;
 
   function serviceDuration(service: ServiceInfo | ServiceInfo[] | null): number {
     if (!service) return 0;
@@ -195,7 +184,7 @@ export default async function TakvimPage({
         {staffList.length === 0 ? (
           <EmptyState message="Henüz aktif personel yok — Ayarlar'dan personel ekleyince burada görünecek." />
         ) : (
-          <div className="overflow-x-auto overflow-y-visible">
+          <div className="overflow-x-auto overflow-y-visible min-w-0">
             <div className="flex" style={{ minWidth: 42 + staffList.length * COLUMN_WIDTH + (staffList.length - 1) * 8 }}>
               <div style={{ width: 42, flexShrink: 0 }} />
               <div className="flex flex-1" style={{ gap: 8 }}>
@@ -228,15 +217,6 @@ export default async function TakvimPage({
                 paddingBottom: 20,
               }}
             >
-              {showNowLine && (
-                <div
-                  className="absolute z-10 pointer-events-none flex items-center"
-                  style={{ top: nowLineTop, left: 38, right: 0 }}
-                >
-                  <span className="w-2 h-2 rounded-full bg-bad shrink-0" />
-                  <span className="flex-1 h-[1.5px] bg-bad" />
-                </div>
-              )}
               <div style={{ width: 42, height: gridMinutes, position: "relative", flexShrink: 0 }}>
                 {hourMarks.map((h, i) => (
                   <div

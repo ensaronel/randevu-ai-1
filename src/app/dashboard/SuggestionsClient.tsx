@@ -12,11 +12,10 @@ export interface SuggestionItem {
   customer_name: string | null;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  fill_gap: "Boşluk Doldurma",
-  retention_risk: "Risk Altında Müşteri",
-  rhythm_invite: "Ritim Daveti",
-};
+export interface DailySurveyItem {
+  id: string;
+  suggestion: string;
+}
 
 /** retention_risk/rhythm_invite'ın kısa özeti - grup kartında müşteri adının yanında görünür. */
 function shortReason(item: SuggestionItem): string {
@@ -26,10 +25,28 @@ function shortReason(item: SuggestionItem): string {
   return item.reasoning;
 }
 
-export default function SuggestionsClient({ items }: { items: SuggestionItem[] }) {
+function IconCircle({ tone, children }: { tone: "risk" | "survey"; children: React.ReactNode }) {
+  const toneClass = tone === "risk" ? "bg-block1 text-block1-ink" : "bg-good-soft text-good-ink";
+  return (
+    <div className={`${toneClass} w-9 h-9 rounded-full flex items-center justify-center shrink-0`}>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {children}
+      </svg>
+    </div>
+  );
+}
+
+export default function SuggestionsClient({
+  items,
+  dailySurvey,
+}: {
+  items: SuggestionItem[];
+  dailySurvey: DailySurveyItem | null;
+}) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"risk" | "survey" | null>(null);
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  const [surveyResolved, setSurveyResolved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function resolveOne(id: string, status: "approved" | "rejected") {
@@ -42,8 +59,8 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
     return id;
   }
 
-  async function resolveMany(ids: string[], status: "approved" | "rejected") {
-    setBusy(true);
+  async function resolveRisk(ids: string[], status: "approved" | "rejected") {
+    setBusy("risk");
     setError(null);
     try {
       const results = await Promise.allSettled(ids.map((id) => resolveOne(id, status)));
@@ -58,50 +75,72 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
         setError("Bazı müşteriler için işlem yapılamadı, lütfen tekrar dene.");
       }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  const visible = items.filter((item) => !resolvedIds.has(item.id));
-  const fillGaps = visible.filter((item) => item.type === "fill_gap");
-  const batchable = visible.filter((item) => item.type === "retention_risk" || item.type === "rhythm_invite");
+  async function resolveSurvey(status: "approved" | "rejected") {
+    if (!dailySurvey) return;
+    setBusy("survey");
+    setError(null);
+    try {
+      await resolveOne(dailySurvey.id, status);
+      setSurveyResolved(true);
+      router.refresh();
+    } catch {
+      setError("Anket işlemi yapılamadı, lütfen tekrar dene.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const visibleRisk = items.filter((item) => !resolvedIds.has(item.id));
+  const showSurvey = dailySurvey && !surveyResolved;
 
   return (
     <div className="flex flex-col gap-2.5">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Öneriler</p>
       {error && <p className="text-[12px] text-bad">{error}</p>}
-      {visible.length === 0 && (
+
+      {visibleRisk.length === 0 && !showSurvey && (
         <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl p-4">
-          Şu an bekleyen öneri yok — AI, boşalan randevuları bekleme listesindekilerle eşleştirdiğinde veya
-          uzun süredir gelmeyen bir müşteri fark ettiğinde burada bir öneri kartı olarak çıkacak.
+          Şu an bekleyen öneri yok — AI, uzun süredir gelmeyen bir müşteri fark ettiğinde ya da gün
+          sonunda anket önerisi hazırladığında burada çıkacak.
         </p>
       )}
 
-      {batchable.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
-          <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">
-            {batchable.length} müşteri bir süredir gelmedi ya da randevu zamanı geldi
-          </span>
-          <div className="flex flex-col gap-1">
-            {batchable.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-2 text-[13px]">
-                <span className="text-ink truncate">{item.customer_name ?? "Müşteri"}</span>
+      {visibleRisk.length > 0 && (
+        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+          <div className="flex items-center gap-2.5">
+            <IconCircle tone="risk">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 8v4.5M12 15.5v.01" />
+            </IconCircle>
+            <div>
+              <p className="text-[14px] font-bold font-display text-ink">Risk Altında Müşteriler</p>
+              <p className="text-[11.5px] text-ink-muted">{visibleRisk.length} müşteri bir süredir gelmedi</p>
+            </div>
+          </div>
+          <div className="flex flex-col divide-y divide-border">
+            {visibleRisk.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-2 text-[13px] py-2 first:pt-0 last:pb-0">
+                <span className="text-ink font-medium truncate">{item.customer_name ?? "Müşteri"}</span>
                 <span className="text-[12px] text-ink-muted shrink-0">{shortReason(item)}</span>
               </div>
             ))}
           </div>
           <div className="flex gap-2 pt-1">
             <button
-              onClick={() => resolveMany(batchable.map((i) => i.id), "approved")}
-              disabled={busy}
-              className="flex-1 bg-accent text-white rounded-lg py-2 text-[12.5px] font-semibold disabled:opacity-50"
+              onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "approved")}
+              disabled={busy !== null}
+              className="flex-1 bg-block1-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
             >
-              Hepsini Onayla ve Gönder
+              Hepsine Gönder
             </button>
             <button
-              onClick={() => resolveMany(batchable.map((i) => i.id), "rejected")}
-              disabled={busy}
-              className="flex-1 border border-border rounded-lg py-2 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
+              onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "rejected")}
+              disabled={busy !== null}
+              className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
             >
               Hepsini Reddet
             </button>
@@ -109,36 +148,36 @@ export default function SuggestionsClient({ items }: { items: SuggestionItem[] }
         </div>
       )}
 
-      {fillGaps.map((item) => (
-        <div key={item.id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
-          <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">
-            {TYPE_LABELS[item.type] ?? item.type}
-          </span>
-          <p className="text-[13.5px] text-ink">{item.suggestion}</p>
-          <p className="text-[12px] text-ink-muted">{item.reasoning}</p>
-          {item.customer_message && (
-            <p className="text-[12.5px] text-ink-muted italic border-l-2 border-border pl-2.5">
-              &quot;{item.customer_message}&quot;
-            </p>
-          )}
+      {showSurvey && dailySurvey && (
+        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+          <div className="flex items-center gap-2.5">
+            <IconCircle tone="survey">
+              <path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v8A2.5 2.5 0 0117.5 16H10l-4 4v-4H6.5A2.5 2.5 0 014 13.5z" />
+            </IconCircle>
+            <div>
+              <p className="text-[14px] font-bold font-display text-ink">Günlük Değerlendirme Anketi</p>
+              <p className="text-[11.5px] text-ink-muted">Bugün gelen müşterilere WhatsApp&apos;tan gönderilir</p>
+            </div>
+          </div>
+          <p className="text-[13px] text-ink-muted leading-relaxed">{dailySurvey.suggestion}</p>
           <div className="flex gap-2 pt-1">
             <button
-              onClick={() => resolveMany([item.id], "approved")}
-              disabled={busy}
-              className="flex-1 bg-accent text-white rounded-lg py-2 text-[12.5px] font-semibold disabled:opacity-50"
+              onClick={() => resolveSurvey("approved")}
+              disabled={busy !== null}
+              className="flex-1 bg-good-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
             >
-              Onayla ve Gönder
+              Gönder
             </button>
             <button
-              onClick={() => resolveMany([item.id], "rejected")}
-              disabled={busy}
-              className="flex-1 border border-border rounded-lg py-2 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
+              onClick={() => resolveSurvey("rejected")}
+              disabled={busy !== null}
+              className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
             >
-              Reddet
+              Bugün Gönderme
             </button>
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }

@@ -1,49 +1,12 @@
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, dateKeyFromIso, formatTL, formatTimeTR } from "@/lib/date";
+import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, dateKeyFromIso, formatTL } from "@/lib/date";
 import { computeFreeCapacityMinutes, formatMinutesAsHours } from "@/lib/capacity";
 import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
-import CampaignSuggestionClient from "@/app/dashboard/CampaignSuggestionClient";
-import DailySurveyClient from "@/app/dashboard/DailySurveyClient";
 import type { Staff } from "@/types/database";
-
-type OneOrMany<T> = T | T[] | null;
-function one<T>(value: OneOrMany<T>): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-type UpcomingApptRow = {
-  id: string;
-  starts_at: string;
-  customer: OneOrMany<{ full_name: string }>;
-  appointment_services: {
-    service: OneOrMany<{ name: string }>;
-    staff: OneOrMany<{ full_name: string }>;
-  }[];
-};
-
-async function loadUpcomingToday(
-  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  businessId: string
-) {
-  const { endUtc } = dayRangeUtcISO(0);
-  const { data } = await supabase
-    .from("appointments")
-    .select(
-      "id, starts_at, customer:customers(full_name), appointment_services(service:services(name), staff:staff(full_name))"
-    )
-    .eq("business_id", businessId)
-    .neq("status", "cancelled")
-    .gte("starts_at", new Date().toISOString())
-    .lt("starts_at", endUtc)
-    .order("starts_at")
-    .limit(6);
-  return (data ?? []) as unknown as UpcomingApptRow[];
-}
 
 async function loadPendingSuggestions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
@@ -54,7 +17,7 @@ async function loadPendingSuggestions(
     .select("id, type, suggestion, customer_message, reasoning, customer:customers(full_name)")
     .eq("business_id", businessId)
     .eq("status", "pending")
-    .in("type", ["fill_gap", "retention_risk", "rhythm_invite"])
+    .in("type", ["retention_risk", "rhythm_invite"])
     .order("created_at", { ascending: false });
   return (data ?? []).map((row) => {
     const customer = row.customer as unknown as { full_name: string } | { full_name: string }[] | null;
@@ -90,22 +53,6 @@ async function loadPendingDailySurvey(
     .select("id, suggestion")
     .eq("business_id", businessId)
     .eq("type", "daily_survey")
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data ?? null;
-}
-
-async function loadPendingCampaignSuggestion(
-  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  businessId: string
-) {
-  const { data } = await supabase
-    .from("action_objects")
-    .select("id, suggestion, reasoning")
-    .eq("business_id", businessId)
-    .eq("type", "campaign_suggestion")
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -199,13 +146,11 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [weekTotalsByDate, financeNote, campaignSuggestion, dailySurvey, suggestions, upcomingToday] = await Promise.all([
+  const [weekTotalsByDate, financeNote, dailySurvey, suggestions] = await Promise.all([
     loadWeekTotalsByDate(supabase, business.id, mondayOffset),
     loadTodaysFinanceNote(supabase, business.id),
-    loadPendingCampaignSuggestion(supabase, business.id),
     loadPendingDailySurvey(supabase, business.id),
     loadPendingSuggestions(supabase, business.id),
-    loadUpcomingToday(supabase, business.id),
   ]);
 
   const today = weekTotalsByDate.get(dateKeyTR(0)) ?? emptyDayTotals();
@@ -245,12 +190,6 @@ export default async function DashboardPage() {
       ? Math.round(((totalCapacityMinutes - freeMinutes) / totalCapacityMinutes) * 100)
       : 0;
 
-  const staffOnDutyToday = staffList.map((s) => ({
-    name: s.full_name,
-    onLeave: s.leave_dates?.includes(dateKeyTR(0)) ?? false,
-    working: !isClosedToday && !!s.working_hours?.[weekdayKeyTR(0)],
-  }));
-
   return (
     <AppShell businessName={business.name}>
       <div className="flex items-center gap-3">
@@ -266,7 +205,10 @@ export default async function DashboardPage() {
       </div>
 
       {/* HERO: koyu kart + dalga illüstrasyonu — maskot sahnesiyle aynı imza
-          motif, buyuk halka gercek bir "an" hissi versin diye ortalanmis. */}
+          motif, buyuk halka gercek bir "an" hissi versin diye ortalanmis.
+          Kasitli olarak sabit yukseklikte: gunluk randevu listesi burada
+          gosterilmiyor (o listeye Takvim'den bakilir) - aksi halde randevu
+          sayisi arttikca kart gereksiz sekilde uzuyordu. */}
       <div className="bg-accent text-white rounded-[28px] p-5 lg:p-7 flex flex-col gap-4 relative overflow-hidden">
         <svg viewBox="0 0 400 90" className="absolute bottom-0 left-0 w-full h-[64px] pointer-events-none" preserveAspectRatio="none" aria-hidden="true">
           <path d="M0 40 Q 100 0 200 30 T 400 20 V90 H0 Z" fill="white" opacity="0.045" />
@@ -302,28 +244,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {upcomingToday.length > 0 && (
-          <div className="flex flex-col gap-2.5 relative">
-            {upcomingToday.map((a) => {
-              const customer = one(a.customer);
-              const serviceNames = a.appointment_services
-                .map((s) => one(s.service)?.name)
-                .filter((n): n is string => !!n)
-                .join(", ");
-              return (
-                <div key={a.id} className="flex items-center gap-3">
-                  <span className="text-[13px] font-bold font-display shrink-0 w-11">
-                    {formatTimeTR(a.starts_at)}
-                  </span>
-                  <div className="min-w-0 flex-1 border-t border-white/15 pt-2.5">
-                    <p className="text-[13.5px] font-semibold truncate">{customer?.full_name ?? "Müşteri"}</p>
-                    <p className="text-[12px] text-white/65 truncate">{serviceNames}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
         <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1 relative">
           Takvimi Gör
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -362,27 +282,14 @@ export default async function DashboardPage() {
         </span>
       </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-5 items-start">
-        <StaffOnDutyCard staff={staffOnDutyToday} />
-        {financeNote && (
-          <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5">
-            <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
-            <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
-          </div>
-        )}
-      </div>
-
-      {campaignSuggestion && (
-        <CampaignSuggestionClient
-          id={campaignSuggestion.id}
-          message={campaignSuggestion.suggestion}
-          reasoning={campaignSuggestion.reasoning}
-        />
+      {financeNote && (
+        <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5">
+          <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
+          <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
+        </div>
       )}
 
-      {dailySurvey && <DailySurveyClient id={dailySurvey.id} suggestion={dailySurvey.suggestion} />}
-
-      <SuggestionsClient items={suggestions} />
+      <SuggestionsClient items={suggestions} dailySurvey={dailySurvey} />
     </AppShell>
   );
 }
@@ -412,25 +319,6 @@ function WeekRevenueChart({ data }: { data: { label: string; revenue: number; is
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-function StaffOnDutyCard({ staff }: { staff: { name: string; onLeave: boolean; working: boolean }[] }) {
-  if (staff.length === 0) return null;
-  return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 flex-1">
-      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bugün Kim Çalışıyor</p>
-      <div className="flex flex-col gap-1.5">
-        {staff.map((s) => (
-          <div key={s.name} className="flex items-center justify-between text-[13.5px]">
-            <span>{s.name}</span>
-            <span className={`text-[12px] font-semibold ${s.working ? "text-good-ink" : "text-ink-muted"}`}>
-              {s.onLeave ? "İzinli" : s.working ? "Çalışıyor" : "Bugün kapalı"}
-            </span>
-          </div>
-        ))}
       </div>
     </div>
   );
