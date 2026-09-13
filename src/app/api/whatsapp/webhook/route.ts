@@ -6,6 +6,9 @@ import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { generateAiReply } from "@/lib/ai/respond";
 import { aiReplyLimiter, isRateLimited } from "@/lib/rateLimit";
 import { DAILY_SURVEY_SENT_LOG_BODY, SURVEY_FEEDBACK_WINDOW_HOURS } from "@/lib/dailySurvey";
+import { offerNextWaitlistEntry, matchWaitlistForCancelledAppointment, type FreedSlot } from "@/lib/proactive";
+import { formatDateTR, formatTimeTR } from "@/lib/date";
+import { sendPushToBusiness } from "@/lib/push";
 import type { Business } from "@/types/database";
 
 /** Zamanlama saldırısına karşı sabit-zamanlı karşılaştırma — uzunluk farklıysa direkt false döner. */
@@ -79,6 +82,38 @@ const SYSTEM_ERROR_CUSTOMER_FALLBACK =
 const UNSUPPORTED_MESSAGE_TYPE_FALLBACK = "Şu an sadece yazılı mesajları okuyabiliyorum 🙏";
 
 const SURVEY_FEEDBACK_THANK_YOU = "Değerli geri bildiriminiz için çok teşekkür ederiz! 🙏";
+
+const WAITLIST_AFFIRMATIVE_PATTERN = /\b(evet|olur|isterim|isteriz|tamam|olsun|tabii|tabi|kabul|istiyorum)\b/i;
+const WAITLIST_NEGATIVE_PATTERN = /\b(hayır|hayir|yok|istemiyorum|vazgeç|vazgectim|iptal)\b/i;
+const WAITLIST_DECLINE_MESSAGE = "Tamam, bekleme listesinden çıkarmadık — başka bir boşluk çıkarsa yine haber vereceğiz 🙏";
+const WAITLIST_SLOT_TAKEN_MESSAGE =
+  "Çok üzgünüz, bu boşluk az önce doldu — bekleme listesinde kalmaya devam ediyorsunuz, başka bir boşluk çıkarsa hemen haber vereceğiz.";
+const WAITLIST_UNCLEAR_MESSAGE = "Anlayamadım — bu boşluğu istiyor musunuz? Evet ya da Hayır yazabilir misiniz?";
+
+/**
+ * Bu müşterinin şu an cevap beklenen (offered_slot dolu) bir bekleme listesi
+ * teklifi var mı? Varsa gelen cevap normal randevu AI'ına değil, doğrudan
+ * evet/hayır olarak yorumlanır (bkz. POST handler).
+ */
+async function findAwaitingWaitlistOffer(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  businessId: string,
+  customerId: string
+) {
+  const { data } = await admin
+    .from("waitlist_entries")
+    .select("id, offered_slot, linked_appointment_id, service:services(name)")
+    .eq("business_id", businessId)
+    .eq("customer_id", customerId)
+    .eq("status", "open")
+    .not("offered_slot", "is", null)
+    .order("offered_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data as unknown as
+    | { id: string; offered_slot: FreedSlot; linked_appointment_id: string | null; service: { name: string } | null }
+    | null;
+}
 
 /**
  * Bu müşteriye SURVEY_FEEDBACK_WINDOW_HOURS içinde gün sonu anketi gönderildi mi?
@@ -256,6 +291,138 @@ export async function POST(request: NextRequest) {
               direction: "outbound",
               message_type: "system_notice",
               body: UNSUPPORTED_MESSAGE_TYPE_FALLBACK,
+            });
+            continue;
+          }
+
+          // Bekleme listesi teklifine (bir bosluk cikinca gonderilen sablon) verilen
+          // cevap, normal randevu AI'ina hic gitmez - evet/hayir burada dogrudan
+          // yorumlanip randevu otomatik olusturulur/sirada bir sonrakine gecilir.
+          const waitlistOffer = await findAwaitingWaitlistOffer(admin, business.id, customer.id);
+          if (waitlistOffer) {
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "inbound",
+              message_type: "freeform",
+              body,
+            });
+
+            const isNegative = WAITLIST_NEGATIVE_PATTERN.test(body) && !WAITLIST_AFFIRMATIVE_PATTERN.test(body);
+            const isAffirmative = !isNegative && WAITLIST_AFFIRMATIVE_PATTERN.test(body);
+
+            if (isNegative) {
+              await admin
+                .from("waitlist_entries")
+                .update({ offered_slot: null, offered_at: null })
+                .eq("id", waitlistOffer.id);
+              await sendWhatsappTextMessage(message.from, WAITLIST_DECLINE_MESSAGE).catch((err) => {
+                console.error("Bekleme listesi red mesajı gönderilemedi:", err);
+                Sentry.captureException(err);
+              });
+              await admin.from("whatsapp_message_log").insert({
+                business_id: business.id,
+                customer_id: customer.id,
+                direction: "outbound",
+                message_type: "system_notice",
+                body: WAITLIST_DECLINE_MESSAGE,
+              });
+              await offerNextWaitlistEntry(admin, business.id, waitlistOffer.offered_slot, waitlistOffer.id).catch(
+                (err) => console.error("sıradaki bekleme listesi adayına teklif gönderilemedi:", err)
+              );
+              continue;
+            }
+
+            if (isAffirmative) {
+              const slot = waitlistOffer.offered_slot;
+              const { data: service } = await admin
+                .from("services")
+                .select("price")
+                .eq("id", slot.serviceId)
+                .maybeSingle();
+
+              const { data: newAppointmentId, error: createError } = await admin.rpc(
+                "create_appointment_with_services",
+                {
+                  p_customer_id: customer.id,
+                  p_starts_at: slot.startsAt,
+                  p_ends_at: slot.endsAt,
+                  p_source: "whatsapp_ai",
+                  p_services: [{ service_id: slot.serviceId, staff_id: slot.staffId, planned_price: service?.price ?? 0 }],
+                  p_business_id: business.id,
+                }
+              );
+
+              if (createError || !newAppointmentId) {
+                // Bosluk bu arada baska biri tarafindan (normal rezervasyon yoluyla) alinmis olabilir.
+                await admin
+                  .from("waitlist_entries")
+                  .update({ offered_slot: null, offered_at: null })
+                  .eq("id", waitlistOffer.id);
+                await sendWhatsappTextMessage(message.from, WAITLIST_SLOT_TAKEN_MESSAGE).catch((err) => {
+                  console.error("Bekleme listesi 'boşluk doldu' mesajı gönderilemedi:", err);
+                  Sentry.captureException(err);
+                });
+                await admin.from("whatsapp_message_log").insert({
+                  business_id: business.id,
+                  customer_id: customer.id,
+                  direction: "outbound",
+                  message_type: "system_notice",
+                  body: WAITLIST_SLOT_TAKEN_MESSAGE,
+                });
+                continue;
+              }
+
+              let cancelNote = "";
+              if (waitlistOffer.linked_appointment_id) {
+                await admin
+                  .from("appointments")
+                  .update({ status: "cancelled" })
+                  .eq("id", waitlistOffer.linked_appointment_id);
+                cancelNote = " Önceki ayarladığımız randevunuz otomatik iptal edildi.";
+                await matchWaitlistForCancelledAppointment(business.id, waitlistOffer.linked_appointment_id).catch(
+                  (err) => console.error("iptal edilen bağlı randevu için bekleme listesi eşleşmesi başarısız:", err)
+                );
+              }
+
+              await admin
+                .from("waitlist_entries")
+                .update({ status: "fulfilled", offered_slot: null, offered_at: null })
+                .eq("id", waitlistOffer.id);
+
+              const serviceName = waitlistOffer.service?.name ?? "randevu";
+              const confirmMessage = `Harika! ${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)} için ${serviceName} randevunuz oluşturuldu ✅${cancelNote}`;
+              await sendWhatsappTextMessage(message.from, confirmMessage).catch((err) => {
+                console.error("Bekleme listesi onay mesajı gönderilemedi:", err);
+                Sentry.captureException(err);
+              });
+              await admin.from("whatsapp_message_log").insert({
+                business_id: business.id,
+                customer_id: customer.id,
+                direction: "outbound",
+                message_type: "system_notice",
+                body: confirmMessage,
+              });
+
+              void sendPushToBusiness(business.id, {
+                title: "Bekleme listesinden randevu (WhatsApp)",
+                body: `${customer.full_name} — ${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)} (${serviceName})`,
+                url: "/takvim",
+              }).catch((err) => console.error("push gönderilemedi (bekleme listesi randevu)", err));
+              continue;
+            }
+
+            // Ne evet ne hayır olarak anlaşılamadı - durumu değiştirmeden netleştirme sorusu sor.
+            await sendWhatsappTextMessage(message.from, WAITLIST_UNCLEAR_MESSAGE).catch((err) => {
+              console.error("Bekleme listesi netleştirme mesajı gönderilemedi:", err);
+              Sentry.captureException(err);
+            });
+            await admin.from("whatsapp_message_log").insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "outbound",
+              message_type: "system_notice",
+              body: WAITLIST_UNCLEAR_MESSAGE,
             });
             continue;
           }

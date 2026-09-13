@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { dateKeyTR } from "@/lib/date";
+import { dateKeyTR, formatDateTR, formatTimeTR } from "@/lib/date";
+import { sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 type WeekdayKey = (typeof WEEKDAY_KEYS)[number];
@@ -24,71 +25,126 @@ function parseHHMM(value: string): number {
   return h * 60 + (m || 0);
 }
 
+export interface FreedSlot {
+  serviceId: string;
+  staffId: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 /**
- * Bir randevu iptal edildiğinde, boşalan (personel, hizmet, gün/saat) ile
- * eşleşen açık bekleme listesi kayıtları için 'fill_gap' aksiyon nesnesi
- * oluşturur. Owner'ın dashboard'dan onaylamasıyla müşteriye mesaj gider —
- * burada otomatik mesaj gönderilmez, sadece öneri üretilir.
+ * Bir randevu iptal edilince boşalan (hizmet, gün/saat) ile eşleşen, sırada en
+ * ÖNCE olan (created_at'e göre) TEK bekleme listesi kaydına otomatik WhatsApp
+ * şablonu gönderir ve o kaydı "teklif bekliyor" olarak işaretler
+ * (offered_slot/offered_at) — 2026-09-13'te owner onaylı öneri kartından tam
+ * otomatiğe çevrildi (zaman hassas: yavaş kalınırsa boşluk başka şekilde
+ * dolabilir). excludeEntryId, bir teklif reddedilince/zaman aşımına uğrayınca
+ * AYNI boşluğu bir sonraki adaya sunarken bu kaydı tekrar denemesin diye var.
+ * webhook route.ts'teki cevap işleyicisi ve cron'daki zaman aşımı temizleyici
+ * de aynı fonksiyonu "sıradakine geç" için kullanır.
  */
-export async function matchWaitlistForCancelledAppointment(businessId: string, appointmentId: string) {
-  const admin = createAdminSupabaseClient();
+export async function offerNextWaitlistEntry(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  businessId: string,
+  slot: FreedSlot,
+  excludeEntryId?: string
+): Promise<boolean> {
+  const weekday = weekdayKeyForIso(slot.startsAt);
+  const timeMin = timeOfDayMinutes(slot.startsAt);
 
-  const { data: appointment } = await admin
-    .from("appointments")
-    .select("id, starts_at, appointment_services(service_id, service:services(name))")
-    .eq("id", appointmentId)
-    .single();
-  if (!appointment) return;
-
-  const weekday = weekdayKeyForIso(appointment.starts_at);
-  const timeMin = timeOfDayMinutes(appointment.starts_at);
-  const freedServiceIds = (appointment.appointment_services as unknown as { service_id: string }[]).map(
-    (s) => s.service_id
-  );
-
-  const { data: waitlist } = await admin
+  const { data: candidates } = await admin
     .from("waitlist_entries")
-    .select("id, customer_id, desired_service_id, desired_time_range, customer:customers(full_name)")
+    .select("id, customer_id, desired_time_range, customer:customers(full_name, phone), service:services(name)")
     .eq("business_id", businessId)
     .eq("status", "open")
+    .eq("desired_service_id", slot.serviceId)
+    .is("offered_slot", null)
     .order("created_at", { ascending: true });
 
-  for (const entry of waitlist ?? []) {
-    if (entry.desired_service_id && !freedServiceIds.includes(entry.desired_service_id)) continue;
+  for (const entry of candidates ?? []) {
+    if (excludeEntryId && entry.id === excludeEntryId) continue;
     const range = entry.desired_time_range as { from: string; to: string; days: string[] } | null;
     if (!range) continue;
     if (!range.days.includes(weekday)) continue;
     if (timeMin < parseHHMM(range.from) || timeMin > parseHHMM(range.to)) continue;
 
-    const { data: existing } = await admin
-      .from("action_objects")
-      .select("id")
-      .eq("type", "fill_gap")
-      .eq("related_appointment_id", appointmentId)
-      .eq("related_customer_id", entry.customer_id)
-      .limit(1);
-    if (existing && existing.length > 0) continue;
+    const customer = (entry as unknown as { customer: { full_name: string; phone: string } | null }).customer;
+    const serviceName = (entry as unknown as { service: { name: string } | null }).service?.name ?? "randevu";
+    if (!customer?.phone) continue;
 
-    const customerName = (entry as unknown as { customer: { full_name: string } | null }).customer?.full_name ?? "Müşteri";
-    const serviceName =
-      (appointment.appointment_services as unknown as { service: { name: string } | null }[])[0]?.service?.name ?? "randevu";
+    try {
+      await sendWhatsappTemplateMessage(customer.phone, "bekleme_listesi_bosluk", "tr", [
+        customer.full_name,
+        serviceName,
+      ]);
+    } catch (err) {
+      console.error("bekleme listesi şablon mesajı gönderilemedi", customer.phone, err);
+      Sentry.captureException(err);
+      continue; // bu adaya ulaşılamadı, sıradakini dene
+    }
 
-    await admin.from("action_objects").insert({
+    await admin
+      .from("waitlist_entries")
+      .update({ offered_slot: slot, offered_at: new Date().toISOString() })
+      .eq("id", entry.id);
+
+    await admin.from("whatsapp_message_log").insert({
       business_id: businessId,
-      type: "fill_gap",
-      related_customer_id: entry.customer_id,
-      related_appointment_id: appointmentId,
-      suggestion: `${customerName} bekleme listesinde — boşalan ${serviceName} yerine davet edilsin mi?`,
-      customer_message: `Merhaba ${customerName}, bekleme listenizdeki ${serviceName} için bir yer boşaldı — halen istiyor musunuz?`,
-      reasoning: `Bir randevu iptal oldu ve bekleme listesi kaydınızla (${range.days.join(", ")} ${range.from}-${range.to}) eşleşti.`,
-      status: "pending",
-      // Bu musteri genelde uzun suredir yazmamis olabilir (Meta'nin 24 saatlik
-      // serbest-metin penceresi disinda) - onaylaninca serbest metin yerine
-      // onayli sablon gitsin diye (bkz. schema.sql'deki not).
-      whatsapp_template_name: "bekleme_listesi_bosluk",
-      whatsapp_template_params: [customerName, serviceName],
+      customer_id: entry.customer_id,
+      direction: "outbound",
+      message_type: "template",
+      template_name: "bekleme_listesi_bosluk",
+      body: `Bekleme listesi boşluk teklifi: ${serviceName} — ${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
+    });
+    return true;
+  }
+  return false;
+}
+
+/** Bir randevu iptal edildiğinde, boşalan her hizmet/personel için sıradaki bekleme listesi adayına otomatik teklif gönderir. */
+export async function matchWaitlistForCancelledAppointment(businessId: string, appointmentId: string) {
+  const admin = createAdminSupabaseClient();
+
+  const { data: appointment } = await admin
+    .from("appointments")
+    .select("starts_at, ends_at, appointment_services(service_id, staff_id)")
+    .eq("id", appointmentId)
+    .single();
+  if (!appointment) return;
+
+  const services = appointment.appointment_services as unknown as { service_id: string; staff_id: string }[];
+  for (const svc of services) {
+    await offerNextWaitlistEntry(admin, businessId, {
+      serviceId: svc.service_id,
+      staffId: svc.staff_id,
+      startsAt: appointment.starts_at,
+      endsAt: appointment.ends_at,
     });
   }
+}
+
+/** Bir bekleme listesi teklifine bu kadar saat içinde cevap gelmezse, boşluk sıradaki adaya geçer (bkz. cron/waitlist-timeout). */
+export const WAITLIST_OFFER_TIMEOUT_HOURS = 3;
+
+export async function expireStaleWaitlistOffers(): Promise<{ expired: number }> {
+  const admin = createAdminSupabaseClient();
+  const cutoff = new Date(Date.now() - WAITLIST_OFFER_TIMEOUT_HOURS * 60 * 60 * 1000).toISOString();
+
+  const { data: stale } = await admin
+    .from("waitlist_entries")
+    .select("id, business_id, offered_slot")
+    .eq("status", "open")
+    .not("offered_slot", "is", null)
+    .lt("offered_at", cutoff);
+
+  let expired = 0;
+  for (const entry of stale ?? []) {
+    const slot = entry.offered_slot as unknown as FreedSlot;
+    await admin.from("waitlist_entries").update({ offered_slot: null, offered_at: null }).eq("id", entry.id);
+    await offerNextWaitlistEntry(admin, entry.business_id, slot, entry.id);
+    expired++;
+  }
+  return { expired };
 }
 
 const RETENTION_MULTIPLIER = 1.5; // "aralık geçti" sayılması için ortalama ziyaret aralığının kaç katı geçmesi gerektiği

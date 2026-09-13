@@ -171,6 +171,9 @@ export interface WaitlistEntry {
   desired_service_id: string | null;
   desired_time_range: { from: string; to: string; days: string[] } | null;
   status: WaitlistStatus;
+  offered_slot: { serviceId: string; staffId: string; startsAt: string; endsAt: string } | null;
+  offered_at: string | null;
+  linked_appointment_id: string | null;
   created_at: string;
 }
 

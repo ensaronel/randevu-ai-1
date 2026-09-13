@@ -16,6 +16,7 @@ type WaitlistRow = {
   id: string;
   created_at: string;
   desired_time_range: { from: string; to: string; days: string[] } | null;
+  offered_at: string | null;
   customer: { full_name: string; phone: string } | { full_name: string; phone: string }[] | null;
   service: { name: string } | { name: string }[] | null;
 };
@@ -36,7 +37,9 @@ export default async function BeklemeListesiPage() {
 
   const { data } = await supabase
     .from("waitlist_entries")
-    .select("id, created_at, desired_time_range, customer:customers(full_name, phone), service:services(name)")
+    .select(
+      "id, created_at, desired_time_range, offered_at, customer:customers(full_name, phone), service:services(name)"
+    )
     .eq("business_id", business.id)
     .eq("status", "open")
     .order("created_at", { ascending: true });
@@ -56,7 +59,7 @@ export default async function BeklemeListesiPage() {
       </div>
 
       {entries.length === 0 ? (
-        <EmptyState message="Bir müşteri istediği tarihte uygun saat bulamayıp WhatsApp'tan beklemeyi kabul ederse burada görünecek — bir randevu iptal olduğunda sistem otomatik olarak eşleştirip Ana Sayfa'daki Öneriler'e ekliyor." />
+        <EmptyState message="Bir müşteri istediği tarihte uygun saat bulamayıp WhatsApp'tan beklemeyi kabul ederse burada görünecek — bir randevu iptal olduğunda sistem sıradaki kişiye otomatik WhatsApp mesajı gönderir, hiçbir şey yapmana gerek yok." />
       ) : (
         <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-2 lg:gap-3">
           {entries.map((entry) => {
@@ -70,6 +73,11 @@ export default async function BeklemeListesiPage() {
                 </div>
                 <p className="text-[13px] text-ink-muted">{service?.name ?? "Herhangi bir hizmet"}</p>
                 <p className="text-[12.5px] text-accent font-medium">{formatRange(entry.desired_time_range)}</p>
+                {entry.offered_at && (
+                  <span className="text-[11.5px] font-semibold text-accent2-ink bg-accent2-soft rounded-full px-2.5 py-1 self-start mt-1">
+                    Teklif gönderildi, cevap bekleniyor
+                  </span>
+                )}
               </div>
             );
           })}

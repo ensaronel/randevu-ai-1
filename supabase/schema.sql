@@ -223,6 +223,15 @@ create table waitlist_entries (
   desired_service_id uuid references services(id),
   desired_time_range jsonb,      -- { "from": "14:00", "to": "18:00", "days": ["tue","wed"] }
   status text not null default 'open' check (status in ('open','fulfilled','expired')),
+  -- Bekleme listesi otomasyonu (2026-09-13): bir boslugun SIRADAKİ TEK adaya
+  -- teklif edildigini isaretlemek icin - offered_slot dolu iken bu kayit baska
+  -- bir bosluga eslenmez (bkz. proactive.ts'teki offerNextWaitlistEntry).
+  offered_slot jsonb,            -- { "serviceId", "staffId", "startsAt", "endsAt" } - teklif edilen bosluk
+  offered_at timestamptz,        -- teklif ne zaman gonderildi (WAITLIST_OFFER_TIMEOUT_HOURS icinde cevapsizsa sıradakine gecer)
+  -- Musteri, istedigi gun dolu oldugu icin ALTERNATIF bir güne randevu aldiysa
+  -- VE orijinal gun icin de bekleme listesine girdiyse, o alternatif randevunun
+  -- id'si burada tutulur - bekleme listesi teklifi kabul edilince otomatik iptal edilir.
+  linked_appointment_id uuid references appointments(id),
   created_at timestamptz not null default now()
 );
 
@@ -621,6 +630,19 @@ grant select, insert, update, delete on all tables in schema public to authentic
 --   $$
 --   select net.http_get(
 --     url := '<UYGULAMA_URL>/api/cron/reminders',
+--     headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
+--   );
+--   $$
+-- );
+--
+-- Bekleme listesi teklif zaman aşımı (2026-09-13) — WAITLIST_OFFER_TIMEOUT_HOURS
+-- (proactive.ts) içinde cevapsız kalan teklifleri sıradaki adaya geçirir.
+-- select cron.schedule(
+--   'bekleme-listesi-zaman-asimi',
+--   '0 * * * *', -- her saat başı
+--   $$
+--   select net.http_get(
+--     url := '<UYGULAMA_URL>/api/cron/waitlist-timeout',
 --     headers := jsonb_build_object('Authorization', 'Bearer <CRON_SECRET>')
 --   );
 --   $$

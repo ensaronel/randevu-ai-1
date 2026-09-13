@@ -1,8 +1,9 @@
 import type { FunctionDeclaration } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { findAvailableSlots } from "@/lib/ai/availability";
+import { findAvailableSlots, explainUnavailability, type UnavailabilityReason } from "@/lib/ai/availability";
 import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
 import { sendPushToBusiness } from "@/lib/push";
+import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { formatDateTR, formatTimeTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
 import type { Appointment, AppointmentService } from "@/types/database";
@@ -18,8 +19,12 @@ export const AI_TOOLS: FunctionDeclaration[] = [
       "boşsa bile o saate en yakın gerçek alternatifleri gösterir. Dönen her seçenekteki " +
       "is_exact_requested_time alanını MUTLAKA oku ve buna göre konuş: true ise istenen saat " +
       "TAM MÜSAİT — 'dolu' deme, doğrudan olumlu onayla; false ise istenen saat müsait DEĞİL, " +
-      "bu sadece en yakın alternatif — önce 'o saat dolu' de, sonra bu alternatifi sun. Bunu " +
-      "kendi başına tahmin etme, sadece bu alana bak.",
+      "bu sadece en yakın alternatif. Bu durumda dönen 'unavailable_reason' alanına göre DOĞRU " +
+      "sebebi söyle, kendin tahmin etme: 'closed_day' -> 'o gün kapalıyız' de; 'staff_off' -> " +
+      "'[unavailable_staff_name] o gün çalışmıyor' de; 'outside_hours' -> 'o saatte kapalıyız' " +
+      "de; 'busy' -> 'o saat müsait değil' de (bu SADECE gerçekten meşguliyet varsa döner). " +
+      "'dolu' kelimesini SADECE 'busy' durumunda kullan, diğer üçünde asla — sebep farklıysa " +
+      "cevap da farklı olmalı.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -32,13 +37,28 @@ export const AI_TOOLS: FunctionDeclaration[] = [
           type: "string",
           description: "YYYY-MM-DD formatında tarih (Türkiye yerel tarihi)",
         },
+        staff_name: {
+          type: "string",
+          description:
+            "Müşteri BELİRLİ bir personeli isim vererek istediyse (ör. 'Mehmet Usta boş mu?') " +
+            "o personelin adı — sistemdeki tam adıyla. Müşteri kimi isterse sistemin kendisi " +
+            "seçsin diyorsa (çoğu durum) bu alanı boş bırak.",
+        },
         preferred_time: {
           type: "string",
           description:
             "HH:MM formatında, müşterinin tercih ettiği saat (Türkiye yerel saati) — ör. " +
             "'öğleden sonra' -> '14:00', 'akşama doğru' -> '17:00', 'saat 14 gibi' -> '14:00'. " +
-            "Dönen sonuçlar bu saate EN YAKIN olanlardır. Müşteri gerçekten hiçbir tercih " +
-            "belirtmediyse (örn. 'ne zaman olursa olsun') boş bırak.",
+            "ÇOK ÖNEMLİ — MÜŞTERİ SADECE '1' İLE '8' ARASI ÇIPLAK BİR SAYI SÖYLERSE (örn. " +
+            "'saat 6'da', 'akşam değil sadece 3'te' gibi sabah/akşam belirtmeden), bunu SABAH " +
+            "DEĞİL ÖĞLEDEN SONRA/AKŞAM olarak yorumla (13:00-20:00 aralığına çevir, örn. 'saat " +
+            "6' -> '18:00', 'saat 3' -> '15:00') — çünkü işletmeler genelde sabah erken saatlerde " +
+            "(saat 1-8 arası) hizmet vermez, müşteri neredeyse HER ZAMAN günün ilerleyen saatini " +
+            "kasteder. Müşteri açıkça 'sabah 6' ya da 'sabah 8 gibi' derse o zaman gerçekten sabah " +
+            "(06:00/08:00) olarak al — sadece belirtilmemiş çıplak sayılarda akşama yorumla. " +
+            "'9', '10', '11', '12' gibi sayılarda bu belirsizlik daha azdır, olduğu gibi (09:00-12:00) " +
+            "yorumlanabilir. Dönen sonuçlar bu saate EN YAKIN olanlardır. Müşteri gerçekten hiçbir " +
+            "tercih belirtmediyse (örn. 'ne zaman olursa olsun') boş bırak.",
         },
       },
       required: ["service_names", "date"],
@@ -112,9 +132,13 @@ export const AI_TOOLS: FunctionDeclaration[] = [
   {
     name: "join_waitlist",
     description:
-      "check_availability istenen tarihte uygun saat bulamadığında, müşteri başka bir gün/saat " +
-      "boşaldığında haber verilmesini isterse çağır. Müşteriden hangi gün(ler) ve saat aralığını " +
-      "istediğini mutlaka sor, tahmin etme.",
+      "İki durumda çağır: (1) check_availability istenen tarihte HİÇBİR uygun saat bulamadığında, " +
+      "müşteri başka bir gün/saat boşaldığında haber verilmesini isterse; (2) müşteri istediği günde yer " +
+      "olmadığı için ALTERNATİF bir güne randevu aldıktan SONRA, orijinal (istediği) gün için de ayrıca " +
+      "bekleme listesine girmek isterse — bu durumda linked_appointment_id'ye az önce oluşturulan " +
+      "randevunun appointment_id'sini ver, böylece bekleme listesindeki boşluk çıkıp müşteri kabul ederse " +
+      "o eski randevu otomatik iptal edilir (müşteride aynı hizmet için iki randevu kalmaz). Müşteriden " +
+      "hangi gün(ler) ve saat aralığını istediğini mutlaka sor, tahmin etme.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -126,6 +150,12 @@ export const AI_TOOLS: FunctionDeclaration[] = [
         },
         from: { type: "string", description: "Uygun saat aralığının başlangıcı, HH:MM" },
         to: { type: "string", description: "Uygun saat aralığının bitişi, HH:MM" },
+        linked_appointment_id: {
+          type: "string",
+          description:
+            "SADECE müşteri alternatif bir güne az önce randevu aldıysa VE orijinal gün için de bekleme " +
+            "listesine giriyorsa doldur — create_appointment'ın döndürdüğü appointment_id.",
+        },
       },
       required: ["service_name", "days", "from", "to"],
     },
@@ -150,6 +180,16 @@ interface ToolExecContext {
   ctx: AiBusinessContext;
   customerId: string;
   customerName: string;
+  customerPhone: string;
+  /**
+   * Müşteri isteği üzerine (2026-09-12): telefonla randevu alan/değiştiren/iptal eden
+   * müşteriye görüşme sonunda YAZILI bir onay gitmiyordu (WhatsApp'ta zaten AI'nin
+   * kendi yanıtı bunu karşılıyor, ama telefonda sadece sözlü kalıyordu) — "gerçekten
+   * oluştu mu" güvensizliğine yol açıyordu. channel "voice" ise create/cancel/reschedule
+   * sonrası ayrıca bir WhatsApp özet mesajı gönderilir; "whatsapp" ise gönderilmez
+   * (AI'nin normal yanıtı zaten aynı işi görüyor, tekrar mesaj müşteriyi rahatsız eder).
+   */
+  channel: "whatsapp" | "voice";
 }
 
 export async function executeAiTool(
@@ -204,7 +244,8 @@ async function findSlotsForDate(
   dateKey: string,
   requestedServices: AiBusinessContext["services"],
   exec: ToolExecContext,
-  preferredStartMinutes: number | undefined
+  preferredStartMinutes: number | undefined,
+  staffFilter: AiBusinessContext["staff"] | undefined
 ) {
   const admin = createAdminSupabaseClient();
   const { data: appointments } = await admin
@@ -217,7 +258,7 @@ async function findSlotsForDate(
   return findAvailableSlots({
     business: exec.ctx.business,
     requestedServices,
-    staff: exec.ctx.staff,
+    staff: staffFilter ?? exec.ctx.staff,
     expertise: exec.ctx.expertise,
     existingAppointments: (appointments ?? []) as (Appointment & { appointment_services: AppointmentService[] })[],
     dateKey,
@@ -229,6 +270,7 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
   const serviceNames = (input.service_names as string[] | undefined) ?? [];
   const requestedDateKey = String(input.date ?? "");
   const preferredStartMinutes = parseTimeToMinutesOrUndefined(input.preferred_time);
+  const staffName = typeof input.staff_name === "string" && input.staff_name.trim() ? input.staff_name.trim() : undefined;
 
   const normalizedRequested = serviceNames.map((n) => n.trim().toLowerCase());
   const requestedServices = exec.ctx.services.filter((s) => normalizedRequested.includes(s.name.trim().toLowerCase()));
@@ -241,9 +283,17 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
     return JSON.stringify({ error: "Tarih YYYY-MM-DD formatında olmalı." });
   }
 
+  // Müşteri belirli bir personel istediyse (ör. "Mehmet Usta boş mu?"), aramayı SADECE
+  // ona daralt — bulunamazsa (yazım farkı vb.) sessizce normal (tüm personel) davranışa
+  // düş, hata verme.
+  const namedStaff = staffName
+    ? exec.ctx.staff.find((s) => s.full_name.toLowerCase().includes(staffName.toLowerCase()))
+    : undefined;
+  const staffFilter = namedStaff ? [namedStaff] : undefined;
+
   for (let offset = 0; offset <= LOOKAHEAD_DAYS; offset++) {
     const dateKey = offset === 0 ? requestedDateKey : addDaysToDateKey(requestedDateKey, offset);
-    const slots = await findSlotsForDate(dateKey, requestedServices, exec, preferredStartMinutes);
+    const slots = await findSlotsForDate(dateKey, requestedServices, exec, preferredStartMinutes, staffFilter);
 
     if (slots.length > 0) {
       return JSON.stringify({
@@ -255,9 +305,14 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
           display: `${formatDateTR(slot.startsAt)} ${formatTimeTR(slot.startsAt)}`,
           assignments: slot.assignments.map((a) => ({ service_name: a.serviceName, staff_name: a.staffName })),
           // true ise: musterinin istedigi saat TAM MUSAIT, "dolu" DEME, dogrudan onayla.
-          // false ise: istenen saat musait DEGIL, bu en yakin alternatif, "dolu ama" diyerek sun.
+          // false ise: istenen saat musait DEGIL, bu en yakin alternatif — unavailable_reason'a bak.
           is_exact_requested_time: slot.isExactPreferredTime,
         })),
+        // offset>0 (başka gün önerildi) VEYA hiçbir seçenek tam istenen saat değilse, AI'ya
+        // GERÇEK sebebi veriyoruz — "dolu" her zaman doğru değil (bkz. explainUnavailability).
+        ...((offset > 0 || !slots.some((s) => s.isExactPreferredTime))
+          ? explainReasonFor(requestedDateKey, preferredStartMinutes, staffName, exec)
+          : {}),
       });
     }
   }
@@ -265,7 +320,24 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
   return JSON.stringify({
     slots: [],
     message: `İstenen tarihten itibaren ${LOOKAHEAD_DAYS + 1} gün boyunca uygun saat bulunamadı.`,
+    ...explainReasonFor(requestedDateKey, preferredStartMinutes, staffName, exec),
   });
+}
+
+function explainReasonFor(
+  requestedDateKey: string,
+  preferredStartMinutes: number | undefined,
+  staffName: string | undefined,
+  exec: ToolExecContext
+): { unavailable_reason: UnavailabilityReason; unavailable_staff_name?: string } {
+  const { reason, staffFullName } = explainUnavailability({
+    business: exec.ctx.business,
+    staff: exec.ctx.staff,
+    dateKey: requestedDateKey,
+    requestedMinutes: preferredStartMinutes,
+    staffName,
+  });
+  return staffFullName ? { unavailable_reason: reason, unavailable_staff_name: staffFullName } : { unavailable_reason: reason };
 }
 
 async function runCreateAppointment(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
@@ -294,7 +366,10 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     p_customer_id: exec.customerId,
     p_starts_at: startsAt,
     p_ends_at: endsAt,
-    p_source: "whatsapp_ai",
+    // Onceden kanal ne olursa olsun hep "whatsapp_ai" yaziliyordu - schema.sql'de
+    // "phone_ai" diye ayrica tanimli bir deger olmasina ragmen hic kullanilmiyordu
+    // (2026-09-12 denetiminde bulundu) - kaynak raporlama/analiz icin yanlis cikiyordu.
+    p_source: exec.channel === "voice" ? "phone_ai" : "whatsapp_ai",
     p_services: resolved.map((r) => ({
       service_id: r.service!.id,
       staff_id: r.staff!.id,
@@ -314,13 +389,25 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
   }
 
   const serviceNames = resolved.map((r) => r.service!.name).join(", ");
+  const channelLabel = exec.channel === "voice" ? "Telefon" : "WhatsApp";
   void sendPushToBusiness(exec.ctx.business.id, {
-    title: "Yeni randevu (WhatsApp)",
+    title: `Yeni randevu (${channelLabel})`,
     body: `${exec.customerName} — ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} (${serviceNames})`,
     url: "/takvim",
   }).catch((err) => console.error("push gönderilemedi (randevu oluşturma)", err));
 
-  return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
+  if (exec.channel === "voice") {
+    void sendWhatsappTextMessage(
+      exec.customerPhone,
+      `Merhaba ${exec.customerName}, telefonda aldığınız randevunuz onaylandı ✅\n${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} — ${serviceNames}`
+    ).catch((err) => console.error("WhatsApp özet mesajı gönderilemedi (randevu oluşturma)", err));
+  }
+
+  return JSON.stringify({
+    success: true,
+    appointment_id: appointmentId,
+    display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`,
+  });
 }
 
 async function runListMyAppointments(exec: ToolExecContext): Promise<string> {
@@ -384,11 +471,19 @@ async function runCancelAppointment(input: Record<string, unknown>, exec: ToolEx
     console.error("waitlist match failed", err)
   );
 
+  const cancelChannelLabel = exec.channel === "voice" ? "Telefon" : "WhatsApp";
   void sendPushToBusiness(exec.ctx.business.id, {
-    title: "Randevu iptal edildi (WhatsApp)",
+    title: `Randevu iptal edildi (${cancelChannelLabel})`,
     body: `${exec.customerName} — ${formatDateTR(appointment.starts_at)} ${formatTimeTR(appointment.starts_at)} randevusunu iptal etti`,
     url: "/takvim",
   }).catch((err) => console.error("push gönderilemedi (randevu iptali)", err));
+
+  if (exec.channel === "voice") {
+    void sendWhatsappTextMessage(
+      exec.customerPhone,
+      `Merhaba ${exec.customerName}, telefonda iptal ettiğiniz randevu onaylandı ❌\n${formatDateTR(appointment.starts_at)} ${formatTimeTR(appointment.starts_at)} randevunuz iptal edildi.`
+    ).catch((err) => console.error("WhatsApp özet mesajı gönderilemedi (randevu iptali)", err));
+  }
 
   return JSON.stringify({ success: true });
 }
@@ -444,11 +539,19 @@ async function runRescheduleAppointment(input: Record<string, unknown>, exec: To
     return JSON.stringify({ error: "Erteleme yapılamadı, randevunuz DEĞİŞMEDEN olduğu gibi duruyor, lütfen tekrar dene." });
   }
 
+  const rescheduleChannelLabel = exec.channel === "voice" ? "Telefon" : "WhatsApp";
   void sendPushToBusiness(exec.ctx.business.id, {
-    title: "Randevu ertelendi (WhatsApp)",
+    title: `Randevu ertelendi (${rescheduleChannelLabel})`,
     body: `${exec.customerName} — randevusunu ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)} saatine erteledi`,
     url: "/takvim",
   }).catch((err) => console.error("push gönderilemedi (randevu erteleme)", err));
+
+  if (exec.channel === "voice") {
+    void sendWhatsappTextMessage(
+      exec.customerPhone,
+      `Merhaba ${exec.customerName}, telefonda ertelediğiniz randevunuz onaylandı 🔄\nYeni saat: ${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`
+    ).catch((err) => console.error("WhatsApp özet mesajı gönderilemedi (randevu erteleme)", err));
+  }
 
   return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
 }
@@ -458,6 +561,10 @@ async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecCon
   const days = (input.days as string[] | undefined) ?? [];
   const from = String(input.from ?? "");
   const to = String(input.to ?? "");
+  const linkedAppointmentId =
+    typeof input.linked_appointment_id === "string" && input.linked_appointment_id.trim()
+      ? input.linked_appointment_id.trim()
+      : null;
 
   const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === serviceName.trim().toLowerCase());
   if (!service) {
@@ -474,6 +581,7 @@ async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecCon
     customer_id: exec.customerId,
     desired_service_id: service.id,
     desired_time_range: { from, to, days },
+    linked_appointment_id: linkedAppointmentId,
   });
 
   if (error) {
