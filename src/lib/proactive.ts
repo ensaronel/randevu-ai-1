@@ -123,12 +123,17 @@ export async function matchWaitlistForCancelledAppointment(businessId: string, a
   }
 }
 
-/** Bir bekleme listesi teklifine bu kadar saat içinde cevap gelmezse, boşluk sıradaki adaya geçer (bkz. cron/waitlist-timeout). */
-export const WAITLIST_OFFER_TIMEOUT_HOURS = 3;
+/**
+ * Bir bekleme listesi teklifine bu kadar dakika içinde cevap gelmezse, boşluk sıradaki
+ * adaya geçer (bkz. cron/waitlist-timeout). Kullanıcının 2026-09-13 talebiyle 3 saatten
+ * 30 dakikaya düşürüldü — bu kadar kısa bir pencereyi anlamlı şekilde uygulayabilmek için
+ * cron da saatlik yerine 10 dakikada bir çalışacak şekilde değiştirildi (bkz. schema.sql).
+ */
+export const WAITLIST_OFFER_TIMEOUT_MINUTES = 30;
 
 export async function expireStaleWaitlistOffers(): Promise<{ expired: number }> {
   const admin = createAdminSupabaseClient();
-  const cutoff = new Date(Date.now() - WAITLIST_OFFER_TIMEOUT_HOURS * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - WAITLIST_OFFER_TIMEOUT_MINUTES * 60 * 1000).toISOString();
 
   const { data: stale } = await admin
     .from("waitlist_entries")

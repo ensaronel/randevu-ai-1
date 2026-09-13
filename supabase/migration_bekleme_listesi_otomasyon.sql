@@ -20,7 +20,7 @@ alter table waitlist_entries
 --
 -- select cron.schedule(
 --   'bekleme-listesi-zaman-asimi',
---   '0 * * * *', -- her saat başı
+--   '*/10 * * * *', -- her 10 dakikada bir
 --   $$
 --   select net.http_get(
 --     url := '<UYGULAMA_URL>/api/cron/waitlist-timeout',

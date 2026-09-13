@@ -635,11 +635,11 @@ grant select, insert, update, delete on all tables in schema public to authentic
 --   $$
 -- );
 --
--- Bekleme listesi teklif zaman aşımı (2026-09-13) — WAITLIST_OFFER_TIMEOUT_HOURS
--- (proactive.ts) içinde cevapsız kalan teklifleri sıradaki adaya geçirir.
+-- Bekleme listesi teklif zaman aşımı (2026-09-13) — WAITLIST_OFFER_TIMEOUT_MINUTES
+-- (proactive.ts, 30dk) içinde cevapsız kalan teklifleri sıradaki adaya geçirir.
 -- select cron.schedule(
 --   'bekleme-listesi-zaman-asimi',
---   '0 * * * *', -- her saat başı
+--   '*/10 * * * *', -- her 10 dakikada bir
 --   $$
 --   select net.http_get(
 --     url := '<UYGULAMA_URL>/api/cron/waitlist-timeout',
