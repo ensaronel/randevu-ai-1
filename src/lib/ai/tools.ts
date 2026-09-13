@@ -308,9 +308,17 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
           // false ise: istenen saat musait DEGIL, bu en yakin alternatif — unavailable_reason'a bak.
           is_exact_requested_time: slot.isExactPreferredTime,
         })),
-        // offset>0 (başka gün önerildi) VEYA hiçbir seçenek tam istenen saat değilse, AI'ya
-        // GERÇEK sebebi veriyoruz — "dolu" her zaman doğru değil (bkz. explainUnavailability).
-        ...((offset > 0 || !slots.some((s) => s.isExactPreferredTime))
+        // offset>0 (başka gün önerildi) VEYA (müşteri belirli bir saat istedi AMA hiçbir
+        // seçenek o saate tam uymuyorsa) AI'ya GERÇEK sebebi veriyoruz — "dolu" her zaman
+        // doğru değil (bkz. explainUnavailability). ÖNEMLİ: preferredStartMinutes tanımsızsa
+        // (müşteri "yarın için yer var mı?" gibi belirli bir saat söylemediyse) "tam istenen
+        // saat" diye bir kavram yok — bu durumda offset===0 ve slots.length>0 olması TEK
+        // BAŞINA "o gün müsait" demektir, unavailable_reason EKLENMEMELİ. 2026-09-14'te canlı
+        // testte yakalandı: müşteri saat belirtmeden "yarın" sordu, kod hâlâ (hiçbir slot
+        // "preferredStartMinutes yok" için tanımsız şekilde "tam" sayılamadığından)
+        // unavailable_reason:"busy" ekledi ve AI, gerçekte 3 boş slot varken "saatler dolu
+        // ama yine de X'te oluşturabiliriz" diye çelişkili/anlamsız bir cevap verdi.
+        ...(offset > 0 || (preferredStartMinutes !== undefined && !slots.some((s) => s.isExactPreferredTime))
           ? explainReasonFor(requestedDateKey, preferredStartMinutes, staffName, exec)
           : {}),
       });
@@ -573,6 +581,16 @@ async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecCon
   }
   if (days.length === 0 || !/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)) {
     return JSON.stringify({ error: "Gün(ler) ve saat aralığı (HH:MM) eksik veya hatalı." });
+  }
+  // 2026-09-14'te canlı testte yakalandı: işletme o gün (weekday) YAPISAL OLARAK hiç açık
+  // değilken (working_hours[day] boş) AI hâlâ o gün için bekleme listesi teklif etti — bir
+  // iptal olsa bile o gün ASLA açılmaz, bu tür bir kayıt sonsuza kadar hiç eşleşmeyecek boş
+  // bir girdi olurdu. Müşterinin istediği TÜM günler işletmenin yapısal olarak hiç açmadığı
+  // günlerse, kaydetme.
+  if (days.every((d) => !exec.ctx.business.working_hours[d])) {
+    return JSON.stringify({
+      error: "İşletme bu gün(ler)de yapısal olarak hiç açık değil, bekleme listesine eklenemez — müşteriye bunu söyle.",
+    });
   }
 
   const admin = createAdminSupabaseClient();
