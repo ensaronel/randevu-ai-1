@@ -9,8 +9,7 @@ export interface AiBusinessContext {
   ownerPhone: string | null;
 }
 
-/** AI'ın karar vermesi için gereken tüm işletme bağlamını tek seferde toplar. */
-export async function loadBusinessContext(businessId: string): Promise<AiBusinessContext> {
+async function loadBusinessContextOnce(businessId: string): Promise<AiBusinessContext> {
   const admin = createAdminSupabaseClient();
 
   const [
@@ -25,15 +24,28 @@ export async function loadBusinessContext(businessId: string): Promise<AiBusines
     admin.from("business_owners").select("phone").eq("business_id", businessId).maybeSingle(),
   ]);
 
-  // Önceden bu hatalar hiç kontrol edilmiyordu — bir sorgu başarısız olduğunda
-  // (network/DB geçici hatası, rate limit vb.) data sessizce null dönüyor ve
-  // "?? []" ile boş diziye düşülüyordu, yani AI'ya "hiç hizmet/personel yok" gibi
-  // yanlış bir tablo gidiyordu, hiçbir iz bırakmadan (2026-09-09'da sesli arama
-  // testinde yakalandı: bir oturumda context doğru geldi, hemen ardından başka bir
-  // oturumda services tamamen boş geldi — sessiz bir sorgu hatası olmalı).
-  if (businessError) console.error("[ai-context] business sorgusu hata:", businessError.message);
-  if (servicesError) console.error("[ai-context] services sorgusu hata:", servicesError.message);
-  if (staffError) console.error("[ai-context] staff sorgusu hata:", staffError.message);
+  // ÇOK ÖNEMLİ — business/services/staff sorgularından biri başarısız olursa (network/DB
+  // geçici hatası, JWT saat kayması vb.) burada ASLA sessizce boş diziye düşülmez ve
+  // devam edilmez: bu, AI'ya "hiç hizmet/personel yok" gibi YANLIŞ ama görünüşte geçerli
+  // bir tablo verip "bugün hiç boş yer yok" gibi hatalı ama kendi içinde tutarlı bir
+  // cevaba yol açar — müşteri gerçek bir hatayı "sistem meşgul" sanır. Bunun yerine hata
+  // fırlatılır, çağıran taraf (loadBusinessContext) bunu retry'lar, hâlâ başarısızsa
+  // üst katman (WhatsApp webhook / sesli köprü) zaten var olan genel hata yoluna düşer
+  // (bkz. respond.ts çağrısını saran try/catch, geminiBridge.ts'teki setup hata yönetimi)
+  // — böylece müşteriye "boş yer yok" yerine "teknik bir sorun oldu" mesajı gider.
+  // (2026-09-12'de canlı testte yakalandı: "staff sorgusu hata: JWT issued at future" —
+  // test makinesinin saati ileri alınmış olduğundan Supabase'in gerçek sunucu saatiyle
+  // uyuşmuyor, bu da ara sıra kısa süreli auth hatasına yol açıyor.)
+  if (businessError || servicesError || staffError) {
+    const detail = [
+      businessError && `business: ${businessError.message}`,
+      servicesError && `services: ${servicesError.message}`,
+      staffError && `staff: ${staffError.message}`,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    throw new Error(`[ai-context] kritik sorgu hatası, boş/yanlış veriyle devam edilmiyor: ${detail}`);
+  }
   if (ownerError) console.error("[ai-context] owner sorgusu hata:", ownerError.message);
 
   const staffIds = (staff ?? []).map((s) => s.id);
@@ -50,4 +62,22 @@ export async function loadBusinessContext(businessId: string): Promise<AiBusines
     expertise: expertise ?? [],
     ownerPhone: owner?.phone ?? null,
   };
+}
+
+/**
+ * AI'ın karar vermesi için gereken tüm işletme bağlamını tek seferde toplar.
+ * Kritik sorgulardan biri hata verirse (network/DB geçici hatası, JWT saat kayması vb.)
+ * bir kez daha dener — çoğu gerçek dünya kesintisi birkaç yüz ms içinde kendini
+ * düzeltir. İkinci deneme de başarısız olursa hatayı olduğu gibi yukarı fırlatır,
+ * çağıran katman kendi hata yolunu (WhatsApp: sistem hatası mesajı, sesli: görüşmeyi
+ * nazikçe sonlandırma) devreye sokar — asla boş/yanlış context ile sessizce devam etmez.
+ */
+export async function loadBusinessContext(businessId: string): Promise<AiBusinessContext> {
+  try {
+    return await loadBusinessContextOnce(businessId);
+  } catch (err) {
+    console.error("[ai-context] ilk deneme başarısız, 400ms sonra tekrar deneniyor:", (err as Error).message);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return await loadBusinessContextOnce(businessId);
+  }
 }
