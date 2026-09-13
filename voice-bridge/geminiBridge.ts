@@ -10,6 +10,8 @@ import {
   shouldBlockUnverifiedSlot,
   UNVERIFIED_SLOT_ERROR,
   parseVerifiedSlotsFromResult,
+  shouldBlockUnverifiedName,
+  NO_NAME_MENTIONED_ERROR,
   type VerifiedSlot,
 } from "../src/lib/ai/safetyGate.js";
 import { buildVoiceSystemPrompt } from "./voicePrompt.js";
@@ -324,10 +326,24 @@ export class VoiceCallSession {
         }
         if (call.name === "save_customer_name") {
           const fullName = String(call.args?.full_name ?? "").trim();
+          if (fullName && shouldBlockUnverifiedName(fullName, this.fullTranscript.join(" "))) {
+            console.warn(
+              `[voice] GÜVENLİK: save_customer_name engellendi - "${fullName}" müşterinin söylediği hiçbir şeyde geçmiyor`
+            );
+            return {
+              id: call.id,
+              name: call.name,
+              response: { result: JSON.stringify({ error: NO_NAME_MENTIONED_ERROR }) },
+            };
+          }
           if (fullName) {
             this.customerName = fullName;
             const admin = createAdminSupabaseClient();
-            await admin.from("customers").update({ full_name: fullName }).eq("id", this.customerId);
+            try {
+              await admin.from("customers").update({ full_name: fullName }).eq("id", this.customerId);
+            } catch (err) {
+              console.error(`[voice] save_customer_name DB güncellemesi başarısız oldu: ${err}`);
+            }
           }
           return { id: call.id, name: call.name, response: { result: "Kaydedildi." } };
         }

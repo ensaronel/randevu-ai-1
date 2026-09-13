@@ -168,3 +168,28 @@ export function shouldBlockUnverifiedSlot(
   );
   return !matches;
 }
+
+export const NO_NAME_MENTIONED_ERROR =
+  "Bu isim müşterinin söylediği hiçbir şeyde geçmiyor, kendi başına isim uydurma — net anlaşılmadıysa müşteriye ismini tekrar/açıkça söylemesini iste.";
+
+/**
+ * 2026-09-13'te canlı testte yakalandı: AI konuşmasında "Muhammed Ensar adına randevu
+ * oluşturuyorum, doğru mu?" dedi ve müşteri onayladı, ama save_customer_name'e GERÇEKTE
+ * hiç çağrılmamış/müşterinin söylediği hiçbir şeyde geçmeyen bir isim gönderdi (transkriptte
+ * bu isim yok) — kod bunu kontrol etmediği için veritabanına ya hiç yazılmadı ya da baştan
+ * uydurma bir değerle yazıldı, telefonu daha önce arayan başka bir test müşterisinin adı
+ * ("Serkan") kalıcı olarak yerinde kaldı. save_customer_name'in HİÇBİR doğrulaması yoktu —
+ * bu fonksiyon, kaydedilecek ismin en az bir kelimesinin müşterinin GERÇEKTEN söylediği
+ * bir şeyde (fullTranscript) geçtiğini zorunlu kılar. Kasıtlı olarak GEVŞEK (isimin
+ * herhangi bir 2+ harfli parçası yeterli) — amaç STT'nin hafif farklı yazımını değil,
+ * TAMAMEN uydurma bir ismi yakalamak.
+ */
+export function shouldBlockUnverifiedName(fullName: string, fullTranscript: string): boolean {
+  const normalizedTranscript = fullTranscript.toLowerCase();
+  const words = fullName
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+  if (words.length === 0) return true; // boş/anlamsız isim - engelle
+  return !words.some((w) => normalizedTranscript.includes(w));
+}

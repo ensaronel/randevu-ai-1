@@ -23,6 +23,8 @@ import {
   shouldBlockUnverifiedSlot,
   UNVERIFIED_SLOT_ERROR,
   parseVerifiedSlotsFromResult,
+  shouldBlockUnverifiedName,
+  NO_NAME_MENTIONED_ERROR,
   type VerifiedSlot,
 } from "../../src/lib/ai/safetyGate.js";
 import { findOrCreateCustomerByPhone } from "../customerLookup.js";
@@ -118,7 +120,19 @@ async function runScenario(
           continue;
         }
         if (name === "save_customer_name") {
-          customerName = String(args.full_name ?? customerName);
+          const fullName = String(args.full_name ?? "").trim();
+          if (fullName && shouldBlockUnverifiedName(fullName, fullTranscript.join(" "))) {
+            functionResponseParts.push({
+              functionResponse: {
+                name,
+                response: { result: JSON.stringify({ error: NO_NAME_MENTIONED_ERROR }) },
+                id: call.id,
+              },
+            });
+            log.toolCalls.push({ name, args, blocked: true, resultPreview: "BLOCKED_UNVERIFIED_NAME" });
+            continue;
+          }
+          if (fullName) customerName = fullName;
           functionResponseParts.push({
             functionResponse: { name, response: { result: "Kaydedildi." }, id: call.id },
           });

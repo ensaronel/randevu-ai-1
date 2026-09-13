@@ -8,7 +8,7 @@
  */
 import { loadBusinessContext } from "../../src/lib/ai/context.js";
 import { findAvailableSlots, explainUnavailability } from "../../src/lib/ai/availability.js";
-import { shouldBlockUnverifiedSlot, parseVerifiedSlotsFromResult } from "../../src/lib/ai/safetyGate.js";
+import { shouldBlockUnverifiedSlot, parseVerifiedSlotsFromResult, shouldBlockUnverifiedName } from "../../src/lib/ai/safetyGate.js";
 import type { Business, Staff, Service, Appointment, AppointmentService } from "../../src/types/database.js";
 
 export interface CheckResult {
@@ -419,6 +419,39 @@ function checkUnverifiedSlotIsBlocked(): void {
   );
 }
 
+/**
+ * 2026-09-13'te canlı testte yakalandı: AI konuşmasında "Muhammed Ensar adına randevu
+ * oluşturuyorum" dedi ama müşteri bu ismi hiç söylemedi (STT muhtemelen net yakalayamadı,
+ * model kendi kafasından bir isim uydurdu) - save_customer_name'in HİÇBİR doğrulaması
+ * olmadığı için bu uydurma değer sessizce kabul edildi. shouldBlockUnverifiedName,
+ * kaydedilecek ismin en az bir kelimesinin müşterinin GERÇEKTEN söylediği bir şeyde
+ * geçtiğini zorunlu kılmalı.
+ */
+function checkUnverifiedNameIsBlocked(): void {
+  const transcript = "merhaba evet Ahmet Yılmaz benim adım bu saat 3 te randevu almak istiyorum";
+
+  const blockedFabricated = shouldBlockUnverifiedName("Muhammed Ensar", transcript);
+  record(
+    "safetyGate: müşterinin hiç söylemediği bir isim save_customer_name'de engelleniyor",
+    blockedFabricated,
+    `beklenen=true (engellenmeli), gerçekleşen=${blockedFabricated}`
+  );
+
+  const notBlockedReal = shouldBlockUnverifiedName("Ahmet Yılmaz", transcript);
+  record(
+    "safetyGate: müşterinin GERÇEKTEN söylediği isim save_customer_name'de engellenmiyor",
+    !notBlockedReal,
+    `beklenen=false (engellenmemeli), gerçekleşen=${notBlockedReal}`
+  );
+
+  const notBlockedPartial = shouldBlockUnverifiedName("Ahmet", transcript);
+  record(
+    "safetyGate: ismin tek bir parçası bile geçse save_customer_name engellenmiyor",
+    !notBlockedPartial,
+    `beklenen=false (engellenmemeli), gerçekleşen=${notBlockedPartial}`
+  );
+}
+
 export async function runUnitChecks(): Promise<CheckResult[]> {
   await checkContextFailsLoudlyOnError();
   checkLeastBusyStaffRecommendedFirst();
@@ -428,5 +461,6 @@ export async function runUnitChecks(): Promise<CheckResult[]> {
   checkPastPreferredTimeNeverMarkedExact();
   checkUnavailabilityReasons();
   checkUnverifiedSlotIsBlocked();
+  checkUnverifiedNameIsBlocked();
   return results;
 }
