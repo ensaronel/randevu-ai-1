@@ -106,7 +106,14 @@ KURALLAR:
      kalmaz). Müşteri istemezse bu adımı atla, ısrar etme. ÇOK ÖNEMLİ — unavailable_reason "closed_day",
      "staff_off" veya "outside_hours" idiyse bu teklifi HİÇ YAPMA: işletme o gün zaten kapalı/personel o
      gün zaten çalışmıyor/o saat zaten mesai dışı demektir, bir iptal olsa bile o gün hiçbir zaman
-     boşalmaz — bekleme listesine almak anlamsız ve müşteriyi yanıltır.
+     boşalmaz — bekleme listesine almak anlamsız ve müşteriyi yanıltır. ÇOK ÖNEMLİ — bu, ARADAN BİRKAÇ MESAJ
+     GEÇSE BİLE (müşteri önce dolu günü sordu, sonra AYRI bir mesajda önerilen alternatif saati seçti, sonra
+     yine AYRI bir mesajda "evet" diyerek onayladı) GEÇERLİDİR: create_appointment'ı ÇAĞIRMADAN HEMEN ÖNCE,
+     bu konuşmadaki KENDİ ÖNCEKİ mesajlarına bak — "dolu" kelimesini içeren bir cevap verdiysen (bkz. kural
+     2, "dolu" SADECE busy durumunda kullanılır), o randevu şimdi ALTERNATİF bir güne oluşturuluyor demektir
+     ve bu bekleme listesi teklifini "randevunuz oluşturuldu" mesajınla AYNI cevapta MUTLAKA yapmalısın —
+     sadece rezervasyonu onaylayıp bitirme, bunu unutma (2026-09-14'te canlı testte yakalandı: model
+     randevuyu doğru oluşturdu ama bekleme listesi teklifini sessizce atladı).
 - check_availability 2-3 seçenek döndürürse, HER seçenekte tarihi, saati VE personel adını açıkça yaz
   (tek personel olsa bile) — örn. "29 Ağustos Cumartesi 10:00 - Ayşe Usta". Sadece saatleri listeleyip
   tarih/personeli bir kez üstte söylemek YETERSİZ, her satır kendi içinde tam ve net olmalı; müşteri
@@ -197,7 +204,10 @@ export async function generateAiReply(
       const name = call.name ?? "";
       const args = (call.args as Record<string, unknown>) ?? {};
 
+      console.log(`[whatsapp][araç] çağrı: ${name}(${JSON.stringify(args)})`);
+
       if (name === "check_availability" && shouldBlockAvailabilityCheck((args.service_names as string[] | undefined) ?? [], fullTranscript.join(" "))) {
+        console.warn(`[whatsapp] GÜVENLİK: check_availability engellendi - istenen hizmet(ler) (${JSON.stringify(args.service_names)}) müşterinin söylediği hiçbir şeyde geçmiyor`);
         functionResponseParts!.push({
           functionResponse: { name, response: { result: JSON.stringify({ error: NO_SERVICE_MENTIONED_ERROR }) }, id: call.id },
         });
@@ -205,6 +215,7 @@ export async function generateAiReply(
       }
 
       if (shouldBlockMutation(name, recentUtterances)) {
+        console.warn(`[whatsapp] GÜVENLİK: ${name} engellendi - müşterinin son sözleri (${JSON.stringify(recentUtterances)}) anlamlı bir onay/seçim gibi görünmüyor`);
         functionResponseParts!.push({
           functionResponse: { name, response: { result: JSON.stringify({ error: AMBIGUOUS_REPLY_ERROR }) }, id: call.id },
         });
@@ -224,6 +235,7 @@ export async function generateAiReply(
           verifiedSlots
         )
       ) {
+        console.warn(`[whatsapp] GÜVENLİK: ${name} engellendi - önerilen saat/personel gerçekten başarılı bir check_availability sonucunda yok (${JSON.stringify(args)})`);
         functionResponseParts!.push({
           functionResponse: { name, response: { result: JSON.stringify({ error: UNVERIFIED_SLOT_ERROR }) }, id: call.id },
         });
@@ -237,13 +249,17 @@ export async function generateAiReply(
         customerPhone: customer.phone,
         channel: "whatsapp",
       });
+      console.log(`[whatsapp][araç] sonuç (${name}): ${result}`);
       if (name === "check_availability" && !result.includes('"error"')) {
         verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
       }
       functionResponseParts!.push({
         functionResponse: { name, response: { result }, id: call.id },
       });
-      if (escalated) escalation = { reason: escalationReason ?? "belirtilmedi" };
+      if (escalated) {
+        console.warn(`[whatsapp] escalate tetiklendi: ${escalationReason ?? "belirtilmedi"}`);
+        escalation = { reason: escalationReason ?? "belirtilmedi" };
+      }
     }
 
     if (escalation) {
