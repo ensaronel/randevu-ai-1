@@ -82,6 +82,14 @@ create table customers (
   kvkk_consent_at timestamptz,                        -- KVKK onay tarihi/saati (Hafta 4)
   no_show_count int not null default 0,               -- haber vermeden gelmeme sayacı
   status text not null default 'active' check (status in ('active','inactive')),
+  -- Müşteri istediği gün dolu (unavailable_reason:"busy") olduğu için ALTERNATİF bir
+  -- güne yönlendirildiğinde, orijinal dolu gün burada tutulur — { requested_date,
+  -- service_names, set_at }. Bu, "bir sonraki mesajda o gün için bekleme listesine
+  -- girmek ister misiniz diye sor" davranışını modelin sohbet geçmişini hatırlamasına
+  -- (denendi, güvenilmez çıktı — 2026-09-14/15'te canlı testte model bunu bazen atladı)
+  -- DEĞİL, respond.ts'teki koda bağlar: create_appointment farklı bir güne başarıyla
+  -- sonuçlandığında kod bu alanı okuyup teklif cümlesini KENDİSİ ekler, sonra temizler.
+  pending_busy_offer jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (business_id, phone)
@@ -456,6 +464,19 @@ begin
     )
   ) then
     raise exception 'invalid_reference';
+  end if;
+
+  -- Aynı personel, TEK bir randevunun (tek starts_at/ends_at) içinde birden fazla
+  -- hizmete atanmış olamaz — bir kişi aynı anda iki iş yapamaz. Bu, mevcut
+  -- randevularla çakışma kontrolünden (aşağıda) BAĞIMSIZ bir kontrol, çünkü orada
+  -- sadece appointments tablosundaki ÖNCEDEN VAR OLAN kayıtlara bakılıyor — bu
+  -- insert'in kendi p_services dizisi İÇİNDEKİ bir çakışmayı (ör. AI'nin "sakal +
+  -- saç kesimi" için yanlışlıkla aynı ustayı iki kez ataması, 2026-09-15'te canlı
+  -- kullanımda yakalandı) yakalamaz.
+  if (select count(*) from jsonb_array_elements(p_services)) <>
+     (select count(distinct (s->>'staff_id')) from jsonb_array_elements(p_services) s)
+  then
+    raise exception 'staff_conflict';
   end if;
 
   -- Çakışma kontrolü ile insert arasında bir yarış durumu (iki eşzamanlı istek

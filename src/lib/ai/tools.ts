@@ -363,6 +363,26 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     return JSON.stringify({ error: "Hizmet veya personel adı tanınmadı, önce check_availability ile geçerli bir seçenek al." });
   }
 
+  // 2026-09-15'te canlı kullanımda yakalandı: müşteri tek mesajda iki hizmet istedi
+  // (ör. "sakal + saç kesimi"), model her ikisini de AYNI ustaya atayıp aynı saatte
+  // create_appointment çağırdı — bir kişi aynı anda iki hizmet veremez. check_availability
+  // zaten her hizmete FARKLI personel atar (bkz. tryAssignServices'teki usedStaffIds), bu
+  // yüzden bu durum SADECE model check_availability'nin döndürdüğü assignments'ı görmezden
+  // gelip kendi başına aynı ustayı iki kez seçtiğinde oluşabilir — RPC'nin kendi çakışma
+  // kontrolü de (schema.sql) bunu şimdi ayrıca yakalıyor, ama burada erken ve daha net bir
+  // hata dönmek modelin hemen check_availability'ye geri dönmesini sağlıyor.
+  const usedStaffIds = new Set<string>();
+  for (const r of resolved) {
+    if (usedStaffIds.has(r.staff!.id)) {
+      return JSON.stringify({
+        error:
+          "Aynı personel bu randevudaki birden fazla hizmete atanmış — bir kişi aynı anda iki hizmet veremez. " +
+          "Tekrar check_availability çağır ve döndürdüğü assignments'ı BİREBİR kullan (her hizmete farklı personel atar).",
+      });
+    }
+    usedStaffIds.add(r.staff!.id);
+  }
+
   const admin = createAdminSupabaseClient();
 
   // Owner'ın manuel randevu oluşturma yolu (/api/appointments POST) ile AYNI

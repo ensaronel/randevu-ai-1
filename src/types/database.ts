@@ -81,6 +81,7 @@ export interface Customer {
   kvkk_consent_at: string | null;
   no_show_count: number;
   status: ActiveStatus;
+  pending_busy_offer: { requested_date: string; service_names: string[]; set_at: string } | null;
   created_at: string;
   updated_at: string;
 }

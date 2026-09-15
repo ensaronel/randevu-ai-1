@@ -3,7 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { AI_TOOLS, executeAiTool } from "@/lib/ai/tools";
 import { AI_MODEL } from "@/lib/ai/model";
-import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
+import { dateKeyTR, weekdayKeyTR, formatDateTR, dateKeyFromIso } from "@/lib/date";
 import {
   shouldBlockMutation,
   AMBIGUOUS_REPLY_ERROR,
@@ -18,6 +18,12 @@ import type { Business, Customer } from "@/types/database";
 
 const MAX_TOOL_ITERATIONS = 6;
 const HISTORY_LIMIT = 20;
+// pending_busy_offer, müşteri o gün dolu olduğu için alternatif bir güne yönlendirildiğinde
+// müşteride "kaydedildi mi" belirsizliği bırakmadan bekleme listesi teklifini GARANTİ etmek
+// için kullanılıyor (bkz. customers.pending_busy_offer yorumu) — ama bu teklif çok eski
+// (müşteri o ara vazgeçip GÜNLERCE sonra bambaşka bir şey için randevu almışsa) olursa
+// alakasız/şaşırtıcı kaçar, bu yüzden sadece bu pencere içinde tetiklenir.
+const PENDING_BUSY_OFFER_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -95,25 +101,15 @@ KURALLAR:
      teyidi TEK BAŞINA YETERLİ DEĞİL, çünkü isim yanlış anlaşılmış olabilir (ör. müşteri "Sarkan" dedi,
      senin duyduğun "Serkan" olabilir) ve bunu yakalayacak başka bir şans olmaz. Müşteri zaten sistemde
      kayıtlıysa (adını yeniden sormadıysan) bu ek teyide gerek yok, (4) yeterli.
-  6. create_appointment ALTERNATİF bir güne (is_alternate_date:true olan bir seçeneğe) yapıldıysa VE ilk
-     istenen gün için dönen unavailable_reason TAM OLARAK "busy" idiyse (o gün işletme/personel AÇIKTI
-     ama başka randevularla doluydu — bir iptal olursa gerçekten boşalabilir), randevu oluştuktan SONRA
-     müşteriye ilk istediği günü DOĞAL şekilde söyleyerek sor — o gün bugünse "bugün" de, değilse o günün
-     adını (ör. "Pazartesi") söyle, ASLA "orijinal gün" gibi teknik bir ifade kullanma. Örnek: "İsterseniz
-     bugün için de sizi bekleme listesine alayım, boşluk çıkarsa hemen haber veririz." Müşteri isterse
-     join_waitlist'i çağır — linked_appointment_id'ye create_appointment'ın döndürdüğü appointment_id'yi
-     ver (böylece boşluk çıkıp müşteri kabul ederse bu randevu otomatik iptal edilir, müşteride iki randevu
-     kalmaz). Müşteri istemezse bu adımı atla, ısrar etme. ÇOK ÖNEMLİ — unavailable_reason "closed_day",
-     "staff_off" veya "outside_hours" idiyse bu teklifi HİÇ YAPMA: işletme o gün zaten kapalı/personel o
-     gün zaten çalışmıyor/o saat zaten mesai dışı demektir, bir iptal olsa bile o gün hiçbir zaman
-     boşalmaz — bekleme listesine almak anlamsız ve müşteriyi yanıltır. ÇOK ÖNEMLİ — bu, ARADAN BİRKAÇ MESAJ
-     GEÇSE BİLE (müşteri önce dolu günü sordu, sonra AYRI bir mesajda önerilen alternatif saati seçti, sonra
-     yine AYRI bir mesajda "evet" diyerek onayladı) GEÇERLİDİR: create_appointment'ı ÇAĞIRMADAN HEMEN ÖNCE,
-     bu konuşmadaki KENDİ ÖNCEKİ mesajlarına bak — "dolu" kelimesini içeren bir cevap verdiysen (bkz. kural
-     2, "dolu" SADECE busy durumunda kullanılır), o randevu şimdi ALTERNATİF bir güne oluşturuluyor demektir
-     ve bu bekleme listesi teklifini "randevunuz oluşturuldu" mesajınla AYNI cevapta MUTLAKA yapmalısın —
-     sadece rezervasyonu onaylayıp bitirme, bunu unutma (2026-09-14'te canlı testte yakalandı: model
-     randevuyu doğru oluşturdu ama bekleme listesi teklifini sessizce atladı).
+  6. create_appointment ALTERNATİF bir güne (is_alternate_date:true olan bir seçeneğe) yapılıp ilk istenen
+     gün için unavailable_reason "busy" ise, ilk istenen gün için de bekleme listesine girmek isteyip
+     istemediğini SORMA CÜMLESİ SENDEN BEKLENMİYOR — sistem bunu create_appointment başarılı olduktan
+     sonra senin normal cevabına KENDİSİ, OTOMATİK olarak ekler (2026-09-14/15'te bu tekrar tekrar canlı
+     testte modelin bunu unuttuğu görüldüğü için koda taşındı). Sen sadece randevunun oluştuğunu normal
+     şekilde onayla, bekleme listesi teklifini kendin yazmaya ÇALIŞMA — aksi halde aynı teklif müşteriye
+     iki kez (biri senden, biri sistemden) gitmiş olur. Müşteri o teklife "evet" derse (bu senin cevabından
+     SONRAKİ bir mesajda gelir), o zaman normal şekilde hangi gün(ler)/saat aralığını istediğini netleştirip
+     join_waitlist'i çağır — linked_appointment_id'ye demin oluşan randevunun appointment_id'sini ver.
 - check_availability 2-3 seçenek döndürürse, HER seçenekte tarihi, saati VE personel adını açıkça yaz
   (tek personel olsa bile) — örn. "29 Ağustos Cumartesi 10:00 - Ayşe Usta". Sadece saatleri listeleyip
   tarih/personeli bir kez üstte söylemek YETERSİZ, her satır kendi içinde tam ve net olmalı; müşteri
@@ -132,6 +128,12 @@ KURALLAR:
 - Ne istediğini anlayamadığın, sistemin karşılayamayacağı (fiyat pazarlığı, şikayet gibi henüz
   desteklenmeyen konular) bir mesaj gelirse tahmin etmek yerine escalate aracını çağır.
 - Randevu dışı sohbete (hava durumu vb.) girme, nazikçe konuyu randevuya getir.`;
+}
+
+function buildWaitlistOfferSentence(requestedDateKey: string): string {
+  const dayLabel =
+    requestedDateKey === dateKeyTR(0) ? "bugün" : formatDateTR(`${requestedDateKey}T12:00:00+03:00`);
+  return `Bu arada, ${dayLabel} için de sizi bekleme listesine alalım mı? Boşluk çıkarsa hemen haber veririz.`;
 }
 
 async function loadHistory(customerId: string): Promise<Content[]> {
@@ -180,6 +182,14 @@ export async function generateAiReply(
   const recentUtterances = fullTranscript.slice(-2);
   const verifiedSlots: VerifiedSlot[] = [];
 
+  // customer zaten select("*") ile yüklendiği için (webhook route) güncel — ayrı bir
+  // sorguya gerek yok. Bu değişken, aşağıdaki döngü boyunca hem check_availability'nin
+  // "busy" bulgusunu KAYDETMEK hem de create_appointment başarılı olunca bunu OKUYUP
+  // TÜKETMEK için kullanılıyor (bkz. dosya başındaki PENDING_BUSY_OFFER_WINDOW_MS yorumu).
+  let pendingBusyOffer = customer.pending_busy_offer;
+  let waitlistOfferDateKey: string | null = null;
+  const admin = createAdminSupabaseClient();
+
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
 
@@ -187,8 +197,15 @@ export async function generateAiReply(
 
     if (functionCalls.length === 0) {
       const text = (response.text ?? "").trim();
+      const baseReply = text || "Şu an size yardımcı olamıyorum, en kısa sürede döneceğiz.";
+      // Bekleme listesi teklifini modelin kendi metnine bırakmıyoruz (bkz. yukarıdaki
+      // pendingBusyOffer yorumu) — waitlistOfferDateKey bu döngüde bir create_appointment
+      // tam da bunu gerektirdiğinde set edildiyse, cümle KOD tarafından, garantili ekleniyor.
+      const replyText = waitlistOfferDateKey
+        ? `${baseReply}\n\n${buildWaitlistOfferSentence(waitlistOfferDateKey)}`
+        : baseReply;
       return {
-        replyText: text || "Şu an size yardımcı olamıyorum, en kısa sürede döneceğiz.",
+        replyText,
         escalated: false,
         ownerPhone: ctx.ownerPhone,
       };
@@ -252,6 +269,43 @@ export async function generateAiReply(
       console.log(`[whatsapp][araç] sonuç (${name}): ${result}`);
       if (name === "check_availability" && !result.includes('"error"')) {
         verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
+
+        const parsedAvailability = JSON.parse(result) as { unavailable_reason?: string; is_alternate_date?: boolean };
+        const requestedDateKey = String(args.date ?? "");
+        if (
+          parsedAvailability.unavailable_reason === "busy" &&
+          parsedAvailability.is_alternate_date === true &&
+          /^\d{4}-\d{2}-\d{2}$/.test(requestedDateKey)
+        ) {
+          pendingBusyOffer = {
+            requested_date: requestedDateKey,
+            service_names: (args.service_names as string[] | undefined) ?? [],
+            set_at: new Date().toISOString(),
+          };
+          void admin
+            .from("customers")
+            .update({ pending_busy_offer: pendingBusyOffer })
+            .eq("id", customer.id)
+            .then(({ error }) => {
+              if (error) console.error("pending_busy_offer kaydedilemedi", error);
+            });
+        }
+      }
+
+      if (name === "create_appointment" && !result.includes('"error"') && pendingBusyOffer) {
+        const bookedDateKey = dateKeyFromIso(String(args.starts_at ?? ""));
+        const isFresh = Date.now() - Date.parse(pendingBusyOffer.set_at) < PENDING_BUSY_OFFER_WINDOW_MS;
+        if (isFresh && bookedDateKey !== pendingBusyOffer.requested_date) {
+          waitlistOfferDateKey = pendingBusyOffer.requested_date;
+        }
+        pendingBusyOffer = null;
+        void admin
+          .from("customers")
+          .update({ pending_busy_offer: null })
+          .eq("id", customer.id)
+          .then(({ error }) => {
+            if (error) console.error("pending_busy_offer temizlenemedi", error);
+          });
       }
       functionResponseParts!.push({
         functionResponse: { name, response: { result }, id: call.id },
