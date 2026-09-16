@@ -72,7 +72,15 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && !isLoginPage && !isApiRoute && !isPublicPage) {
+    // Gidilmek istenen sayfa (ör. /admin) burada kaybolmasın diye redirect
+    // parametresiyle taşınıyor — login sayfası girişten sonra oraya döner
+    // (bkz. login/page.tsx). Bu olmadan platformAdmin.ts'teki
+    // redirect("/login?redirect=/admin") hiç devreye girmiyordu, çünkü
+    // oturumsuz istek zaten BURADA, sayfa koduna hiç ulaşmadan /login'e
+    // düşüyordu (2026-09-16'da bildirildi: /admin'e giren platform admini
+    // girişten sonra hep /dashboard'a atılıyordu).
     const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 
