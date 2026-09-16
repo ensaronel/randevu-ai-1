@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Business } from "@/types/database";
+import type { Business, Payment } from "@/types/database";
 import { formatTL } from "@/lib/date";
+
+type Owner = { full_name: string; phone: string | null; email: string | null };
 
 type BusinessRow = Pick<
   Business,
@@ -18,7 +20,29 @@ type BusinessRow = Pick<
   | "monthly_price_tl"
   | "next_payment_due_date"
   | "created_at"
->;
+> & {
+  owner: Owner | null;
+  payments: Payment[];
+};
+
+type Summary = {
+  totalRevenueTl: number;
+  monthRevenueTl: number;
+  activeCount: number;
+  pendingCount: number;
+  suspendedCount: number;
+};
+
+function formatPaymentDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Europe/Istanbul",
+  });
+}
+
+const METHOD_LABELS: Record<string, string> = { eft: "EFT", nakit: "Nakit" };
 
 function formatDueDate(dateKey: string): string {
   return new Date(`${dateKey}T00:00:00Z`).toLocaleDateString("tr-TR", {
@@ -45,7 +69,7 @@ const STATUS_STYLES: Record<string, string> = {
   suspended: "bg-bad-soft text-bad-ink",
 };
 
-export default function AdminClient({ businesses: initial }: { businesses: BusinessRow[] }) {
+export default function AdminClient({ businesses: initial, summary }: { businesses: BusinessRow[]; summary: Summary }) {
   const [businesses, setBusinesses] = useState(initial);
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -55,6 +79,7 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [renewingId, setRenewingId] = useState<string | null>(null);
   const [renewError, setRenewError] = useState<string | null>(null);
+  const [expandedPaymentsId, setExpandedPaymentsId] = useState<string | null>(null);
 
   const [businessName, setBusinessName] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
@@ -88,7 +113,12 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
         setCreateError(json.message ?? json.error ?? "Bilinmeyen hata");
         return;
       }
-      setBusinesses((prev) => [json.data.business, ...prev]);
+      const createdOwner: Owner = {
+        full_name: json.data.owner.full_name,
+        phone: json.data.owner.phone,
+        email: json.data.login_email,
+      };
+      setBusinesses((prev) => [{ ...json.data.business, owner: createdOwner, payments: [] }, ...prev]);
       setLastCreated({ email: json.data.login_email, password: json.data.temp_password });
       setBusinessName("");
       setOwnerFullName("");
@@ -117,7 +147,10 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
         setConfirmError(json.message ?? json.error ?? "Bilinmeyen hata");
         return;
       }
-      setBusinesses((prev) => prev.map((b) => (b.id === id ? { ...b, ...json.data } : b)));
+      const { business, payment } = json.data as { business: Partial<BusinessRow>; payment: Payment };
+      setBusinesses((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, ...business, payments: [payment, ...b.payments] } : b))
+      );
     } catch {
       setConfirmError("Sunucuya ulaşılamadı");
     } finally {
@@ -139,7 +172,10 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
         setRenewError(json.message ?? json.error ?? "Bilinmeyen hata");
         return;
       }
-      setBusinesses((prev) => prev.map((b) => (b.id === id ? { ...b, ...json.data } : b)));
+      const { business, payment } = json.data as { business: Partial<BusinessRow>; payment: Payment };
+      setBusinesses((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, ...business, payments: [payment, ...b.payments] } : b))
+      );
     } catch {
       setRenewError("Sunucuya ulaşılamadı");
     } finally {
@@ -149,6 +185,29 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl bg-surface border border-border p-3">
+          <p className="text-xs text-ink-muted mb-1">Bu Ay Tahsilat</p>
+          <p className="text-lg font-semibold text-ink">{formatTL(summary.monthRevenueTl)}</p>
+        </div>
+        <div className="rounded-xl bg-surface border border-border p-3">
+          <p className="text-xs text-ink-muted mb-1">Toplam Tahsilat</p>
+          <p className="text-lg font-semibold text-ink">{formatTL(summary.totalRevenueTl)}</p>
+        </div>
+        <div className="rounded-xl bg-surface border border-border p-3">
+          <p className="text-xs text-ink-muted mb-1">Aktif / Bekleyen</p>
+          <p className="text-lg font-semibold text-ink">
+            {summary.activeCount} / {summary.pendingCount}
+          </p>
+        </div>
+        <div className="rounded-xl bg-surface border border-border p-3">
+          <p className="text-xs text-ink-muted mb-1">Askıda</p>
+          <p className={`text-lg font-semibold ${summary.suspendedCount > 0 ? "text-bad-ink" : "text-ink"}`}>
+            {summary.suspendedCount}
+          </p>
+        </div>
+      </div>
+
       {lastCreated && (
         <div className="rounded-xl bg-good-soft text-good-ink p-4 text-sm">
           <p className="font-medium mb-1">İşletme oluşturuldu — giriş bilgilerini müşteriye ilet:</p>
@@ -287,6 +346,13 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
                 {STATUS_LABELS[b.subscription_status]}
               </span>
             </div>
+            {b.owner && (
+              <p className="text-xs text-ink-muted">
+                Sahibi: {b.owner.full_name}
+                {b.owner.phone && ` — ${b.owner.phone}`}
+                {b.owner.email && ` — ${b.owner.email}`}
+              </p>
+            )}
             <p className="text-xs text-ink-muted">
               Paket: {b.package === "whatsapp_and_voice" ? "WhatsApp + Sesli" : b.package === "whatsapp_only" ? "Sadece WhatsApp" : "-"}
               {b.monthly_price_tl != null && ` — ${formatTL(b.monthly_price_tl)}/ay`}
@@ -312,6 +378,28 @@ export default function AdminClient({ businesses: initial }: { businesses: Busin
                 {overdue ? "Vadesi geçti: " : "Sonraki ödeme vadesi: "}
                 {formatDueDate(b.next_payment_due_date)}
               </p>
+            )}
+
+            {b.payments.length > 0 && (
+              <div className="mt-2">
+                <button
+                  onClick={() => setExpandedPaymentsId((prev) => (prev === b.id ? null : b.id))}
+                  className="text-xs text-accent font-medium"
+                >
+                  {expandedPaymentsId === b.id ? "Ödeme geçmişini gizle" : `Ödeme geçmişi (${b.payments.length})`}
+                </button>
+                {expandedPaymentsId === b.id && (
+                  <div className="mt-2 rounded-lg bg-bg border border-border divide-y divide-border">
+                    {b.payments.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                        <span className="text-ink">{formatPaymentDate(p.created_at)}</span>
+                        <span className="text-ink-muted">{METHOD_LABELS[p.method] ?? p.method}</span>
+                        <span className="font-medium text-ink">{formatTL(p.amount_tl)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {b.subscription_status === "pending_payment" && (

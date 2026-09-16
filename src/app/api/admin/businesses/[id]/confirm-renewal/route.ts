@@ -48,15 +48,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
     if (updateError) throw updateError;
 
-    const { error: paymentError } = await admin.from("payments").insert({
-      business_id: id,
-      amount_tl: business.monthly_price_tl ?? 0,
-      method,
-      covers_until: coversUntil,
-      confirmed_by_email: email,
-    });
+    const { data: payment, error: paymentError } = await admin
+      .from("payments")
+      .insert({
+        business_id: id,
+        amount_tl: business.monthly_price_tl ?? 0,
+        method,
+        covers_until: coversUntil,
+        confirmed_by_email: email,
+      })
+      .select()
+      .single();
     if (paymentError) throw paymentError;
 
-    return NextResponse.json({ data: updated });
+    return NextResponse.json({ data: { business: updated, payment } });
   });
 }
