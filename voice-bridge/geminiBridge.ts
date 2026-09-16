@@ -27,9 +27,16 @@ import {
 } from "./audio.js";
 
 // Live API'ye özgü model — klasik generateContent'in kullandığı model (src/lib/ai/model.ts)
-// sesli/gerçek-zamanlı modu desteklemiyor, ayrı bir "-live-" modeli gerekiyor. Kurulum
-// sırasında Google AI Studio'dan güncel model adı doğrulanmalı, bu şimdilik en güncel bilinen ad.
-const VOICE_MODEL = process.env.GEMINI_VOICE_MODEL ?? "gemini-2.5-flash-native-audio-preview-09-2025";
+// sesli/gerçek-zamanlı modu desteklemiyor, ayrı bir bidiGenerateContent destekleyen model
+// gerekiyor. 2026-09-16'da Google'ın models.list uç noktasına canlı sorgu atılarak doğrulandı:
+// eski "-preview-09-2025" tarihli model ARTIK LİSTEDE YOK (kaldırılmış), ".env"'deki
+// "gemini-3.1-flash-live-preview" override'ı da HİÇ VAR OLMAYAN bir model adıydı — yani sesli AI
+// muhtemelen hiç çalışmıyordu. Şu an gerçekten var olan VE bidiGenerateContent destekleyen tek
+// ses+ses (konuşma girdi/çıktı) modeli "gemini-2.5-flash-native-audio-latest" (diğer bidi
+// modeli olan gemini-3.5-transcribe-live sadece transkripsiyon için, sesli cevap üretmiyor).
+// "-latest" bir alias olduğu için Google arka planda güncelleyebilir — periyodik olarak
+// models.list ile tekrar doğrulanmalı.
+const VOICE_MODEL = process.env.GEMINI_VOICE_MODEL ?? "gemini-2.5-flash-native-audio-latest";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
