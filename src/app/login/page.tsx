@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import Mascot from "@/components/Mascot";
 
@@ -20,8 +20,17 @@ type Mode = "login" | "forgot";
  * da kapatılmalı (kod tarafında engellemek yeterli değil, Supabase'in kendi
  * public signUp uç noktası anon key ile hâlâ çağrılabilir).
  */
+function safeRedirectTarget(raw: string | null): string {
+  // Açık yönlendirme (open redirect) riskine karşı: sadece "/" ile başlayan VE "//" ile
+  // BAŞLAMAYAN (bu, tarayıcıda protokolü mevcut sayfadan alan bir dış adrese - ör.
+  // "//evil.com" - çözülür) göreli bir yol kabul edilir, aksi halde varsayılan /dashboard.
+  if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  return "/dashboard";
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,7 +68,10 @@ export default function LoginPage() {
         password,
       });
       if (signInError) throw signInError;
-      router.push("/dashboard");
+      // /admin gibi bir sayfadan (oturumsuz olduğu için) buraya düşülmüşse, girişten
+      // sonra varsayılan /dashboard'a DEĞİL, gerçekten gitmek istenen yere dönülür
+      // (bkz. platformAdmin.ts'teki redirect("/login?redirect=/admin") ve yorumu).
+      router.push(safeRedirectTarget(searchParams.get("redirect")));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "bilinmeyen_hata");

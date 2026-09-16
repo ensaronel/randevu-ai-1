@@ -28,7 +28,12 @@ export async function getPlatformAdminForPage(): Promise<{
   const user = session?.user ?? null;
 
   if (!user?.email || !adminEmails().includes(user.email.toLowerCase())) {
-    redirect("/login");
+    // ÖNEMLİ: login sayfası girişten sonra HER ZAMAN /dashboard'a atıyordu (bkz.
+    // login/page.tsx), bu yüzden /admin'e giren ama henüz oturumu olmayan platform
+    // admini, giriş yaptıktan sonra kendi işletme panosuna düşüp "admin ekranı yok"
+    // sanıyordu (2026-09-15'te bildirildi). redirect query parametresiyle login'e
+    // nereden geldiğini söylüyoruz, login de girişten sonra oraya geri dönüyor.
+    redirect("/login?redirect=/admin");
   }
 
   return { email: user.email, supabase };
