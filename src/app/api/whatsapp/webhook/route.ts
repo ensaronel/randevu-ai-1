@@ -459,15 +459,26 @@ export async function POST(request: NextRequest) {
               body,
             });
 
-            await admin.from("action_objects").insert({
+            // ÖNEMLİ: status "resolved" DEĞİL — action_objects tablosunun kendi check
+            // constraint'i (schema.sql) sadece 'pending'/'approved'/'rejected'/'auto_sent'
+            // kabul ediyor. "resolved" geçersiz olduğu için bu insert HER ZAMAN sessizce
+            // başarısız oluyordu (hata hiç kontrol edilmiyordu, müşteriye teşekkür mesajı
+            // yine de gidiyordu) — anket geri bildirimleri hiçbir zaman kaydedilmemiş,
+            // AI Danışman'ın get_survey_feedback aracı hep boş dönüyordu (2026-09-18'de
+            // canlı verayle doğrulandı: hiç survey_feedback satırı yoktu).
+            const { error: surveyFeedbackError } = await admin.from("action_objects").insert({
               business_id: business.id,
               type: "survey_feedback",
               related_customer_id: customer.id,
               suggestion: "Müşteri anket geri bildirimi",
               reasoning: body,
-              status: "resolved",
+              status: "auto_sent",
               resolved_at: new Date().toISOString(),
             });
+            if (surveyFeedbackError) {
+              console.error("Anket geri bildirimi kaydedilemedi:", surveyFeedbackError);
+              Sentry.captureException(surveyFeedbackError);
+            }
 
             await sendWhatsappTextMessage(message.from, SURVEY_FEEDBACK_THANK_YOU).catch((err) => {
               console.error("Anket teşekkür mesajı gönderilemedi:", err);
