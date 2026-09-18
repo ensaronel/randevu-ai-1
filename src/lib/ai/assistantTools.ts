@@ -7,6 +7,7 @@ import { findAvailableSlots } from "@/lib/ai/availability";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { matchWaitlistForCancelledAppointment, hasUpcomingAppointment } from "@/lib/proactive";
 import { sanitizeSearchTerm } from "@/lib/validation";
+import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import type { Appointment, AppointmentService } from "@/types/database";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -221,6 +222,48 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
       required: ["appointment_id", "starts_at", "ends_at"],
     },
   },
+  {
+    name: "get_pending_suggestions",
+    description:
+      "Panelde owner'ın onayını bekleyen otomatik önerileri listeler — özlenen müşteri hatırlatmaları " +
+      "(retention_risk), alışılmış randevu zamanı yaklaşan müşteri davetleri (rhythm_invite) ve gün sonu " +
+      "anketi teklifleri (daily_survey). \"Bekleyen önerilerim var mı\", \"panelde ne bekliyor\", \"onay " +
+      "bekleyen bir şey var mı\" gibi sorularda kullan.",
+    parametersJsonSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "compare_periods",
+    description:
+      "İki tarih aralığının cirosunu, randevu sayısını ve iptal sayısını karşılaştırıp aradaki farkı ve " +
+      "yüzde değişimi döner. \"Bu ay geçen aya göre nasıl\", \"geçen haftaya göre\", \"büyüyor muyuz\" gibi " +
+      "karşılaştırma sorularında kullan — iki aralığı da sen (bugünün tarihine göre) hesapla.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        period_a_from: { type: "string", description: "YYYY-MM-DD — karşılaştırılan (genelde daha yeni) aralığın başlangıcı" },
+        period_a_to: { type: "string", description: "YYYY-MM-DD — karşılaştırılan aralığın bitişi" },
+        period_b_from: { type: "string", description: "YYYY-MM-DD — kıyaslanan (genelde önceki) aralığın başlangıcı" },
+        period_b_to: { type: "string", description: "YYYY-MM-DD — kıyaslanan aralığın bitişi" },
+      },
+      required: ["period_a_from", "period_a_to", "period_b_from", "period_b_to"],
+    },
+  },
+  {
+    name: "send_whatsapp_message_to_customer",
+    description:
+      "Belirli bir müşteriye doğrudan serbest metin bir WhatsApp mesajı gönderir (ör. özel bir hatırlatma, " +
+      "teşekkür, bilgilendirme). Owner AÇIKÇA hangi müşteriye tam olarak ne yazılacağını onaylamadan ASLA " +
+      "çağırma — bu gerçek bir müşteriye giden geri alınamaz bir mesajdır, diğer onay gerektiren araçlarla " +
+      "(cancel/create/reschedule) AYNI ciddiyette ele al.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        customer_query: { type: "string", description: "Müşteri adı (tam/kısmi) veya telefon numarası" },
+        message: { type: "string", description: "Gönderilecek mesajın tam metni" },
+      },
+      required: ["customer_query", "message"],
+    },
+  },
 ];
 
 interface ToolContext {
@@ -241,6 +284,9 @@ export async function executeAssistantTool(name: string, input: Record<string, u
   if (name === "check_availability_for_owner") return checkAvailabilityForOwner(input, ctx);
   if (name === "create_appointment_action") return createAppointmentAction(input, ctx);
   if (name === "reschedule_appointment_action") return rescheduleAppointmentAction(input, ctx);
+  if (name === "get_pending_suggestions") return getPendingSuggestions(input, ctx);
+  if (name === "compare_periods") return comparePeriods(input, ctx);
+  if (name === "send_whatsapp_message_to_customer") return sendWhatsappMessageToCustomer(input, ctx);
   return JSON.stringify({ error: `Bilinmeyen araç: ${name}` });
 }
 
@@ -480,12 +526,14 @@ function rangeToUtc(from: string, to: string) {
   return { startUtc: `${from}T00:00:00+03:00`, endUtc: `${to}T23:59:59+03:00` };
 }
 
-async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
-  const from = String(input.from ?? "");
-  const to = String(input.to ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
-  }
+interface RevenueTotals {
+  revenue: number;
+  appointments: number;
+  cancelled: number;
+}
+
+/** get_revenue_summary VE compare_periods'un paylaştığı tek gerçek kaynak — ikisi ayrı ayrı hesaplarsa (kopyala-yapıştır) bir gün sadece biri düzeltilip diğerinin unutulması riski olurdu. */
+async function computeRevenueTotals(from: string, to: string, ctx: ToolContext): Promise<RevenueTotals | null> {
   const { startUtc, endUtc } = rangeToUtc(from, to);
   const admin = createAdminSupabaseClient();
 
@@ -497,6 +545,8 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
     .lte("starts_at", endUtc);
 
   const rows = data ?? [];
+  if (rows.length === 0) return null;
+
   let revenue = 0;
   let appointmentCount = 0;
   let cancelledCount = 0;
@@ -513,11 +563,129 @@ async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContex
     }
   }
 
-  if (rows.length === 0) {
-    return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç randevu kaydı yok." });
+  return { revenue, appointments: appointmentCount, cancelled: cancelledCount };
+}
+
+async function getRevenueSummary(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const from = String(input.from ?? "");
+  const to = String(input.to ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
+  }
+  const totals = await computeRevenueTotals(from, to, ctx);
+  if (!totals) return JSON.stringify({ no_data: true, message: "Bu tarih aralığında hiç randevu kaydı yok." });
+  return JSON.stringify({ from, to, ...totals });
+}
+
+function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return null; // sıfıra bölme anlamsız - "no_data" yerine null, AI "önceki dönemde veri yok" desin
+  return Math.round(((current - previous) / previous) * 1000) / 10; // %0.1 hassasiyet
+}
+
+async function comparePeriods(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const aFrom = String(input.period_a_from ?? "");
+  const aTo = String(input.period_a_to ?? "");
+  const bFrom = String(input.period_b_from ?? "");
+  const bTo = String(input.period_b_to ?? "");
+  const dateFields = [aFrom, aTo, bFrom, bTo];
+  if (dateFields.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) {
+    return JSON.stringify({ error: "Tarihler YYYY-MM-DD formatında olmalı." });
   }
 
-  return JSON.stringify({ from, to, revenue, appointments: appointmentCount, cancelled: cancelledCount });
+  const [a, b] = await Promise.all([
+    computeRevenueTotals(aFrom, aTo, ctx),
+    computeRevenueTotals(bFrom, bTo, ctx),
+  ]);
+
+  if (!a && !b) {
+    return JSON.stringify({ no_data: true, message: "İki aralıkta da hiç randevu kaydı yok." });
+  }
+
+  const aTotals = a ?? { revenue: 0, appointments: 0, cancelled: 0 };
+  const bTotals = b ?? { revenue: 0, appointments: 0, cancelled: 0 };
+
+  return JSON.stringify({
+    period_a: { from: aFrom, to: aTo, ...aTotals },
+    period_b: { from: bFrom, to: bTo, ...bTotals },
+    revenue_change_percent: percentChange(aTotals.revenue, bTotals.revenue),
+    appointments_change_percent: percentChange(aTotals.appointments, bTotals.appointments),
+  });
+}
+
+async function getPendingSuggestions(_input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const admin = createAdminSupabaseClient();
+  const { data } = await admin
+    .from("action_objects")
+    .select("type, suggestion, created_at, customer:customers(full_name)")
+    .eq("business_id", ctx.businessId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (!data || data.length === 0) {
+    return JSON.stringify({ no_data: true, message: "Şu an onay bekleyen bir öneri yok." });
+  }
+
+  const TYPE_LABELS: Record<string, string> = {
+    retention_risk: "Özlenen müşteri hatırlatması",
+    rhythm_invite: "Ritim daveti",
+    daily_survey: "Gün sonu anketi",
+    campaign_suggestion: "Kampanya/duyuru önerisi",
+    finance_note: "Finansal not",
+  };
+
+  return JSON.stringify({
+    suggestions: data.map((row) => ({
+      type_label: TYPE_LABELS[row.type] ?? row.type,
+      customer_name: one(row.customer)?.full_name ?? null,
+      suggestion: row.suggestion,
+      created_at: formatDateTR(row.created_at),
+    })),
+  });
+}
+
+async function sendWhatsappMessageToCustomer(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const query = String(input.customer_query ?? "").trim();
+  const message = String(input.message ?? "").trim();
+  if (!query || !message) return JSON.stringify({ error: "customer_query ve message gerekli." });
+
+  const admin = createAdminSupabaseClient();
+  const searchTerm = sanitizeSearchTerm(query);
+  const { data: customers } = await admin
+    .from("customers")
+    .select("id, full_name, phone")
+    .eq("business_id", ctx.businessId)
+    .or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
+    .limit(5);
+
+  if (!customers || customers.length === 0) {
+    return JSON.stringify({ error: "Bu isimde/numarada bir müşteri bulunamadı." });
+  }
+  if (customers.length > 1) {
+    return JSON.stringify({
+      ambiguous: true,
+      matches: customers.map((c) => ({ name: c.full_name, phone: c.phone })),
+      message: "Birden fazla eşleşme var, hangisini kastettiğini netleştir.",
+    });
+  }
+  const customer = customers[0];
+
+  try {
+    await sendWhatsappTextMessage(customer.phone, message);
+  } catch (err) {
+    console.error("Danışman üzerinden müşteriye mesaj gönderilemedi:", err);
+    return JSON.stringify({ error: "Mesaj gönderilemedi, lütfen tekrar dene." });
+  }
+
+  await admin.from("whatsapp_message_log").insert({
+    business_id: ctx.businessId,
+    customer_id: customer.id,
+    direction: "outbound",
+    message_type: "system_notice",
+    body: message,
+  });
+
+  return JSON.stringify({ success: true, customer_name: customer.full_name });
 }
 
 async function getPopularServices(input: Record<string, unknown>, ctx: ToolContext): Promise<string> {
