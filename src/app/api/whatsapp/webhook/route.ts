@@ -116,9 +116,15 @@ async function findAwaitingWaitlistOffer(
 }
 
 /**
- * Bu müşteriye SURVEY_FEEDBACK_WINDOW_HOURS içinde gün sonu anketi gönderildi mi?
- * Gönderildiyse, müşterinin bu penceredeki cevabı normal randevu AI'ına değil,
- * doğrudan bir geri bildirim olarak ele alınır (bkz. POST handler).
+ * Bu müşteriye SURVEY_FEEDBACK_WINDOW_HOURS içinde gün sonu anketi gönderildi mi VE
+ * müşteri o anketten bu yana HENÜZ HİÇ cevap yazmadı mı? Sadece ikisi de doğruysa bu
+ * mesaj bir anket cevabı sayılır (bkz. POST handler) — anket gönderildikten sonraki
+ * İLK mesaj için geçerli, ondan SONRAKİ mesajlar (ör. yeni bir randevu isteği) normal
+ * AI'ya gitmeli. Önceden ikinci kontrol (müşteri zaten cevap yazdı mı) hiç yoktu —
+ * pencere (48 saat) boyunca müşterinin attığı HER mesaj, yepyeni bir randevu isteği
+ * bile olsa, sonsuza kadar "anket cevabı" sanılıp müşteriye sadece teşekkür mesajı
+ * gönderiliyordu (2026-09-18'de canlı kullanımda bulundu: anketten sonra müşteri
+ * randevu almak istedi ama sistem ne yazarsa yazsın "değerlendirmeniz alındı" dedi).
  */
 async function findRecentSurveySend(
   admin: ReturnType<typeof createAdminSupabaseClient>,
@@ -126,17 +132,30 @@ async function findRecentSurveySend(
   customerId: string
 ) {
   const cutoff = new Date(Date.now() - SURVEY_FEEDBACK_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-  const { data } = await admin
+  const { data: sent } = await admin
     .from("whatsapp_message_log")
-    .select("id")
+    .select("created_at")
     .eq("business_id", businessId)
     .eq("customer_id", customerId)
     .eq("direction", "outbound")
     .eq("body", DAILY_SURVEY_SENT_LOG_BODY)
     .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return !!data;
+  if (!sent) return false;
+
+  const { data: alreadyReplied } = await admin
+    .from("whatsapp_message_log")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("customer_id", customerId)
+    .eq("direction", "inbound")
+    .gt("created_at", sent.created_at)
+    .limit(1)
+    .maybeSingle();
+
+  return !alreadyReplied;
 }
 
 /** Beklenmeyen bir hata olduğunda işletme sahibini WhatsApp'tan uyarır — best-effort, kendi hatası bile olsa akışı kesmez. */
