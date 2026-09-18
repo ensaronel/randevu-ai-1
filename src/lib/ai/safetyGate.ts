@@ -147,6 +147,31 @@ export const UNVERIFIED_SLOT_ERROR =
  * hizmet kombinasyonunun, o çağrı/görüşme boyunca GERÇEKTEN BAŞARILI olmuş bir
  * check_availability sonucunda yer aldığını doğrular — yoksa engeller.
  */
+/**
+ * 2026-09-18'de canlı sesli testte yakalandı: Gemini create_appointment'ı çağırırken
+ * assignments'ı şemada tanımlandığı gibi obje dizisi olarak değil, HER elemanı JSON-string'e
+ * çevrilmiş bir dizi olarak gönderdi (ör. `["{\"service_name\":\"...\"}"]`) — bu, aşağıdaki
+ * normalize() fonksiyonunun undefined üzerinde .trim() çağırıp TÜM sunucu sürecini
+ * çökertmesine (aktif diğer tüm görüşmeleri de keserek) yol açtı. Modelin döndürdüğü
+ * argümanlara asla şema garantisi gibi güvenilemez — burada her elemanı, obje olsun ya da
+ * yanlışlıkla string'e çevrilmiş olsun, güvenle çözüyoruz.
+ */
+export function parseAssignmentsArg(raw: unknown): { serviceName: string; staffName: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    let obj: unknown = item;
+    if (typeof obj === "string") {
+      try {
+        obj = JSON.parse(obj);
+      } catch {
+        obj = {};
+      }
+    }
+    const rec = (obj && typeof obj === "object" ? obj : {}) as Record<string, unknown>;
+    return { serviceName: String(rec.service_name ?? ""), staffName: String(rec.staff_name ?? "") };
+  });
+}
+
 export function shouldBlockUnverifiedSlot(
   toolName: string,
   proposed: { startsAt: string; endsAt: string; assignments: { serviceName: string; staffName: string }[] },

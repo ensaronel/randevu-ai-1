@@ -12,6 +12,7 @@ import {
   shouldBlockUnverifiedSlot,
   UNVERIFIED_SLOT_ERROR,
   parseVerifiedSlotsFromResult,
+  parseAssignmentsArg,
   type VerifiedSlot,
 } from "@/lib/ai/safetyGate";
 import type { Business, Customer } from "@/types/database";
@@ -245,9 +246,7 @@ export async function generateAiReply(
           {
             startsAt: String(args.starts_at ?? ""),
             endsAt: String(args.ends_at ?? ""),
-            assignments: ((args.assignments as { service_name: string; staff_name: string }[] | undefined) ?? []).map(
-              (a) => ({ serviceName: a.service_name, staffName: a.staff_name })
-            ),
+            assignments: parseAssignmentsArg(args.assignments),
           },
           verifiedSlots
         )

@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { createServer } from "http";
 import { createHmac } from "crypto";
 import twilio from "twilio";
-import { VoiceCallSession } from "./geminiBridge.js";
+import { VoiceCallSession } from "./cascadedBridge.js";
 import { resolveBusinessIdForTwilioNumber } from "./businessLookup.js";
 import { isCallRateLimited } from "./rateLimit.js";
 import { createAdminSupabaseClient } from "../src/lib/supabase/admin.js";

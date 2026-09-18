@@ -94,6 +94,31 @@ export function formatTimeTR(iso: string): string {
   });
 }
 
+// Türkçe ünlü uyumuna göre doğru "-de/-da/-te/-ta" eki — sadece saat rakamının (0-23)
+// SÖYLENEN halinin son harfine bakılarak elle çıkarıldı (ör. "on sekiz" -> z -> sesli+ince -> "de").
+const HOUR_DATIVE_SUFFIX_TR: Record<number, string> = {
+  0: "'da", 1: "'de", 2: "'de", 3: "'te", 4: "'te", 5: "'te", 6: "'da", 7: "'de", 8: "'de", 9: "'da",
+  10: "'da", 11: "'de", 12: "'de", 13: "'te", 14: "'te", 15: "'te", 16: "'da", 17: "'de", 18: "'de", 19: "'da",
+  20: "'de", 21: "'de", 22: "'de", 23: "'te",
+};
+
+/**
+ * Sesli AI'nin RANDEVU SAATİNİ TTS'e göndereceği metin için — formatTimeTR'nin "18:00"
+ * biçimi yerine "18'de" gibi konuşma-dostu bir biçim üretir. 2026-09-18'de canlı sesli
+ * testte kullanıcı "saatleri telaffuz edemiyor" diye bildirdi — ":00" ekiyle biten
+ * "HH:00'de" biçimi TTS motorunu (ElevenLabs) rakamları tek tek okumaya ya da garip bir
+ * duraklamaya itiyordu. Bu uygulamada randevu saatleri HER ZAMAN tam saattir (dakika hep
+ * 00, bkz. availability.ts STEP_MINUTES), bu yüzden dakika kısmını tamamen atıp SADECE
+ * saat rakamı + doğru ek ("18'de") vermek hem daha doğal SESLENDİRME hem daha az TTS
+ * hatası riski demek. SADECE sesli akışta (voice-bridge) kullanılır — WhatsApp/dashboard
+ * metinlerinde formatTimeTR'nin "18:00" biçimi zaten doğru ve tercih edilen biçim.
+ */
+export function formatHourSpokenTR(iso: string): string {
+  const turkeyLocal = new Date(new Date(iso).getTime() + TURKEY_UTC_OFFSET_MINUTES * 60000);
+  const hour = turkeyLocal.getUTCHours();
+  return `${hour}${HOUR_DATIVE_SUFFIX_TR[hour] ?? "'de"}`;
+}
+
 export function formatDateTR(iso: string): string {
   return new Date(iso).toLocaleDateString("tr-TR", {
     weekday: "long",

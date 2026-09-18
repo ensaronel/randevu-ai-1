@@ -4,8 +4,9 @@ import { findAvailableSlots, explainUnavailability, type UnavailabilityReason } 
 import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
 import { sendPushToBusiness } from "@/lib/push";
 import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
-import { formatDateTR, formatTimeTR } from "@/lib/date";
+import { formatDateTR, formatTimeTR, formatHourSpokenTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
+import { parseAssignmentsArg } from "@/lib/ai/safetyGate";
 import type { Appointment, AppointmentService } from "@/types/database";
 
 export const AI_TOOLS: FunctionDeclaration[] = [
@@ -308,6 +309,24 @@ async function runCheckAvailability(input: Record<string, unknown>, exec: ToolEx
           // false ise: istenen saat musait DEGIL, bu en yakin alternatif — unavailable_reason'a bak.
           is_exact_requested_time: slot.isExactPreferredTime,
         })),
+        // 2026-09-18'de sesli AI canlı testte İKİ AYRI kez yakalandı: birden fazla seçenek
+        // sunarken model saatleri kendi başına Türkçeye çevirmeye çalışırken var OLMAYAN
+        // saatler uydurdu ("15:00" ve "17:00" döndüğü hâlde "üç buçukta"/"dört" dedi — ne
+        // slot'larla ne de "buçuk" hiç mümkün olmayan bir dilimle eşleşmiyordu). Modelin
+        // saat<->kelime çevirisine GÜVENMEK yerine (Haiku boyutunda bir model bunda tutarlı
+        // hata yapıyor), hazır/garanti doğru bir cümle parçası veriyoruz — model bunu SADECE
+        // birebir kopyalar, kendi hesabını katmaz. Tüm slotlar STEP_MINUTES=60 olduğu için
+        // HER ZAMAN tam saattir, bu yüzden "HH:00'te" formatı hiçbir zaman yanlış olmaz.
+        spoken_slots_summary:
+          slots
+            .map((slot, i) => {
+              const timeLabel = formatHourSpokenTR(slot.startsAt);
+              const staffLabel = slot.assignments.map((a) => a.staffName).join(" ve ");
+              return i === slots.length - 1 && slots.length > 1
+                ? `ya da ${timeLabel} ${staffLabel}`
+                : `${timeLabel} ${staffLabel}`;
+            })
+            .join(slots.length > 2 ? ", " : " ") + " müsait",
         // offset>0 (başka gün önerildi) VEYA (müşteri belirli bir saat istedi AMA hiçbir
         // seçenek o saate tam uymuyorsa) AI'ya GERÇEK sebebi veriyoruz — "dolu" her zaman
         // doğru değil (bkz. explainUnavailability). ÖNEMLİ: preferredStartMinutes tanımsızsa
@@ -351,11 +370,11 @@ function explainReasonFor(
 async function runCreateAppointment(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
   const startsAt = String(input.starts_at ?? "");
   const endsAt = String(input.ends_at ?? "");
-  const rawAssignments = (input.assignments as { service_name: string; staff_name: string }[] | undefined) ?? [];
+  const rawAssignments = parseAssignmentsArg(input.assignments);
 
   const resolved = rawAssignments.map((a) => {
-    const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === a.service_name.trim().toLowerCase());
-    const staff = exec.ctx.staff.find((s) => s.full_name.trim().toLowerCase() === a.staff_name.trim().toLowerCase());
+    const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === a.serviceName.trim().toLowerCase());
+    const staff = exec.ctx.staff.find((s) => s.full_name.trim().toLowerCase() === a.staffName.trim().toLowerCase());
     return { service, staff };
   });
 
@@ -435,6 +454,8 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     success: true,
     appointment_id: appointmentId,
     display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`,
+    // Sesli akışta saati SÖYLERKEN bunu kullan, display'i değil — bkz. formatHourSpokenTR yorumu.
+    spoken_time: formatHourSpokenTR(startsAt),
   });
 }
 
@@ -458,6 +479,7 @@ async function runListMyAppointments(exec: ToolExecContext): Promise<string> {
       appointment_id: a.id,
       starts_at: a.starts_at,
       display: `${formatDateTR(a.starts_at)} ${formatTimeTR(a.starts_at)}`,
+      spoken_time: formatHourSpokenTR(a.starts_at),
       services: (a.appointment_services as unknown as { services: { name: string } | null; staff: { full_name: string } | null }[]).map(
         (s) => ({ service_name: s.services?.name, staff_name: s.staff?.full_name })
       ),
@@ -581,7 +603,11 @@ async function runRescheduleAppointment(input: Record<string, unknown>, exec: To
     ).catch((err) => console.error("WhatsApp özet mesajı gönderilemedi (randevu erteleme)", err));
   }
 
-  return JSON.stringify({ success: true, display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}` });
+  return JSON.stringify({
+    success: true,
+    display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`,
+    spoken_time: formatHourSpokenTR(startsAt),
+  });
 }
 
 async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {

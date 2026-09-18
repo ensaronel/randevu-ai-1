@@ -14,6 +14,7 @@
     "reset-test-calendar": "tsx --env-file=.env resetTestCalendar.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "@google/genai": "^2.19.0",
     "@supabase/supabase-js": "^2.112.4",
     "@upstash/ratelimit": "^2.0.8",

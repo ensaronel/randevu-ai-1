@@ -12,6 +12,7 @@ import {
   parseVerifiedSlotsFromResult,
   shouldBlockUnverifiedName,
   NO_NAME_MENTIONED_ERROR,
+  parseAssignmentsArg,
   type VerifiedSlot,
 } from "../src/lib/ai/safetyGate.js";
 import { buildVoiceSystemPrompt } from "./voicePrompt.js";
@@ -172,6 +173,10 @@ export class VoiceCallSession {
       model: VOICE_MODEL,
       config: {
         responseModalities: [Modality.AUDIO],
+        // Sabit bir ses seçilmediğinde Gemini rastgele/varsayılan bir ses atıyordu —
+        // kullanıcının isteği üzerine (2026-09-18) net, sabit bir kadın ses ("Kore")
+        // seçildi, her aramada aynı ses duyulsun diye.
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } },
         systemInstruction: buildVoiceSystemPrompt(ctx, needsCallerName),
         tools: [{ functionDeclarations: LIVE_TOOLS }],
         // Varsayılan "konuşma bitti" algılama gecikmesi hissedilir derecede yavaştı
@@ -383,9 +388,7 @@ export class VoiceCallSession {
             {
               startsAt: String(call.args?.starts_at ?? ""),
               endsAt: String(call.args?.ends_at ?? ""),
-              assignments: (call.args?.assignments as { service_name: string; staff_name: string }[] | undefined ?? []).map(
-                (a) => ({ serviceName: a.service_name, staffName: a.staff_name })
-              ),
+              assignments: parseAssignmentsArg(call.args?.assignments),
             },
             this.verifiedSlots
           )
