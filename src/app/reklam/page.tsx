@@ -2,11 +2,13 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
 import ReklamClient from "./ReklamClient";
+import TransformationUploadForm from "./TransformationUploadForm";
 
 const TYPE_LABELS: Record<string, string> = {
   achievement_moment: "Başarı Anı",
   daily_content: "Günlük İçerik",
   campaign_suggestion: "Kampanya",
+  transformation: "Dönüşüm",
 };
 
 export default async function ReklamPage() {
@@ -16,7 +18,7 @@ export default async function ReklamPage() {
     .from("action_objects")
     .select("id, type, suggestion, created_at")
     .eq("business_id", business.id)
-    .in("type", ["achievement_moment", "daily_content", "campaign_suggestion"])
+    .in("type", ["achievement_moment", "daily_content", "campaign_suggestion", "transformation"])
     .not("share_image", "is", null)
     .order("created_at", { ascending: false })
     .limit(40);
@@ -39,6 +41,8 @@ export default async function ReklamPage() {
             : "AI'nin işletmeniz için otomatik hazırladığı, paylaşıma hazır görseller."}
         </p>
       </div>
+
+      <TransformationUploadForm />
 
       {items.length === 0 ? (
         <EmptyState message="Her gün bir marka içeriği, ve gerçekten bir şey olduğunda (rekor gün, sadakat kilometre taşı, kampanya fırsatı) bir başarı anı burada otomatik olarak belirir — hiçbir şey yapmana gerek yok." />
