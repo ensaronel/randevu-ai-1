@@ -3,7 +3,13 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { generateTransformationCaption } from "@/lib/ai/transformationCaption";
-import type { TransformationSharePayload } from "@/lib/ai/transformationShareImage";
+import {
+  TRANSFORMATION_LAYOUTS,
+  TRANSFORMATION_ACCENTS,
+  type TransformationSharePayload,
+  type TransformationLayout,
+  type TransformationAccent,
+} from "@/lib/ai/transformationShareImage";
 
 export const runtime = "nodejs";
 
@@ -14,6 +20,17 @@ function extensionFor(mimeType: string): string {
   if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
   return "jpg";
+}
+
+/** Havuzdan RASTGELE seçer, ama `avoid` ile aynı gelirse tekrar dener — art
+ * arda üretilen iki içerik aynı şema/renkte olmasın diye (bkz. kullanıcı
+ * geri bildirimi: "her görsel aynı şemalar uygulanmasın"). Havuzda tek eleman
+ * varsa (teorik olarak imkansız burada) sonsuz döngüye girmemesi için normal
+ * bir rastgele seçime düşer. */
+function pickDifferent<T>(pool: readonly T[], avoid: T | undefined): T {
+  const choice = pool[Math.floor(Math.random() * pool.length)];
+  if (choice !== avoid || pool.length < 2) return choice;
+  return pool[(pool.indexOf(choice) + 1) % pool.length];
 }
 
 /**
@@ -63,6 +80,21 @@ export async function POST(request: NextRequest) {
     const noteText = typeof note === "string" && note.trim() ? note.trim().slice(0, 200) : undefined;
     const { headline, caption } = await generateTransformationCaption({ businessName, note: noteText });
 
+    // Son üretilen "Dönüşüm" içeriğinin şema/rengini öğrenip ondan FARKLI birini
+    // seçiyoruz — art arda oluşturulan içerikler birbirinin kopyası gibi durmasın.
+    const { data: lastTransformation } = await admin
+      .from("action_objects")
+      .select("share_image")
+      .eq("business_id", owner.business_id)
+      .eq("type", "transformation")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const lastPayload = lastTransformation?.share_image as TransformationSharePayload | undefined;
+
+    const layout = pickDifferent<TransformationLayout>(TRANSFORMATION_LAYOUTS, lastPayload?.layout);
+    const accent = pickDifferent<TransformationAccent>(TRANSFORMATION_ACCENTS, lastPayload?.accent);
+
     const shareImage: TransformationSharePayload = {
       kind: "transformation",
       businessName,
@@ -71,6 +103,8 @@ export async function POST(request: NextRequest) {
       headline,
       caption,
       category: noteText?.slice(0, 40),
+      layout,
+      accent,
     };
 
     const { data: inserted, error: insertError } = await admin
