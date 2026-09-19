@@ -49,6 +49,16 @@ const items = [
     ),
   },
   {
+    href: "/reklam",
+    label: "Reklam",
+    icon: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 10v4a1 1 0 001 1h2l5 4V5L6 9H4a1 1 0 00-1 1z" />
+        <path d="M16 8.5a4 4 0 010 7M19 5.5a8 8 0 010 13" />
+      </svg>
+    ),
+  },
+  {
     href: "/ayarlar/calisanlar",
     label: "Çalışanlar",
     icon: (

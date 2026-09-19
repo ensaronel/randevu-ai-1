@@ -754,3 +754,15 @@ alter table payments enable row level security;
 -- ödeme geçmişi görüntüleme özelliği henüz yok — RLS açık + politika yok
 -- = service-role dışında kimse hiçbir satır göremez/yazamaz (güvenli varsayılan).
 grant select, insert, update, delete on payments to service_role;
+
+-- ============================================================
+-- Reklam/Başarı içerik motoru (2026-09-19). action_objects'e üçüncü bir
+-- kullanım eklendi: type 'achievement_moment' | 'daily_content' |
+-- 'campaign_suggestion' satırları artık opsiyonel olarak paylaşılabilir bir
+-- görsel taşıyabilir. Görselin kendisi DB'de saklanmıyor — share_image
+-- sadece render için gereken alanları (başlık/rakam/renk) tutuyor,
+-- /api/reklam/[id]/image rotası bunu istek anında Satori/ImageResponse ile
+-- PNG'ye çeviriyor (PWA ikonlarında zaten kullanılan aynı teknik) — ayrı bir
+-- Supabase Storage bucket'ı gerekmiyor.
+-- ============================================================
+alter table action_objects add column share_image jsonb;

@@ -81,15 +81,19 @@ export default function BottomNav() {
         <NavLink key={item.href} item={item} active={!!pathname?.startsWith(item.href)} />
       ))}
 
-      {/* Randevu Oluştur — kabartılmış birincil eylem, geri kalan sekmelerden biri değil. */}
+      {/* Reklam — kabartılmış birincil eylem, geri kalan sekmelerden biri değil.
+          "Randevu Oluştur" burada değil çünkü Takvim'de zaten kendi "+ Randevu"
+          butonu var (bkz. takvim/page.tsx); bu öne çıkan slot AI'nin ürettiği
+          paylaşılabilir içeriklere (/reklam) ayrıldı. */}
       <div className="flex-1 min-w-0 flex justify-center">
         <Link
-          href="/randevu-olustur"
-          aria-label="Randevu Oluştur"
-          className="-mt-8 w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center shadow-md border-4 border-bg"
+          href="/reklam"
+          aria-label="Reklam"
+          className="-mt-8 w-14 h-14 rounded-full bg-accent2 text-white flex items-center justify-center shadow-md border-4 border-bg"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 10v4a1 1 0 001 1h2l5 4V5L6 9H4a1 1 0 00-1 1z" />
+            <path d="M16 8.5a4 4 0 010 7M19 5.5a8 8 0 010 13" />
           </svg>
         </Link>
       </div>

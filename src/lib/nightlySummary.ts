@@ -3,6 +3,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, dayRangeUtcISO } from "@/lib/date";
 import { generateFinanceCommentary } from "@/lib/ai/financeCommentary";
 import { generateCampaignSuggestion } from "@/lib/ai/campaignSuggestion";
+import { sendPushToBusiness } from "@/lib/push";
+import type { ShareImagePayload } from "@/lib/ai/shareImage";
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -161,10 +163,21 @@ async function maybeCreateCampaignSuggestion(
   const { data: business } = await admin.from("businesses").select("name").eq("id", businessId).single();
 
   const comparisonDescription = `${positiveDiff.basisLabel}ne göre %${Math.round(positiveDiff.diff)} daha yüksek`;
+  const businessName = business?.name ?? "İşletmeniz";
   const draft = await generateCampaignSuggestion({
-    businessName: business?.name ?? "İşletmeniz",
+    businessName,
     comparisonDescription,
   });
+
+  const shareImage: ShareImagePayload = {
+    accent: "rose",
+    businessName,
+    eyebrow: "Kampanya Fırsatı",
+    big: `+%${Math.round(positiveDiff.diff)}`,
+    bigSub: "Ciro Artışı",
+    subtitle: draft.message,
+    contextLine: `Hedef kitle: ${draft.targetSegment}`,
+  };
 
   await admin.from("action_objects").insert({
     business_id: businessId,
@@ -172,7 +185,14 @@ async function maybeCreateCampaignSuggestion(
     suggestion: draft.message,
     reasoning: `Ciro ${comparisonDescription} (dün: ${Math.round(input.yesterdayRevenue)} TL). Önerilen hedef kitle: ${draft.targetSegment}.`,
     status: "pending",
+    share_image: shareImage,
   });
+
+  await sendPushToBusiness(businessId, {
+    title: "Yeni bir kampanya fırsatı! 📣",
+    body: draft.message,
+    url: "/reklam",
+  }).catch((err) => console.error("kampanya push bildirimi gönderilemedi", err));
 }
 
 export async function runNightlySummaryForAllBusinesses(): Promise<NightlySummaryResult[]> {

@@ -1,0 +1,97 @@
+"use client";
+
+import { useState } from "react";
+import { formatDateTR } from "@/lib/date";
+
+export interface ReklamItem {
+  id: string;
+  typeLabel: string;
+  suggestion: string;
+  createdAt: string;
+}
+
+function ReklamCard({ item }: { item: ReklamItem }) {
+  const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const imageUrl = `/api/reklam/${item.id}/image`;
+
+  async function download() {
+    setDownloading(true);
+    setError(null);
+    try {
+      const res = await fetch(imageUrl);
+      if (!res.ok) throw new Error("failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `randevu-ai-${item.id}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Görsel indirilemedi, lütfen tekrar dene.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(item.suggestion);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Metin kopyalanamadı.");
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-accent2-ink bg-accent2-soft px-2.5 py-1 rounded-full uppercase tracking-wide">
+          {item.typeLabel}
+        </span>
+        <span className="text-[11.5px] text-ink-muted">{formatDateTR(item.createdAt)}</span>
+      </div>
+
+      {/* eslint-disable-next-line @next/next/no-img-element -- Satori PNG rotası, next/image optimizasyonuna uygun değil */}
+      <img
+        src={imageUrl}
+        alt={item.suggestion}
+        className="w-full aspect-[9/16] object-cover rounded-xl border border-border bg-bg"
+        loading="lazy"
+      />
+
+      <p className="text-[13px] text-ink leading-relaxed">{item.suggestion}</p>
+
+      {error && <p className="text-[12px] text-bad">{error}</p>}
+
+      <div className="flex gap-2">
+        <button
+          onClick={download}
+          disabled={downloading}
+          className="flex-1 bg-accent-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
+        >
+          {downloading ? "İndiriliyor..." : "Görseli İndir"}
+        </button>
+        <button
+          onClick={copyCaption}
+          className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted"
+        >
+          {copied ? "Kopyalandı ✓" : "Metni Kopyala"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function ReklamClient({ items }: { items: ReklamItem[] }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {items.map((item) => (
+        <ReklamCard key={item.id} item={item} />
+      ))}
+    </div>
+  );
+}

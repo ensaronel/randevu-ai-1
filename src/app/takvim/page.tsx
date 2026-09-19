@@ -127,36 +127,28 @@ export default async function TakvimPage({
 
   return (
     <AppShell businessName={business.name}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Link
-              href={`/takvim?date=${shiftDateKey(dateKey, -1)}`}
-              className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
-              aria-label="Önceki gün"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 6l-6 6 6 6" />
-              </svg>
-            </Link>
-            <div>
-              <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
-              <h1 className="text-xl font-semibold capitalize">{formatDateTR(`${dateKey}T12:00:00+03:00`)}</h1>
-            </div>
-            <Link
-              href={`/takvim?date=${shiftDateKey(dateKey, 1)}`}
-              className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
-              aria-label="Sonraki gün"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </Link>
+        <div className="flex items-center gap-2.5">
+          <Link
+            href={`/takvim?date=${shiftDateKey(dateKey, -1)}`}
+            className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
+            aria-label="Önceki gün"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
+          </Link>
+          <div>
+            <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">Takvim</p>
+            <h1 className="text-xl font-semibold capitalize">{formatDateTR(`${dateKey}T12:00:00+03:00`)}</h1>
           </div>
           <Link
-            href="/randevu-olustur"
-            className="bg-accent text-white rounded-full px-4 py-2 text-[13px] font-semibold shrink-0"
+            href={`/takvim?date=${shiftDateKey(dateKey, 1)}`}
+            className="w-8 h-8 rounded-full border border-border flex items-center justify-center shrink-0 text-ink-muted"
+            aria-label="Sonraki gün"
           >
-            + Randevu
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
           </Link>
         </div>
 
