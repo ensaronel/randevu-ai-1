@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       afterPath,
       headline,
       caption,
+      category: noteText?.slice(0, 40),
     };
 
     const { data: inserted, error: insertError } = await admin

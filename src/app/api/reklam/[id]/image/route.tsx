@@ -55,6 +55,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/reklam/[
             businessName={payload.businessName}
             headline={payload.headline}
             caption={payload.caption}
+            category={payload.category}
             beforeDataUrl={beforeDataUrl}
             afterDataUrl={afterDataUrl}
           />

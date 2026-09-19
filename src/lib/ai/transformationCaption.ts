@@ -14,8 +14,8 @@ export interface TransformationCaptionOutput {
 }
 
 const FALLBACK: TransformationCaptionOutput = {
-  headline: "Bu da yeni hâli! ✨",
-  caption: "Bu dönüşüm burada başladı — sıra sende, hemen randevunu ayırt!",
+  headline: "Yepyeni bir hâl ✨",
+  caption: "Sıra sende — hemen randevunu ayırt!",
 };
 
 /**
@@ -26,15 +26,21 @@ const FALLBACK: TransformationCaptionOutput = {
 export async function generateTransformationCaption(
   input: TransformationCaptionInput
 ): Promise<TransformationCaptionOutput> {
-  const noteContext = input.note ? ` Owner'ın eklediği not: "${input.note}".` : "";
+  const topicInstruction = input.note
+    ? `Owner bu fotoğrafın "${input.note}" hizmetine ait olduğunu belirtti — HEADLINE ve CAPTION
+KESİNLİKLE bu hizmet hakkında olsun, genel/belirsiz bir "dönüşüm" ifadesiyle YETİNME
+(ör. not "kaş ekimi" ise metin kaş ekiminden bahsetmeli, alakasız genel bir cümle olmamalı).`
+    : `Owner özel bir hizmet belirtmedi, genel bir görünüm dönüşümünden bahset.`;
+
   const prompt = `İşletme adı: ${input.businessName}. Bir öncesi/sonrası dönüşüm fotoğrafı için
-sosyal medya paylaşım içeriği hazırlıyorsun.${noteContext}
+PROFESYONEL bir reklam kreatifi metni hazırlıyorsun (Instagram reklamı gibi düşün — kısa,
+vurucu, gevezelik yok). ${topicInstruction}
 
 İki şey üret:
-1. HEADLINE: Görselin üzerine büyük puntoyla yazılacak, en fazla 5-6 kelimelik, enerjik/kutlama
-   hissi veren bir cümle (ör. "Bambaşka bir kişi! 🔥" gibi). Rakam veya somut bir sonuç UYDURMA.
-2. CAPTION: Instagram/WhatsApp'ta paylaşılacak, 2-3 cümlelik sıcak ve enerjik bir paylaşım metni,
-   sonunda okuyanı randevu almaya nazikçe teşvik eden bir cümle olsun.
+1. HEADLINE: Görselin üzerine büyük puntoyla yazılacak, EN FAZLA 4 kelime, vurucu ve iddialı
+   (ör. "Kaşların yeni hâli 🔥" gibi). Rakam veya somut bir sonuç UYDURMA.
+2. CAPTION: TEK cümle, en fazla 12-14 kelime, sonunda randevuya nazikçe davet eden kısa bir
+   ton olsun. Uzun/duygusal paragraflardan KAÇIN — bu bir reklam metni, hikaye değil.
 
 Şu TAM formatta, başka hiçbir şey eklemeden cevap ver:
 HEADLINE: <başlık>
