@@ -17,12 +17,12 @@
 export type TransformationLayout = "stacked" | "split" | "hero";
 export type TransformationAccent = "amber" | "sage" | "rose";
 
-// "split" ve "hero" kullanıcı geri bildirimiyle geçici olarak devre dışı
-// bırakıldı ("diğer şablonları kaldır, onlara sonra bakarız") — sadece "stacked"
-// (önce üstte/sonra altta, yatay çizgiyle ayrılmış) + "sage" (yeşil) kaldı,
-// kullanıcının beğendiği kombinasyon. PhotoLayer'daki diğer kodlar duruyor,
-// ileride buraya geri eklenebilirler.
-export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked"];
+// "split" ve "hero" da "stacked" ile AYNI kalite çizgisine (tam kadraj foto,
+// scrim, BrandDivider marka rozeti, CTA yok) getirilip geri eklendi — kullanıcı
+// üç farklı profesyonel kompozisyon istedi. Renk şimdilik hâlâ sadece "sage"
+// (yeşil) — kullanıcının özellikle beğendiği renk, layout çeşitliliğinden
+// ayrı bir konu, o yüzden değiştirilmedi.
+export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked", "split", "hero"];
 export const TRANSFORMATION_ACCENTS: TransformationAccent[] = ["sage"];
 
 const ACCENT_COLORS: Record<TransformationAccent, string> = {
@@ -156,38 +156,47 @@ function PhotoLayer({
   businessName: string;
 }) {
   if (layout === "split") {
+    // Yan yana: önce solda, sonra sağda, ince beyaz dikey çizgiyle ayrılmış.
+    // Marka rozeti dikişin üstünde (stacked'daki gibi ortada) değil, en üstte —
+    // burada dikiş yatay değil dikey, BrandDivider'ın yatay şerit formatı
+    // dikeyin üzerine binmez, o yüzden üst kenara taşındı.
     return (
       <div style={{ position: "absolute", top: 0, left: 0, width: 1080, height: 1920, display: "flex" }}>
         <Photo src={beforeDataUrl} width={538} height={1920} />
         <div style={{ width: 4, height: 1920, backgroundColor: "#ffffff", display: "flex" }} />
         <Photo src={afterDataUrl} width={538} height={1920} />
-        <StickerBadge text="ÖNCE" color={accentColor} rotate={-7} style={{ top: 56, left: 40 }} />
-        <StickerBadge text="SONRA" color={accentColor} rotate={6} style={{ top: 56, right: 40 }} />
+        <StickerBadge text="ÖNCE" color={accentColor} rotate={-7} style={{ top: 140, left: 40 }} />
+        <StickerBadge text="SONRA" color={accentColor} rotate={6} style={{ top: 140, right: 40 }} />
+        <BrandDivider businessName={businessName} accentColor={accentColor} top={28} />
       </div>
     );
   }
 
   if (layout === "hero") {
+    // Vitrin: "sonra" fotoğrafı tam kadraj arka plan, "önce" köşede zarif
+    // çerçeveli bir kart olarak duruyor (polaroid/vitrin hissi).
     return (
       <div style={{ position: "absolute", top: 0, left: 0, width: 1080, height: 1920, display: "flex" }}>
         <Photo src={afterDataUrl} width={1080} height={1920} />
         <div
           style={{
             position: "absolute",
-            top: 120,
+            top: 140,
             left: 56,
-            width: 320,
-            height: 420,
-            borderRadius: 22,
+            width: 340,
+            height: 440,
+            borderRadius: 20,
             overflow: "hidden",
-            border: "6px solid #ffffff",
-            boxShadow: "0 16px 36px rgba(0,0,0,0.45)",
+            border: "8px solid #ffffff",
+            boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
             display: "flex",
           }}
         >
-          <Photo src={beforeDataUrl} width={320} height={420} />
+          <Photo src={beforeDataUrl} width={340} height={440} />
         </div>
-        <StickerBadge text="ÖNCE" color={accentColor} rotate={-6} style={{ top: 76, left: 40 }} />
+        <StickerBadge text="ÖNCE" color={accentColor} rotate={-6} style={{ top: 104, left: 40 }} />
+        <StickerBadge text="SONRA" color={accentColor} rotate={6} style={{ top: 140, right: 44 }} />
+        <BrandDivider businessName={businessName} accentColor={accentColor} top={28} />
       </div>
     );
   }
