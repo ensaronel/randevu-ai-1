@@ -24,7 +24,7 @@ function PhotoPicker({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*"
         className="hidden"
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
       />
@@ -68,7 +68,10 @@ export default function TransformationUploadForm() {
       if (note.trim()) form.append("note", note.trim());
 
       const res = await fetch("/api/reklam/donusum", { method: "POST", body: form });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "failed");
+      }
 
       setBefore(null);
       setAfter(null);
@@ -76,8 +79,11 @@ export default function TransformationUploadForm() {
       setConsent(false);
       setOpen(false);
       router.refresh();
-    } catch {
-      setError("Oluşturulamadı, lütfen tekrar dene.");
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "failed";
+      if (code === "file_too_large") setError("Fotoğraf çok büyük, lütfen daha küçük bir dosya dene.");
+      else if (code === "invalid_file_type") setError("Bu fotoğraf formatı okunamadı, lütfen JPEG/PNG olarak tekrar dene.");
+      else setError("Oluşturulamadı, lütfen tekrar dene.");
     } finally {
       setBusy(false);
     }

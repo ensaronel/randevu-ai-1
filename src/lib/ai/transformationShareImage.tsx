@@ -16,8 +16,13 @@
 export type TransformationLayout = "stacked" | "split" | "hero";
 export type TransformationAccent = "amber" | "sage" | "rose";
 
-export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked", "split", "hero"];
-export const TRANSFORMATION_ACCENTS: TransformationAccent[] = ["amber", "sage", "rose"];
+// "split" ve "hero" kullanıcı geri bildirimiyle geçici olarak devre dışı
+// bırakıldı ("diğer şablonları kaldır, onlara sonra bakarız") — sadece "stacked"
+// (önce üstte/sonra altta, yatay çizgiyle ayrılmış) + "sage" (yeşil) kaldı,
+// kullanıcının beğendiği kombinasyon. PhotoLayer'daki diğer kodlar duruyor,
+// ileride buraya geri eklenebilirler.
+export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked"];
+export const TRANSFORMATION_ACCENTS: TransformationAccent[] = ["sage"];
 
 const ACCENT_COLORS: Record<TransformationAccent, string> = {
   amber: "#d9932f",
@@ -142,12 +147,16 @@ function PhotoLayer({
     );
   }
 
-  // "stacked" (varsayılan): önce üstte, sonra altta
+  // "stacked" (varsayılan): önce üstte, sonra altta, aralarında YATAY ince bir
+  // çizgi (kullanıcının beğendiği/istediği belirgin ayrım - split'teki dikey
+  // çizginin yatay karşılığı).
   return (
     <div style={{ position: "absolute", top: 0, left: 0, width: 1080, height: 1920, display: "flex", flexDirection: "column" }}>
-      <Photo src={beforeDataUrl} width={1080} height={960} />
-      <Photo src={afterDataUrl} width={1080} height={960} />
+      <Photo src={beforeDataUrl} width={1080} height={958} />
+      <div style={{ width: 1080, height: 4, backgroundColor: "#ffffff", display: "flex" }} />
+      <Photo src={afterDataUrl} width={1080} height={958} />
       <StickerBadge text="ÖNCE" color={accentColor} rotate={-7} style={{ top: 56, left: 44 }} />
+      <StickerBadge text="SONRA" color={accentColor} rotate={6} style={{ top: 1018, right: 44 }} />
     </div>
   );
 }
@@ -172,19 +181,21 @@ export function TransformationShareImage({
       <PhotoLayer layout={layout} beforeDataUrl={beforeDataUrl} afterDataUrl={afterDataUrl} accentColor={color} />
 
       {/* Alt "scrim" — metin doğrudan fotoğrafın üzerinde, ayrı bir düz renkli blok
-          yok (önceki versiyondaki "arka plan sırıtıyor" sorununu bu çözüyor). */}
+          yok (önceki versiyondaki "arka plan sırıtıyor" sorununu bu çözüyor).
+          Önceki versiyona göre daha kısa/az koyu (kullanıcı "siyah geçiş azalsın"
+          dedi) ve içerik alt kenara daha yakın (paddingBottom küçüldü). */}
       <div
         style={{
           position: "absolute",
           left: 0,
           bottom: 0,
           width: 1080,
-          height: 920,
+          height: 700,
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-end",
-          background: "linear-gradient(180deg, rgba(10,10,14,0) 0%, rgba(10,10,14,0.6) 40%, rgba(8,8,11,0.97) 100%)",
-          padding: "0 72px 60px",
+          background: "linear-gradient(180deg, rgba(10,10,14,0) 0%, rgba(10,10,14,0.62) 46%, rgba(8,8,11,0.95) 100%)",
+          padding: "0 72px 40px",
           fontFamily: "Manrope",
         }}
       >
@@ -232,29 +243,10 @@ export function TransformationShareImage({
           {caption}
         </div>
 
-        <div
-          style={{
-            marginTop: 28,
-            display: "flex",
-            alignSelf: "flex-start",
-            alignItems: "center",
-            gap: 10,
-            backgroundColor: color,
-            color: "#ffffff",
-            fontSize: 26,
-            fontWeight: 800,
-            padding: "16px 36px",
-            borderRadius: 999,
-            boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
-          }}
-        >
-          Randevu Al
-          <span style={{ display: "flex" }}>→</span>
-        </div>
-
-        {/* İşletme adı — imza gibi en altta, büyük ve belirgin. */}
-        <div style={{ marginTop: 34, width: 64, height: 4, backgroundColor: color, borderRadius: 2, display: "flex" }} />
-        <div style={{ marginTop: 16, fontSize: 46, fontWeight: 800, color: "#ffffff", display: "flex", maxWidth: 920 }}>
+        {/* İşletme adı — imza gibi en altta, büyük ve belirgin (CTA butonunun
+            yerini aldı, kullanıcı geri bildirimiyle kaldırıldı). */}
+        <div style={{ marginTop: 30, width: 64, height: 4, backgroundColor: color, borderRadius: 2, display: "flex" }} />
+        <div style={{ marginTop: 16, fontSize: 48, fontWeight: 800, color: "#ffffff", display: "flex", maxWidth: 920 }}>
           {businessName}
         </div>
       </div>

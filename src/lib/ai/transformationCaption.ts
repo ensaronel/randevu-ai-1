@@ -18,6 +18,18 @@ const FALLBACK: TransformationCaptionOutput = {
   caption: "Sıra sende — hemen randevunu ayırt!",
 };
 
+// Her çağrıda RASTGELE birini seçip prompt'a veriyoruz — modele hep aynı kalıbı
+// ("Bambaşka bir kişi!", "Kusursuz X'e merhaba deyin" gibi) tekrarlatmamak için.
+// Kullanıcı geri bildirimi: "AI daha akıllı yazılar üretsin, hep aynı cümleleri
+// kullanmasın" — tek bir sabit prompt her seferinde aynı üsluba yakınsıyordu.
+const CREATIVE_ANGLES = [
+  "merak uyandıran bir soru sorarak",
+  "doğrudan somut bir fayda/his vurgulayarak (uydurma rakam değil, gerçek bir duygu)",
+  "kısa ve iddialı bir itiraf/gözlem cümlesiyle (ör. bir müşteri repliği havasında)",
+  "günlük konuşma diline yakın, samimi ve esprili bir tonla",
+  "önce/sonra kontrastını vurgulayan kısa bir karşılaştırmayla",
+];
+
 /**
  * Owner öncesi/sonrası fotoğraf yüklediğinde (bkz. /api/reklam/donusum) çağrılır —
  * gerçek müşteri/işlem verisine dayanmadığı, sadece owner'ın kendi girdiği nota
@@ -29,16 +41,24 @@ export async function generateTransformationCaption(
   const topicInstruction = input.note
     ? `Owner bu fotoğrafın "${input.note}" hizmetine ait olduğunu belirtti — HEADLINE ve CAPTION
 KESİNLİKLE bu hizmet hakkında olsun, genel/belirsiz bir "dönüşüm" ifadesiyle YETİNME
-(ör. not "kaş ekimi" ise metin kaş ekiminden bahsetmeli, alakasız genel bir cümle olmamalı).`
+(ör. not "kaş ekimi" ise metin kaş ekiminden bahsetmeli, alakasız genel bir cümle olmamalı).
+Hizmete özgü, o alanı gerçekten bilen biri gibi yaz (ör. kaş ekimi için "doğallık/simetri/
+kalıcılık", saç boyama için "kök/ton/parlaklık" gibi o hizmete özgü kavramlar kullan).`
     : `Owner özel bir hizmet belirtmedi, genel bir görünüm dönüşümünden bahset.`;
+
+  const angle = CREATIVE_ANGLES[Math.floor(Math.random() * CREATIVE_ANGLES.length)];
 
   const prompt = `İşletme adı: ${input.businessName}. Bir öncesi/sonrası dönüşüm fotoğrafı için
 PROFESYONEL bir reklam kreatifi metni hazırlıyorsun (Instagram reklamı gibi düşün — kısa,
-vurucu, gevezelik yok). ${topicInstruction}
+vurucu, klişe değil). ${topicInstruction}
+
+Bu metni ${angle} yaz — ama zorlama, doğal aksın. "Bambaşka bir kişi", "Kusursuz X'e merhaba
+deyin", "Yepyeni bir hâl" gibi kalıplaşmış/klişe reklam cümlelerini KULLANMA, bu ifadeler
+zaten çok kullanıldı. Gerçekten YARATICI ve akılda kalıcı bir şey bul.
 
 İki şey üret:
-1. HEADLINE: Görselin üzerine büyük puntoyla yazılacak, EN FAZLA 4 kelime, vurucu ve iddialı
-   (ör. "Kaşların yeni hâli 🔥" gibi). Rakam veya somut bir sonuç UYDURMA.
+1. HEADLINE: Görselin üzerine büyük puntoyla yazılacak, EN FAZLA 5 kelime, vurucu ve özgün.
+   Rakam veya somut bir sonuç UYDURMA.
 2. CAPTION: TEK cümle, en fazla 12-14 kelime, sonunda randevuya nazikçe davet eden kısa bir
    ton olsun. Uzun/duygusal paragraflardan KAÇIN — bu bir reklam metni, hikaye değil.
 
@@ -49,6 +69,7 @@ CAPTION: <paylaşım metni>`;
   const response = await ai.models.generateContent({
     model: AI_MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: { temperature: 1.15 },
   });
 
   const text = (response.text ?? "").trim();

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -13,14 +14,33 @@ import {
 
 export const runtime = "nodejs";
 
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_BYTES = 8 * 1024 * 1024;
+// Telefon kamera fotoğrafları rahatlıkla 10-15MB'ı bulabiliyor — bunu ret sebebi
+// yapmak yerine (önceki 8MB sınırı "oluşturulamadı" hatasının asıl sebebiydi)
+// sharp ile küçültüp yeniden sıkıştırıyoruz (bkz. normalizePhoto). RAW dosya için
+// yine de makul bir tavan var (kötüye kullanım/bellek koruması).
+const MAX_RAW_BYTES = 30 * 1024 * 1024;
 
-function extensionFor(mimeType: string): string {
-  if (mimeType === "image/png") return "png";
-  if (mimeType === "image/webp") return "webp";
-  return "jpg";
+/**
+ * Ne formatta/boyutta gelirse gelsin JPEG'e çevirip makul bir boyuta küçültüyor —
+ * hem Storage/Satori için güvenilir tek bir format garantisi, hem de büyük
+ * telefon fotoğraflarının reddedilmesini önlüyor. sharp gerçek HEIC (Apple codec,
+ * patentli) decode EDEMİYOR — o durumda burada anlaşılır bir hata fırlatıyoruz.
+ */
+async function normalizePhoto(file: File): Promise<Buffer> {
+  const input = Buffer.from(await file.arrayBuffer());
+  try {
+    return await sharp(input)
+      .rotate() // EXIF orientation'ı uygula (çoğu telefon fotoğrafı yan/ters gelir)
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+  } catch (err) {
+    console.error("fotoğraf işlenemedi (desteklenmeyen format olabilir)", err);
+    throw new PhotoProcessingError();
+  }
 }
+
+class PhotoProcessingError extends Error {}
 
 /** Havuzdan RASTGELE seçer, ama `avoid` ile aynı gelirse tekrar dener — art
  * arda üretilen iki içerik aynı şema/renkte olmasın diye (bkz. kullanıcı
@@ -53,12 +73,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "missing_photos" }, { status: 400 });
     }
     for (const file of [before, after]) {
-      if (!ALLOWED_TYPES.has(file.type)) {
-        return NextResponse.json({ error: "invalid_file_type" }, { status: 400 });
-      }
-      if (file.size > MAX_BYTES) {
+      if (file.size > MAX_RAW_BYTES) {
         return NextResponse.json({ error: "file_too_large" }, { status: 400 });
       }
+    }
+
+    let beforeJpeg: Buffer;
+    let afterJpeg: Buffer;
+    try {
+      [beforeJpeg, afterJpeg] = await Promise.all([normalizePhoto(before), normalizePhoto(after)]);
+    } catch (err) {
+      if (err instanceof PhotoProcessingError) {
+        return NextResponse.json({ error: "invalid_file_type" }, { status: 400 });
+      }
+      throw err;
     }
 
     const admin = createAdminSupabaseClient();
@@ -66,12 +94,12 @@ export async function POST(request: NextRequest) {
     const businessName = business?.name ?? "İşletmeniz";
 
     const stamp = Date.now();
-    const beforePath = `${owner.business_id}/${stamp}-before.${extensionFor(before.type)}`;
-    const afterPath = `${owner.business_id}/${stamp}-after.${extensionFor(after.type)}`;
+    const beforePath = `${owner.business_id}/${stamp}-before.jpg`;
+    const afterPath = `${owner.business_id}/${stamp}-after.jpg`;
 
     const [beforeUpload, afterUpload] = await Promise.all([
-      admin.storage.from("reklam-photos").upload(beforePath, before, { contentType: before.type }),
-      admin.storage.from("reklam-photos").upload(afterPath, after, { contentType: after.type }),
+      admin.storage.from("reklam-photos").upload(beforePath, beforeJpeg, { contentType: "image/jpeg" }),
+      admin.storage.from("reklam-photos").upload(afterPath, afterJpeg, { contentType: "image/jpeg" }),
     ]);
     if (beforeUpload.error || afterUpload.error) {
       throw beforeUpload.error ?? afterUpload.error;
