@@ -4,7 +4,8 @@
  * renkli "kart" bloğu YOK (önceki versiyonda alttaki krem blok fotoğrafla
  * çarpışıp amatör durduğu için kaldırıldı) — bunun yerine alt kısımda koyu bir
  * gradyan "scrim" var, metin doğrudan fotoğrafın üzerinde okunuyor. İşletme adı
- * bu scrim'in EN ALTINDA, büyük ve belirgin duruyor (imza gibi). Her üretimde
+ * altta büyük değil — iki fotoğrafın dikişinde küçük bir marka rozeti (bkz.
+ * BrandDivider) olarak duruyor. Her üretimde
  * 3 fotoğraf kompozisyonundan (layout) ve 3 vurgu renginden (accent) biri
  * SEÇİLİP DB'ye kaydediliyor (bkz. /api/reklam/donusum) — hem aynı görsel her
  * render'da AYNI kalsın diye hem de art arda üretilen içerikler birbirinin
@@ -99,16 +100,60 @@ function Photo({ src, width, height, style }: { src: string; width: number; heig
   );
 }
 
+/** İki fotoğrafın dikişinde duran küçük "marka rozeti" — ince çizgi—isim—ince
+ * çizgi (klasik wordmark/logo lockup hissi). Kullanıcı geri bildirimi: işletme
+ * adı altta büyük durmasın, bunun yerine buraya, küçük ve şık bir fontla,
+ * "marka dili" gibi otursun. */
+function BrandDivider({ businessName, accentColor, top }: { businessName: string; accentColor: string; top: number }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top,
+        left: 0,
+        width: 1080,
+        height: 48,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 18,
+        padding: "0 64px",
+      }}
+    >
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: "rgba(255,255,255,0.85)", display: "flex" }} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          backgroundColor: "#ffffff",
+          padding: "10px 22px",
+          borderRadius: 999,
+          boxShadow: "0 4px 14px rgba(0,0,0,0.28)",
+        }}
+      >
+        <div style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: accentColor, display: "flex" }} />
+        <span style={{ fontFamily: "Lora", fontWeight: 700, fontSize: 25, letterSpacing: 0.5, color: "#1a1f2e", display: "flex" }}>
+          {businessName}
+        </span>
+      </div>
+      <div style={{ flexGrow: 1, height: 1, backgroundColor: "rgba(255,255,255,0.85)", display: "flex" }} />
+    </div>
+  );
+}
+
 function PhotoLayer({
   layout,
   beforeDataUrl,
   afterDataUrl,
   accentColor,
+  businessName,
 }: {
   layout: TransformationLayout;
   beforeDataUrl: string;
   afterDataUrl: string;
   accentColor: string;
+  businessName: string;
 }) {
   if (layout === "split") {
     return (
@@ -147,16 +192,17 @@ function PhotoLayer({
     );
   }
 
-  // "stacked" (varsayılan): önce üstte, sonra altta, aralarında YATAY ince bir
-  // çizgi (kullanıcının beğendiği/istediği belirgin ayrım - split'teki dikey
-  // çizginin yatay karşılığı).
+  // "stacked" (varsayılan): önce üstte, sonra altta, aralarında YATAY bir dikiş —
+  // artık düz bir çizgi değil, işletme adının oturduğu küçük bir marka rozeti
+  // (bkz. BrandDivider) — kullanıcı geri bildirimi: isim altta büyük durmasın,
+  // buraya küçük/şık bir "marka dili" olarak otursun.
   return (
     <div style={{ position: "absolute", top: 0, left: 0, width: 1080, height: 1920, display: "flex", flexDirection: "column" }}>
       <Photo src={beforeDataUrl} width={1080} height={958} />
-      <div style={{ width: 1080, height: 4, backgroundColor: "#ffffff", display: "flex" }} />
       <Photo src={afterDataUrl} width={1080} height={958} />
       <StickerBadge text="ÖNCE" color={accentColor} rotate={-7} style={{ top: 56, left: 44 }} />
       <StickerBadge text="SONRA" color={accentColor} rotate={6} style={{ top: 1018, right: 44 }} />
+      <BrandDivider businessName={businessName} accentColor={accentColor} top={936} />
     </div>
   );
 }
@@ -178,24 +224,24 @@ export function TransformationShareImage({
 
   return (
     <div style={{ width: 1080, height: 1920, display: "flex", position: "relative", backgroundColor: "#12141a" }}>
-      <PhotoLayer layout={layout} beforeDataUrl={beforeDataUrl} afterDataUrl={afterDataUrl} accentColor={color} />
+      <PhotoLayer layout={layout} beforeDataUrl={beforeDataUrl} afterDataUrl={afterDataUrl} accentColor={color} businessName={businessName} />
 
       {/* Alt "scrim" — metin doğrudan fotoğrafın üzerinde, ayrı bir düz renkli blok
-          yok (önceki versiyondaki "arka plan sırıtıyor" sorununu bu çözüyor).
-          Önceki versiyona göre daha kısa/az koyu (kullanıcı "siyah geçiş azalsın"
-          dedi) ve içerik alt kenara daha yakın (paddingBottom küçüldü). */}
+          yok. İşletme adı artık burada değil (BrandDivider'a taşındı, dikişin
+          üzerinde), bu yüzden scrim daha da kısaltıldı/hafifletildi — kullanıcı
+          "siyah geçiş azalsın" dedi. */}
       <div
         style={{
           position: "absolute",
           left: 0,
           bottom: 0,
           width: 1080,
-          height: 700,
+          height: 560,
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-end",
-          background: "linear-gradient(180deg, rgba(10,10,14,0) 0%, rgba(10,10,14,0.62) 46%, rgba(8,8,11,0.95) 100%)",
-          padding: "0 72px 40px",
+          background: "linear-gradient(180deg, rgba(10,10,14,0) 0%, rgba(10,10,14,0.58) 50%, rgba(8,8,11,0.92) 100%)",
+          padding: "0 72px 32px",
           fontFamily: "Manrope",
         }}
       >
@@ -241,13 +287,6 @@ export function TransformationShareImage({
           }}
         >
           {caption}
-        </div>
-
-        {/* İşletme adı — imza gibi en altta, büyük ve belirgin (CTA butonunun
-            yerini aldı, kullanıcı geri bildirimiyle kaldırıldı). */}
-        <div style={{ marginTop: 30, width: 64, height: 4, backgroundColor: color, borderRadius: 2, display: "flex" }} />
-        <div style={{ marginTop: 16, fontSize: 48, fontWeight: 800, color: "#ffffff", display: "flex", maxWidth: 920 }}>
-          {businessName}
         </div>
       </div>
     </div>
