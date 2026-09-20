@@ -3,7 +3,6 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { appointmentUpdateSchema } from "@/lib/validation";
 import { matchWaitlistForCancelledAppointment } from "@/lib/proactive";
-import { checkLoyaltyMilestoneOnAttendance } from "@/lib/achievements";
 
 export async function GET(
   _request: NextRequest,
@@ -106,12 +105,6 @@ export async function PATCH(
     if (body.status === "cancelled" && before.status !== "cancelled") {
       await matchWaitlistForCancelledAppointment(owner.business_id, id).catch((err) =>
         console.error("waitlist match failed", err)
-      );
-    }
-
-    if (body.attendance === "came" && before.attendance !== "came") {
-      await checkLoyaltyMilestoneOnAttendance(owner.business_id, before.customer_id).catch((err) =>
-        console.error("sadakat kilometre taşı kontrolü başarısız", err)
       );
     }
 

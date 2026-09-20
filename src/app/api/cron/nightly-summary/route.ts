@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runNightlySummaryForAllBusinesses } from "@/lib/nightlySummary";
 import { runProactiveInsightsForAllBusinesses } from "@/lib/proactive";
 import { runWeeklySummaryForAllBusinesses } from "@/lib/weeklySummary";
-import { runAchievementChecksForAllBusinesses } from "@/lib/achievements";
-import { runDailyContentForAllBusinesses } from "@/lib/dailyContent";
+import { runNightlyReklamContentForAllBusinesses } from "@/lib/reklamContent";
 import { verifyCronSecret } from "@/lib/api-response";
 
 /**
@@ -20,8 +19,7 @@ export async function GET(request: NextRequest) {
     const financeResults = await runNightlySummaryForAllBusinesses();
     const proactiveResults = await runProactiveInsightsForAllBusinesses();
     const weeklyResults = await runWeeklySummaryForAllBusinesses();
-    await runAchievementChecksForAllBusinesses();
-    await runDailyContentForAllBusinesses();
+    await runNightlyReklamContentForAllBusinesses();
     return NextResponse.json({ financeResults, proactiveResults, weeklyResults });
   } catch (err) {
     console.error(err);

@@ -1,116 +1,96 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { dateKeyTR, formatDateTR, formatTL } from "@/lib/date";
-import { sendPushToBusiness } from "@/lib/push";
+import { dateKeyTR, formatTL } from "@/lib/date";
+import { getBusinessName } from "@/lib/businessName";
+import { dedupeReasoning, hasDedupeFired } from "@/lib/dedupe";
 import type { ShareImagePayload } from "@/lib/ai/shareImage";
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
 
-// Yalnızca gerçekten "kilometre taşı" hissi veren, seyrek eşikler — her randevuda
-// tetiklenip gürültü olmasın diye.
-const LOYALTY_MILESTONES = [10, 20, 50, 100, 150, 200, 300, 500];
+// İşletme-geneli (kişi bazlı DEĞİL, hiçbir müşteri adı içermez — halka açık paylaşımda
+// gizlilik riski olmasın diye) kilometre taşı eşikleri.
+const BUSINESS_MILESTONES = [100, 250, 500, 1000, 2000, 5000, 10000];
 
 // Rekor gün için en az bu kadar mutabakatlı geçmiş gün olmalı, yoksa "rekor" demek
 // (ör. işletmenin 2. günü) anlamsız/yanıltıcı olur.
 const MIN_HISTORY_DAYS_FOR_RECORD = 4;
 const RECORD_DAY_LOOKBACK_DAYS = 30;
 
-async function getBusinessName(admin: AdminClient, businessId: string): Promise<string> {
-  const { data } = await admin.from("businesses").select("name").eq("id", businessId).single();
-  return data?.name ?? "İşletmeniz";
-}
-
 async function insertAchievement(
   admin: AdminClient,
   businessId: string,
   args: {
     dedupeKey: string;
-    relatedCustomerId?: string;
+    reasoningDetail: string;
     suggestion: string;
-    reasoning: string;
     shareImage: ShareImagePayload;
   }
 ): Promise<void> {
   const { error } = await admin.from("action_objects").insert({
     business_id: businessId,
     type: "achievement_moment",
-    related_customer_id: args.relatedCustomerId ?? null,
     suggestion: args.suggestion,
-    reasoning: `dedupe:${args.dedupeKey} — ${args.reasoning}`,
+    reasoning: dedupeReasoning(args.dedupeKey, args.reasoningDetail),
     status: "auto_sent",
     share_image: args.shareImage,
   });
   if (error) throw error;
-
-  await sendPushToBusiness(businessId, {
-    title: "Yeni bir başarı anın var! 🎉",
-    body: args.suggestion,
-    url: "/reklam",
-  }).catch((err) => console.error("başarı anı push bildirimi gönderilemedi", err));
-}
-
-async function alreadyFired(admin: AdminClient, businessId: string, dedupeKey: string): Promise<boolean> {
-  const { data } = await admin
-    .from("action_objects")
-    .select("id")
-    .eq("business_id", businessId)
-    .eq("type", "achievement_moment")
-    .ilike("reasoning", `dedupe:${dedupeKey} —%`)
-    .limit(1);
-  return !!data && data.length > 0;
 }
 
 /**
- * Bir randevu "geldi" (attendance='came') olarak işaretlendiğinde çağrılır —
- * müşterinin toplam gerçekleşmiş randevu sayısı bir sadakat eşiğine denk
- * geliyorsa paylaşılabilir bir "Başarı Anı" üretir. `src/app/api/appointments/
- * [id]/route.ts`'in PATCH handler'ından, attendance GERÇEKTEN 'came'ye
- * değiştiğinde (tekrar mutabakat aynı sayacı ikiye katlamasın diye) çağrılır.
+ * İşletmenin TOPLAM tamamlanmış (`attendance='came'`) randevu sayısı yuvarlak bir
+ * eşiğe ulaştığında, İSİM İÇERMEYEN bir kilometre taşı kutlaması üretir. Önceden bu,
+ * belirli bir müşterinin Nth randevusunu (gerçek adıyla) kutluyordu — halka açık
+ * paylaşımda gizlilik riski olduğu için işletme-geneli, isimsiz bir kutlamaya
+ * dönüştürüldü (bkz. proje kararları). En yüksek geçilmiş ama henüz kutlanmamış
+ * eşiği bulur, aynı anda birden fazla eşik geçilse bile sadece birini kutlar.
  */
-export async function checkLoyaltyMilestoneOnAttendance(businessId: string, customerId: string): Promise<void> {
+export async function runBusinessMilestoneCheckForBusiness(businessId: string): Promise<boolean> {
   const admin = createAdminSupabaseClient();
 
-  const { count, error: countError } = await admin
+  const { count, error } = await admin
     .from("appointments")
     .select("id", { count: "exact", head: true })
     .eq("business_id", businessId)
-    .eq("customer_id", customerId)
     .eq("attendance", "came");
-  if (countError) throw countError;
-  if (!count || !LOYALTY_MILESTONES.includes(count)) return;
+  if (error) throw error;
+  if (!count) return false;
 
-  const dedupeKey = `loyalty:${customerId}:${count}`;
-  if (await alreadyFired(admin, businessId, dedupeKey)) return;
+  const eligible = [...BUSINESS_MILESTONES].reverse().filter((m) => count >= m);
+  for (const threshold of eligible) {
+    const dedupeKey = `business_milestone:${threshold}`;
+    if (await hasDedupeFired(admin, businessId, "achievement_moment", dedupeKey)) continue;
 
-  const { data: customer } = await admin.from("customers").select("full_name").eq("id", customerId).single();
-  const customerName = customer?.full_name ?? "Bir müşteriniz";
-  const businessName = await getBusinessName(admin, businessId);
+    const businessName = await getBusinessName(admin, businessId);
+    await insertAchievement(admin, businessId, {
+      dedupeKey,
+      reasoningDetail: `işletme toplam ${count} randevuya ulaştı (kilometre taşı: ${threshold}).`,
+      suggestion: `İşletmeniz toplam ${threshold}. randevusunu tamamladı — kutlamaya değer bir kilometre taşı!`,
+      shareImage: {
+        accent: "amber",
+        businessName,
+        eyebrow: "Kilometre Taşı",
+        big: `${threshold}.`,
+        bigSub: "Randevu",
+        subtitle: "Bugüne kadar bize güvenen herkese teşekkürler! 💛",
+        contextLine: "Randevu AI ile büyüyoruz",
+        waving: true,
+      },
+    });
+    return true;
+  }
 
-  await insertAchievement(admin, businessId, {
-    dedupeKey,
-    relatedCustomerId: customerId,
-    suggestion: `${customerName} ${count}. randevusuna geldi — paylaşmaya değer bir sadakat anı!`,
-    reasoning: `${customerName} toplam ${count} kez randevuya geldi (sadakat eşiği).`,
-    shareImage: {
-      accent: "amber",
-      businessName,
-      eyebrow: "Sadakat Anı",
-      big: `${count}.`,
-      bigSub: "Randevusu",
-      subtitle: `${customerName} seni ${count}. kez tercih etti, ne büyük bir güven! 💛`,
-      contextLine: formatDateTR(`${dateKeyTR(0)}T12:00:00+03:00`),
-      waving: false,
-    },
-  });
+  return false;
 }
 
 /**
- * Gece cronunda (nightlySummary ile aynı çalışma), her işletme için dünün
- * mutabakatlı cirosu son `RECORD_DAY_LOOKBACK_DAYS` günün rekoruysa bir
+ * Dünün mutabakatlı cirosu son `RECORD_DAY_LOOKBACK_DAYS` günün rekoruysa bir
  * "Başarı Anı" üretir. Ham appointments toplamı yerine bilerek gün sonu
- * mutabakatından (`daily_financial_summaries`, "Günü Kapat") gelen kesin
- * rakamı kullanıyor — henüz kapatılmamış bir gün "rekor" ilan edilmesin.
+ * mutabakatından (`daily_financial_summaries`, "Günü Kapat") gelen kesin rakamı
+ * kullanıyor — henüz kapatılmamış bir gün "rekor" ilan edilmesin. Gerçek TL rakamı
+ * SADECE `reasoning`de (denetim amaçlı, hiçbir yerde render edilmiyor) tutulur —
+ * halka açık görselde/metinde ciro rakamı YOK (bkz. proje kararları).
  */
-export async function runRecordDayCheckForBusiness(businessId: string): Promise<void> {
+export async function runRecordDayCheckForBusiness(businessId: string): Promise<boolean> {
   const admin = createAdminSupabaseClient();
   const yesterdayKey = dateKeyTR(-1);
 
@@ -120,10 +100,10 @@ export async function runRecordDayCheckForBusiness(businessId: string): Promise<
     .eq("business_id", businessId)
     .eq("summary_date", yesterdayKey)
     .maybeSingle();
-  if (!yesterdayRow?.reconciled_at) return; // dün henüz "Günü Kapat" yapılmamış
+  if (!yesterdayRow?.reconciled_at) return false; // dün henüz "Günü Kapat" yapılmamış
 
   const yesterdayRevenue = Number(yesterdayRow.actual_revenue);
-  if (yesterdayRevenue <= 0) return;
+  if (yesterdayRevenue <= 0) return false;
 
   const lookbackStart = new Date(Date.now() - RECORD_DAY_LOOKBACK_DAYS * 24 * 60 * 60000).toISOString().slice(0, 10);
   const { data: history } = await admin
@@ -134,43 +114,28 @@ export async function runRecordDayCheckForBusiness(businessId: string): Promise<
     .gte("summary_date", lookbackStart)
     .not("reconciled_at", "is", null);
 
-  if (!history || history.length < MIN_HISTORY_DAYS_FOR_RECORD) return;
+  if (!history || history.length < MIN_HISTORY_DAYS_FOR_RECORD) return false;
 
   const previousMax = Math.max(...history.map((row) => Number(row.actual_revenue)));
-  if (yesterdayRevenue <= previousMax) return;
+  if (yesterdayRevenue <= previousMax) return false;
 
   const dedupeKey = `record_day:${yesterdayKey}`;
-  if (await alreadyFired(admin, businessId, dedupeKey)) return;
+  if (await hasDedupeFired(admin, businessId, "achievement_moment", dedupeKey)) return false;
 
   const businessName = await getBusinessName(admin, businessId);
-
   await insertAchievement(admin, businessId, {
     dedupeKey,
-    suggestion: `Dün son ${RECORD_DAY_LOOKBACK_DAYS} günün en yüksek cirolu günüydü — ${formatTL(yesterdayRevenue)}!`,
-    reasoning: `Dünkü ciro ${formatTL(yesterdayRevenue)}, önceki ${history.length} günün rekoru ${formatTL(previousMax)} idi.`,
+    reasoningDetail: `dünkü ciro ${formatTL(yesterdayRevenue)}, önceki ${history.length} günün rekoru ${formatTL(previousMax)} idi.`,
+    suggestion: "Dün son 30 günün en yoğun günüydü — bize güvenen herkese teşekkürler!",
     shareImage: {
       accent: "amber",
       businessName,
       eyebrow: "Ayın Rekoru",
-      big: formatTL(yesterdayRevenue),
-      bigSub: "Ciro",
-      subtitle: "Dün ayın en yoğun günüydü! 🎉",
-      contextLine: formatDateTR(`${yesterdayKey}T12:00:00+03:00`),
+      big: "Rekor Gün!",
+      subtitle: "Dün ayın en yoğun günlerinden biriydi, bize güvenen herkese teşekkürler! 🎉",
+      contextLine: "Randevu AI ile büyüyoruz",
       waving: true,
     },
   });
-}
-
-export async function runAchievementChecksForAllBusinesses(): Promise<void> {
-  const admin = createAdminSupabaseClient();
-  const { data: businesses, error } = await admin.from("businesses").select("id").eq("is_active", true);
-  if (error) throw error;
-
-  for (const b of businesses ?? []) {
-    try {
-      await runRecordDayCheckForBusiness(b.id);
-    } catch (err) {
-      console.error("başarı anı (rekor gün) kontrolü başarısız", b.id, err);
-    }
-  }
+  return true;
 }

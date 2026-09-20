@@ -1,28 +1,19 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
-import ReklamClient from "./ReklamClient";
-import ReklamTabs from "./ReklamTabs";
-import { TYPE_LABELS } from "./typeLabels";
+import ReklamClient from "../ReklamClient";
+import ReklamTabs from "../ReklamTabs";
+import { TYPE_LABELS } from "../typeLabels";
+import TransformationUploadForm from "./TransformationUploadForm";
 
-const CONTENT_TYPES = [
-  "achievement_moment",
-  "daily_content",
-  "daily_spotlight",
-  "daily_tip",
-  "campaign_suggestion",
-  "available_slots",
-  "social_proof",
-];
-
-export default async function ReklamPage() {
+export default async function ReklamDonusumPage() {
   const { business, supabase } = await getBusinessOwnerForPage();
 
   const { data } = await supabase
     .from("action_objects")
     .select("id, type, suggestion, created_at")
     .eq("business_id", business.id)
-    .in("type", CONTENT_TYPES)
+    .eq("type", "transformation")
     .not("share_image", "is", null)
     .order("created_at", { ascending: false })
     .limit(40);
@@ -39,17 +30,15 @@ export default async function ReklamPage() {
       <div>
         <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">{business.name}</p>
         <h1 className="text-2xl font-semibold">Reklam</h1>
-        <p className="text-[13px] text-ink-muted mt-1">
-          {items.length === 0
-            ? "Henüz paylaşılacak bir içerik yok."
-            : "AI'nin işletmeniz için otomatik hazırladığı, paylaşıma hazır görseller."}
-        </p>
+        <p className="text-[13px] text-ink-muted mt-1">Öncesi/sonrası fotoğraflarınızdan reklam kreatifi oluşturun.</p>
       </div>
 
-      <ReklamTabs active="content" />
+      <ReklamTabs active="donusum" />
+
+      <TransformationUploadForm />
 
       {items.length === 0 ? (
-        <EmptyState message="Her gün otomatik olarak yeni paylaşılabilir içerikler (boş randevu duyurusu, sosyal kanıt, vitrin, bakım ipucu, ve gerçekten bir şey olduğunda bir başarı anı) burada belirir — hiçbir şey yapmana gerek yok." />
+        <EmptyState message="Henüz bir dönüşüm paylaşımı oluşturmadınız — öncesi/sonrası fotoğraf yükleyerek başlayın." />
       ) : (
         <ReklamClient items={items} />
       )}

@@ -5,7 +5,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface CampaignSuggestionInput {
   businessName: string;
-  comparisonDescription: string; // ör. "geçen haftanın aynı gününe göre %35 daha yüksek"
+  situationDescription: string; // ör. "'Kaş Ekimi' hizmetine son 7 günde daha az talep var"
 }
 
 export interface CampaignSuggestionOutput {
@@ -19,14 +19,14 @@ const FALLBACK: CampaignSuggestionOutput = {
 };
 
 /**
- * Gece cron'unda ciro beklenenden ANLAMLI ÖLÇÜDE yüksek çıktığında çağrılır
- * (bkz. nightlySummary.ts). Sadece TASLAK üretir — hiçbir yere otomatik
- * gönderilmez, işletme sahibi Öneriler'de görüp kendi WhatsApp Business
+ * Bir hizmete son dönemde belirgin ölçüde az talep olduğunda çağrılır (bkz.
+ * lowDemandCampaign.ts). Sadece TASLAK üretir — hiçbir yere otomatik
+ * gönderilmez, işletme sahibi Reklam'da görüp kendi WhatsApp Business
  * hesabından elle kopyalayıp gönderir (Meta şablon/24-saat penceresi sorununu
  * çoğaltmamak için bilinçli tercih, bkz proje notları).
  */
 export async function generateCampaignSuggestion(input: CampaignSuggestionInput): Promise<CampaignSuggestionOutput> {
-  const prompt = `İşletme adı: ${input.businessName}. Son ciro durumu: ${input.comparisonDescription}.
+  const prompt = `İşletme adı: ${input.businessName}. Son durum: ${input.situationDescription}.
 
 İşletme sahibinin WhatsApp Business hesabından müşterilerine TOPLU olarak göndermeyi
 düşünebileceği, kısa (2-3 cümle), sıcak ve samimi bir duyuru/teşvik mesajı taslağı yaz.
