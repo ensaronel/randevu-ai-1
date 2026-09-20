@@ -17,12 +17,10 @@
 export type TransformationLayout = "stacked" | "split" | "hero";
 export type TransformationAccent = "amber" | "sage" | "rose";
 
-// "split" ve "hero" da "stacked" ile AYNI kalite çizgisine (tam kadraj foto,
-// scrim, BrandDivider marka rozeti, CTA yok) getirilip geri eklendi — kullanıcı
-// üç farklı profesyonel kompozisyon istedi. Renk şimdilik hâlâ sadece "sage"
-// (yeşil) — kullanıcının özellikle beğendiği renk, layout çeşitliliğinden
-// ayrı bir konu, o yüzden değiştirilmedi.
-export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked", "split", "hero"];
+// "split" (yan yana, önce solda/sonra sağda) kullanıcı geri bildirimiyle
+// kaldırıldı — kodu PhotoLayer'da duruyor, ileride geri eklenebilir.
+// "stacked" + "hero" aktif, renk hâlâ sadece "sage" (yeşil).
+export const TRANSFORMATION_LAYOUTS: TransformationLayout[] = ["stacked", "hero"];
 export const TRANSFORMATION_ACCENTS: TransformationAccent[] = ["sage"];
 
 const ACCENT_COLORS: Record<TransformationAccent, string> = {
