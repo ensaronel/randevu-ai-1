@@ -1,7 +1,8 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { dateKeyTR, formatTL } from "@/lib/date";
+import { dateKeyTR, dayRangeUtcISO, formatTL } from "@/lib/date";
 import { getBusinessName } from "@/lib/businessName";
 import { dedupeReasoning, hasDedupeFired } from "@/lib/dedupe";
+import { computeRevenueForRange } from "@/lib/nightlySummary";
 import type { ShareImagePayload } from "@/lib/ai/shareImage";
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
@@ -83,40 +84,33 @@ export async function runBusinessMilestoneCheckForBusiness(businessId: string): 
 }
 
 /**
- * Dünün mutabakatlı cirosu son `RECORD_DAY_LOOKBACK_DAYS` günün rekoruysa bir
- * "Başarı Anı" üretir. Ham appointments toplamı yerine bilerek gün sonu
- * mutabakatından (`daily_financial_summaries`, "Günü Kapat") gelen kesin rakamı
- * kullanıyor — henüz kapatılmamış bir gün "rekor" ilan edilmesin. Gerçek TL rakamı
- * SADECE `reasoning`de (denetim amaçlı, hiçbir yerde render edilmiyor) tutulur —
- * halka açık görselde/metinde ciro rakamı YOK (bkz. proje kararları).
+ * Dünün cirosu son `RECORD_DAY_LOOKBACK_DAYS` günün rekoruysa bir "Başarı Anı" üretir.
+ * Ciro, uygulama genelindeki TEK ciro kuralıyla (bkz. `computeRevenueForRange`,
+ * nightlySummary.ts'in finans notu için kullandığı gerçek/canlı hesaplama — final_price
+ * varsa o, yoksa planned_price) doğrudan randevulardan hesaplanır. ÖNEMLİ: bu fonksiyon
+ * önceden hiç var olmayan bir "Günü Kapat" özelliğine (`daily_financial_summaries`
+ * tablosu, hiçbir yerde yazılmıyor — 2026-09-20'de doğrulandı) bağımlıydı, bu yüzden
+ * PRATİKTE HİÇ TETİKLENMİYORDU; artık gerçek veriye bağlı. Gerçek TL rakamı SADECE
+ * `reasoning`de (denetim amaçlı, hiçbir yerde render edilmiyor) tutulur — halka açık
+ * görselde/metinde ciro rakamı YOK (bkz. proje kararları).
  */
 export async function runRecordDayCheckForBusiness(businessId: string): Promise<boolean> {
   const admin = createAdminSupabaseClient();
   const yesterdayKey = dateKeyTR(-1);
 
-  const { data: yesterdayRow } = await admin
-    .from("daily_financial_summaries")
-    .select("actual_revenue, reconciled_at")
-    .eq("business_id", businessId)
-    .eq("summary_date", yesterdayKey)
-    .maybeSingle();
-  if (!yesterdayRow?.reconciled_at) return false; // dün henüz "Günü Kapat" yapılmamış
-
-  const yesterdayRevenue = Number(yesterdayRow.actual_revenue);
+  const yesterdayRange = dayRangeUtcISO(-1);
+  const yesterdayRevenue = await computeRevenueForRange(admin, businessId, yesterdayRange.startUtc, yesterdayRange.endUtc);
   if (yesterdayRevenue <= 0) return false;
 
-  const lookbackStart = new Date(Date.now() - RECORD_DAY_LOOKBACK_DAYS * 24 * 60 * 60000).toISOString().slice(0, 10);
-  const { data: history } = await admin
-    .from("daily_financial_summaries")
-    .select("actual_revenue")
-    .eq("business_id", businessId)
-    .neq("summary_date", yesterdayKey)
-    .gte("summary_date", lookbackStart)
-    .not("reconciled_at", "is", null);
+  const history: number[] = [];
+  for (let offset = 2; offset <= RECORD_DAY_LOOKBACK_DAYS + 1; offset++) {
+    const dayRange = dayRangeUtcISO(-offset);
+    const revenue = await computeRevenueForRange(admin, businessId, dayRange.startUtc, dayRange.endUtc);
+    if (revenue > 0) history.push(revenue);
+  }
+  if (history.length < MIN_HISTORY_DAYS_FOR_RECORD) return false;
 
-  if (!history || history.length < MIN_HISTORY_DAYS_FOR_RECORD) return false;
-
-  const previousMax = Math.max(...history.map((row) => Number(row.actual_revenue)));
+  const previousMax = Math.max(...history);
   if (yesterdayRevenue <= previousMax) return false;
 
   const dedupeKey = `record_day:${yesterdayKey}`;

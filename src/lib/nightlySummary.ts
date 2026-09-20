@@ -6,7 +6,7 @@ import { generateFinanceCommentary } from "@/lib/ai/financeCommentary";
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
 
 /** İptal edilmeyen randevuların (final_price varsa o, yoksa planned_price) toplamı — uygulama genelinde tek ciro kuralı. */
-async function computeRevenueForRange(admin: AdminClient, businessId: string, startUtc: string, endUtc: string): Promise<number> {
+export async function computeRevenueForRange(admin: AdminClient, businessId: string, startUtc: string, endUtc: string): Promise<number> {
   const { data } = await admin
     .from("appointments")
     .select("status, appointment_services(planned_price, final_price)")
