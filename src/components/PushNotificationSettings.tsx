@@ -82,7 +82,7 @@ export default function PushNotificationSettings() {
   if (status === "checking" || status === "unsupported") return null;
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-1">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-1">
       <span className="font-semibold text-sm">Bildirimler</span>
       {status === "denied" ? (
         <p className="text-[12.5px] text-ink-muted">

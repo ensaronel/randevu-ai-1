@@ -83,7 +83,7 @@ export default function LoginPage() {
   if (mode === "forgot") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
-        <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
+        <div className="w-full max-w-sm bg-surface border border-border rounded-2xl shadow-card p-6 flex flex-col gap-5">
           <div className="flex flex-col items-center text-center gap-2">
             <Mascot size={56} />
             <div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+                className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 {loading ? "..." : "Sıfırlama Bağlantısı Gönder"}
               </button>
@@ -135,7 +135,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4">
-      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 flex flex-col gap-5">
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl shadow-card p-6 flex flex-col gap-5">
         <div className="flex flex-col items-center text-center gap-2">
           <Mascot size={64} waving />
           <div>
@@ -179,7 +179,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+            className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
           >
             {loading ? "..." : "Giriş Yap"}
           </button>

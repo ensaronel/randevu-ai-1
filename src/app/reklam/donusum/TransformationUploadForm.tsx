@@ -104,7 +104,7 @@ export default function TransformationUploadForm() {
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-[14px] font-bold font-display text-ink">Öncesi/Sonrası Paylaşım</p>
         <button onClick={() => setOpen(false)} className="text-ink-muted text-[12.5px] font-semibold">

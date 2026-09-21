@@ -67,7 +67,7 @@ function ReklamCard({ item, onDeleted }: { item: ReklamItem; onDeleted: (id: str
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-bold text-accent2-ink bg-accent2-soft px-2.5 py-1 rounded-full uppercase tracking-wide">
           {item.typeLabel}

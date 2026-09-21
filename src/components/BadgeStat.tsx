@@ -78,7 +78,7 @@ export default function BadgeStat({
   return (
     <div className={`${bg} rounded-2xl ${isSmall ? "p-3 gap-2" : "p-4 gap-3"} flex flex-col`}>
       <div
-        className={`${badge} ${isSmall ? "w-8 h-8" : "w-9 h-9"} rounded-full flex items-center justify-center shrink-0`}
+        className={`${badge} ${isSmall ? "w-8 h-8" : "w-9 h-9"} rounded-full flex items-center justify-center shrink-0 shadow-[0_1px_3px_rgba(26,32,50,0.12)]`}
       >
         <svg
           width={isSmall ? 16 : 18}

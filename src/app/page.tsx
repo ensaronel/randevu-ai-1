@@ -48,7 +48,7 @@ export default function Home() {
 
         <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl w-full pb-16">
           {FEATURES.map((f) => (
-            <div key={f.title} className="bg-surface border border-border rounded-2xl p-5 flex flex-col gap-2 text-left">
+            <div key={f.title} className="bg-surface border border-border rounded-2xl shadow-card p-5 flex flex-col gap-2 text-left">
               <h2 className="font-display text-lg font-semibold">{f.title}</h2>
               <p className="text-sm text-ink-muted">{f.description}</p>
             </div>

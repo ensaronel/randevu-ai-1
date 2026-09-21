@@ -64,7 +64,7 @@ export default async function AyarlarPage() {
             <Link
               key={link.href}
               href={link.href}
-              className="bg-surface border border-border rounded-2xl p-4 flex items-center gap-3"
+              className="bg-surface border border-border rounded-2xl shadow-card p-4 flex items-center gap-3"
             >
               <div className="w-9 h-9 rounded-full bg-accent-soft text-accent flex items-center justify-center shrink-0">
                 {link.icon}

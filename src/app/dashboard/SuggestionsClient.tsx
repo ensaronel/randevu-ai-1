@@ -103,14 +103,14 @@ export default function SuggestionsClient({
       {error && <p className="text-[12px] text-bad">{error}</p>}
 
       {visibleRisk.length === 0 && !showSurvey && (
-        <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl p-4">
+        <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl shadow-card p-4">
           Şu an bekleyen öneri yok — AI, uzun süredir gelmeyen bir müşteri fark ettiğinde ya da gün
           sonunda anket önerisi hazırladığında burada çıkacak.
         </p>
       )}
 
       {visibleRisk.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3">
           <div className="flex items-center gap-2.5">
             <IconCircle tone="risk">
               <circle cx="12" cy="12" r="8.5" />
@@ -149,7 +149,7 @@ export default function SuggestionsClient({
       )}
 
       {showSurvey && dailySurvey && (
-        <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3">
           <div className="flex items-center gap-2.5">
             <IconCircle tone="survey">
               <path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v8A2.5 2.5 0 0117.5 16H10l-4 4v-4H6.5A2.5 2.5 0 014 13.5z" />

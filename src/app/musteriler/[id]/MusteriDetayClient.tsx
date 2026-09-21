@@ -163,7 +163,7 @@ export default function MusteriDetayClient({
         />
       </div>
 
-      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+      <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Profil</p>
 
         <div className="flex flex-col gap-1.5">
@@ -197,7 +197,7 @@ export default function MusteriDetayClient({
           <button
             onClick={saveProfile}
             disabled={saving}
-            className="flex-1 bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+            className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
           >
             Kaydet
           </button>
@@ -221,7 +221,7 @@ export default function MusteriDetayClient({
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">AI Öneri Geçmişi</p>
         {actionHistory.length === 0 && <EmptyState message="Bu müşteri için henüz AI önerisi yok." />}
         {actionHistory.map((a) => (
-          <div key={a.id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
+          <div key={a.id} className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">
                 {TYPE_LABELS[a.type] ?? a.type}
@@ -248,7 +248,7 @@ export default function MusteriDetayClient({
                 <button
                   onClick={() => resolveAction(a.id, "approved")}
                   disabled={busyActionId === a.id}
-                  className="flex-1 bg-accent text-white rounded-lg py-2 text-[12.5px] font-semibold disabled:opacity-50"
+                  className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2 text-[12.5px] font-semibold disabled:opacity-50"
                 >
                   Onayla ve Gönder
                 </button>
@@ -271,7 +271,7 @@ export default function MusteriDetayClient({
         {appointments.map((a) => {
           const total = a.services.reduce((s, svc) => s + svc.price, 0);
           return (
-            <div key={a.id} className="bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-1.5">
+            <div key={a.id} className="bg-surface border border-border rounded-2xl shadow-card p-3.5 flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-semibold capitalize">
                   {formatDateTR(a.starts_at)}, {formatTimeTR(a.starts_at)}

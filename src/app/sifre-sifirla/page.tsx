@@ -50,7 +50,7 @@ export default function SifreSifirlaPage() {
         {done ? (
           <button
             onClick={() => router.push("/login")}
-            className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold"
+            className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold"
           >
             Giriş sayfasına dön
           </button>
@@ -78,7 +78,7 @@ export default function SifreSifirlaPage() {
             <button
               type="submit"
               disabled={loading}
-              className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+              className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
             >
               {loading ? "..." : "Şifreyi Güncelle"}
             </button>

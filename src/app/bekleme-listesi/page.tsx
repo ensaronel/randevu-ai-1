@@ -63,7 +63,7 @@ export default async function BeklemeListesiPage() {
             const customer = one(entry.customer);
             const service = one(entry.service);
             return (
-              <div key={entry.id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-1">
+              <div key={entry.id} className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-1">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-sm">{customer?.full_name ?? "Müşteri"}</span>
                   <span className="text-[12px] text-ink-muted">{customer?.phone}</span>

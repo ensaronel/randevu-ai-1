@@ -333,7 +333,7 @@ function RangeCalculator({
           </div>
 
           {hasPaymentSplit && (
-            <div className="bg-surface border border-border rounded-2xl p-3.5 flex items-center gap-4">
+            <div className="bg-surface border border-border rounded-2xl shadow-card p-3.5 flex items-center gap-4">
               <div className="flex items-center gap-1.5 text-[12.5px]">
                 <span className="w-2 h-2 rounded-full bg-good-ink" />
                 <span className="text-ink-muted">Nakit</span>
@@ -355,7 +355,7 @@ function RangeCalculator({
           )}
 
           {summary.dailyChart && summary.dailyChart.length > 1 && (
-            <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+            <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
               <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Günlük Ciro</p>
               <RangeRevenueChart data={summary.dailyChart} />
             </div>
@@ -427,7 +427,7 @@ function OneTimeExpensesSection({
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Tek Seferlik Giderler</p>
       <p className="text-[12px] text-ink-muted -mt-1.5">
         Tamirat, ekipman alımı gibi bir kerelik giderler — seçili tarih aralığındakiler listelenir.
@@ -490,7 +490,7 @@ function OneTimeExpensesSection({
           <button
             onClick={addExpense}
             disabled={adding || !descDraft.trim() || !amountDraft.trim()}
-            className="bg-accent text-white rounded-lg px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
+            className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
           >
             Ekle
           </button>
@@ -572,7 +572,7 @@ function OneTimeSalesSection({
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
       <p className="text-[12.5px] font-bold text-good-ink uppercase tracking-wide">Ürün / Ek Satış</p>
       <p className="text-[12px] text-ink-muted -mt-1.5">
         Randevu dışı ürün/ek satışlar — seçilirse personelin primi de hesaba katılır.
@@ -662,7 +662,7 @@ function OneTimeSalesSection({
           <button
             onClick={addSale}
             disabled={adding || !descDraft.trim() || !amountDraft.trim()}
-            className="bg-accent text-white rounded-lg px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
+            className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
           >
             Ekle
           </button>
@@ -758,7 +758,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Sabit Giderler</p>
       <p className="text-[12px] text-ink-muted -mt-1.5">
         Kira, şampuan gibi her ay tekrar eden giderler — bir kere gir, zam gelince tutarını güncelle.
@@ -843,7 +843,7 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
           <button
             onClick={addFixedExpense}
             disabled={adding || !descDraft.trim() || !amountDraft.trim()}
-            className="bg-accent text-white rounded-lg px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
+            className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
           >
             Ekle
           </button>

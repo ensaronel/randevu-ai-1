@@ -75,7 +75,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 lg:max-w-md">
+      <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-2.5 lg:max-w-md">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Hizmet</p>
         <input
           placeholder="Hizmet adı"
@@ -108,7 +108,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         <button
           onClick={addService}
           disabled={saving}
-          className="bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Ekleniyor..." : "Hizmeti Ekle"}
         </button>
@@ -123,7 +123,7 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         {services.map((service) => (
           <div
             key={service.id}
-            className={`bg-surface border border-border rounded-2xl p-3.5 flex items-center justify-between ${
+            className={`bg-surface border border-border rounded-2xl shadow-card p-3.5 flex items-center justify-between ${
               service.status === "inactive" ? "opacity-50" : ""
             }`}
           >

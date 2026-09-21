@@ -46,7 +46,7 @@ export default async function KasaPage() {
         />
 
         {commissions.length > 0 && (
-          <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-2">
+          <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-2.5 mt-2">
             <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bu Ayki Personel Primleri</p>
             <div className="flex flex-col gap-2.5 max-h-64 overflow-y-auto pr-0.5">
               {commissions.map((c) => (

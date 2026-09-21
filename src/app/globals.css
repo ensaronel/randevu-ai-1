@@ -29,6 +29,10 @@
   --block1-ink: oklch(45% 0.13 25);
   --block2: oklch(92% 0.05 165);
   --block2-ink: oklch(42% 0.09 165);
+  /* Kartların düz zeminden hafifçe kalkması için tutarlı, sıcak tonlu (siyah
+     yerine --ink bazlı) iki katmanlı gölge — tüm "bg-surface" kartlarda ortak
+     kullanılıyor, bkz. .shadow-card. */
+  --shadow-card: 0 1px 2px rgba(26, 32, 50, 0.05), 0 14px 28px -18px rgba(26, 32, 50, 0.22);
 }
 
 @theme inline {
@@ -60,10 +64,36 @@
   --font-display: var(--font-lora);
 }
 
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+/* Düz krem zemin yerine, marka renklerinden (lacivert/amber) çok hafif iki
+   "bloom" — sayfa artık tek renk bir dikdörtgen değil, hafif bir atmosferi
+   olan bir zemin üzerinde duruyor. Kartlar zaten beyaz+gölge olduğu için
+   okunabilirlik etkilenmiyor, sadece boşluklarda hissediliyor. */
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1100px 550px at 12% -8%, color-mix(in oklch, var(--accent) 7%, transparent), transparent 60%),
+    radial-gradient(900px 480px at 102% 0%, color-mix(in oklch, var(--accent2) 9%, transparent), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
+/* Aktif/hover durumlarına geçiş yumuşaklığı — önceden her renk/opaklık
+   değişimi aniden oluyordu (özellikle sidebar/bottom-nav aktif sekme
+   renklenmesi ve buton hover'ları), bu tek kural tüm uygulamaya sirayet
+   ediyor. */
+button,
+a {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 /* Sayfa geçişi/açılış yükleme sahnesi (bkz. LoadingScreen.tsx) - onceden burada

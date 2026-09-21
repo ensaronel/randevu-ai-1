@@ -65,7 +65,7 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
       />
 
       {showAddForm ? (
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
           <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Müşteri</p>
           <input
             placeholder="Ad Soyad"
@@ -84,7 +84,7 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
             <button
               onClick={addCustomer}
               disabled={saving}
-              className="flex-1 bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+              className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
             >
               {saving ? "Ekleniyor..." : "Kaydet"}
             </button>
@@ -122,7 +122,7 @@ export default function MusterilerClient({ customers }: { customers: CustomerLis
           <Link
             key={c.id}
             href={`/musteriler/${c.id}`}
-            className="bg-surface border border-border rounded-2xl p-3.5 flex items-center justify-between gap-3"
+            className="bg-surface border border-border rounded-2xl shadow-card p-3.5 flex items-center justify-between gap-3"
           >
             <div className="flex flex-col gap-0.5 min-w-0">
               <div className="flex items-center gap-1.5">

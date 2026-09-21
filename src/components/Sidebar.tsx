@@ -102,7 +102,7 @@ export default function Sidebar({ businessName }: { businessName: string }) {
               key={item.href}
               href={item.href}
               className={`flex items-center gap-3 px-3.5 py-2.5 rounded-[10px] text-[13.5px] font-semibold ${
-                active ? "bg-accent-soft text-accent-ink" : "text-ink-muted hover:bg-bg"
+                active ? "bg-accent-soft text-accent-ink shadow-[0_1px_2px_rgba(26,32,50,0.08)]" : "text-ink-muted hover:bg-bg"
               }`}
             >
               {item.icon}

@@ -299,7 +299,7 @@ function WeekRevenueChart({ data }: { data: { label: string; revenue: number; is
   const max = Math.max(...data.map((d) => d.revenue), 1);
   const total = data.reduce((sum, d) => sum + d.revenue, 0);
   return (
-    <div className="bg-surface border border-border rounded-2xl p-4 lg:p-5 flex flex-col gap-4">
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-4">
       <div>
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bu Hafta</p>
         <p className="text-[22px] font-bold font-display">{formatTL(total)}</p>

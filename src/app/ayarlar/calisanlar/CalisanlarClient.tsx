@@ -88,7 +88,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
     <div className="flex flex-col gap-4">
       {error && <p className="text-[12px] text-bad">{error}</p>}
       {showAddForm ? (
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
           <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Yeni Personel</p>
           <input
             placeholder="Ad Soyad"
@@ -108,7 +108,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
             <button
               onClick={addStaff}
               disabled={saving}
-              className="flex-1 bg-accent text-white rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
+              className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2.5 text-sm font-semibold disabled:opacity-50"
             >
               {saving ? "Ekleniyor..." : "Personeli Ekle"}
             </button>
@@ -135,7 +135,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
           return (
             <div
               key={member.id}
-              className={`bg-surface border border-border rounded-2xl p-3.5 flex flex-col gap-2.5 ${
+              className={`bg-surface border border-border rounded-2xl shadow-card p-3.5 flex flex-col gap-2.5 ${
                 member.status === "inactive" ? "opacity-50" : ""
               }`}
             >
@@ -196,7 +196,7 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
                     />
                     <button
                       onClick={() => addLeaveDate(member)}
-                      className="bg-accent text-white rounded-lg px-4 text-sm font-semibold"
+                      className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] px-4 text-sm font-semibold"
                     >
                       Ekle
                     </button>
