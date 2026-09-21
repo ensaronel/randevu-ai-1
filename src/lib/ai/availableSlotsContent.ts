@@ -105,13 +105,14 @@ export async function runAvailableSlotsAnnouncementForBusiness(businessId: strin
     });
 
     const shareImage: ShareImagePayload = {
+      kind: "slots",
       accent: "sage",
       businessName,
       eyebrow: day.dayLabel === "bugün" ? "Bugün Boş Yer Var" : "Yarın Boş Yer Var",
       big: day.dayLabel === "bugün" ? "Bugün" : "Yarın",
       bigSub: service.name,
       subtitle: caption,
-      contextLine: times.join(" · "),
+      chips: times,
     };
 
     const { error } = await admin.from("action_objects").insert({

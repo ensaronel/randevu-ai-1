@@ -67,14 +67,14 @@ export async function runBusinessMilestoneCheckForBusiness(businessId: string): 
       reasoningDetail: `işletme toplam ${count} randevuya ulaştı (kilometre taşı: ${threshold}).`,
       suggestion: `İşletmeniz toplam ${threshold}. randevusunu tamamladı — kutlamaya değer bir kilometre taşı!`,
       shareImage: {
+        kind: "achievement",
         accent: "amber",
         businessName,
         eyebrow: "Kilometre Taşı",
         big: `${threshold}.`,
         bigSub: "Randevu",
         subtitle: "Bugüne kadar bize güvenen herkese teşekkürler! 💛",
-        contextLine: "Randevu AI ile büyüyoruz",
-        waving: true,
+        celebrating: true,
       },
     });
     return true;
@@ -122,13 +122,13 @@ export async function runRecordDayCheckForBusiness(businessId: string): Promise<
     reasoningDetail: `dünkü ciro ${formatTL(yesterdayRevenue)}, önceki ${history.length} günün rekoru ${formatTL(previousMax)} idi.`,
     suggestion: "Dün son 30 günün en yoğun günüydü — bize güvenen herkese teşekkürler!",
     shareImage: {
+      kind: "achievement",
       accent: "amber",
       businessName,
       eyebrow: "Ayın Rekoru",
       big: "Rekor Gün!",
       subtitle: "Dün ayın en yoğun günlerinden biriydi, bize güvenen herkese teşekkürler! 🎉",
-      contextLine: "Randevu AI ile büyüyoruz",
-      waving: true,
+      celebrating: true,
     },
   });
   return true;

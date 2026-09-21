@@ -61,10 +61,11 @@ export async function runSocialProofForBusiness(businessId: string): Promise<boo
   const initials = getInitials(customerName);
 
   const shareImage: ShareImagePayload = {
+    kind: "social_proof",
     accent: "amber",
     businessName,
     eyebrow: "Müşterilerimiz Ne Diyor?",
-    big: `"${selection.quote}"`,
+    big: selection.quote,
     subtitle: `— ${initials}`,
     contextLine: formatDateTR(`${todayKey}T12:00:00+03:00`),
   };

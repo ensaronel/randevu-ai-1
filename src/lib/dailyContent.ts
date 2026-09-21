@@ -71,6 +71,7 @@ export async function runSpotlightContentForBusiness(businessId: string): Promis
     const caption = await generateSpotlightCaption({ businessName, kind: "service", subjectName: service.name, meta });
     suggestion = caption;
     payload = {
+      kind: "spotlight",
       accent: "sage",
       businessName,
       eyebrow: "Günün Hizmeti",
@@ -84,6 +85,7 @@ export async function runSpotlightContentForBusiness(businessId: string): Promis
     const caption = await generateSpotlightCaption({ businessName, kind: "staff", subjectName: member.full_name });
     suggestion = caption;
     payload = {
+      kind: "spotlight",
       accent: "sage",
       businessName,
       eyebrow: "Uzmanlarımızı Tanıyın",
@@ -118,6 +120,7 @@ export async function runTipContentForBusiness(businessId: string): Promise<bool
   const caption = await generateTipFraming({ businessName, tipTitle: tip.title, tipBody: tip.body });
 
   const shareImage: ShareImagePayload = {
+    kind: "tip",
     accent: "sage",
     businessName,
     eyebrow: "Günün Bakım İpucu",

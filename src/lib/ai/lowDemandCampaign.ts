@@ -84,6 +84,7 @@ export async function runLowDemandCampaignCheckForBusiness(businessId: string): 
   });
 
   const shareImage: ShareImagePayload = {
+    kind: "campaign",
     accent: "rose",
     businessName,
     eyebrow: "Fırsat",
