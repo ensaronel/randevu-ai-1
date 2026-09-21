@@ -183,7 +183,9 @@ function FloatingBadge({ kind, colors, waving, celebrating }: { kind: ShareImage
     );
   }
 
-  const Icon = KIND_ICON[kind];
+  // Eski (ikon kişiselleştirmesi öncesi) kayıtlarda kind hiç yoktu — KIND_ICON[undefined]
+  // sessizce boş dönüp rozetin içini boş bırakıyordu. Artık her zaman bir ikon garanti.
+  const Icon = KIND_ICON[kind] ?? SparkleIcon;
   return (
     <div
       style={{
