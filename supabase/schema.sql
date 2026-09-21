@@ -796,3 +796,11 @@ alter table one_time_sales enable row level security;
 create policy "own one_time_sales" on one_time_sales
   for all using (business_id = current_business_id())
   with check (business_id = current_business_id());
+
+-- ÖNEMLİ: satır 629-631'deki `grant ... on all tables in schema public`
+-- SADECE o an var olan tablolara uygulandı, bu proje default privileges
+-- kullanmıyor — o yüzden sonradan eklenen her tabloya (bu dahil) grant'i
+-- AYRICA, açıkça vermek gerekiyor. Bu satır atlanınca "permission denied
+-- for table" hatasıyla ilgili TÜM sorgular (Kasa'nın tamamı dahil) çöküyor.
+grant select, insert, update, delete on one_time_sales to authenticated;
+grant all on one_time_sales to service_role;
