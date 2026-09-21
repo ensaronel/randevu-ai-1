@@ -147,6 +147,18 @@ export interface OneTimeExpense {
   created_at: string;
 }
 
+export interface OneTimeSale {
+  id: string;
+  business_id: string;
+  sale_date: string;
+  description: string;
+  amount: number;
+  staff_id: string | null;
+  commission_rate_snapshot: number | null;
+  payment_method: "nakit" | "kart" | null;
+  created_at: string;
+}
+
 export interface ActionObject {
   id: string;
   business_id: string;

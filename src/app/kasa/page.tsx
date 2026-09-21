@@ -7,10 +7,9 @@ import type { Business, FixedExpense, Staff } from "@/types/database";
 
 async function loadMonthlyCommissions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  business: Business
+  business: Business,
+  staffList: Staff[]
 ) {
-  const { data: staffData } = await supabase.from("staff").select("*").eq("business_id", business.id).eq("status", "active");
-  const staffList = (staffData ?? []) as Staff[];
   const metrics = await loadStaffMonthlyMetrics(supabase, business, staffList);
 
   return metrics
@@ -22,13 +21,16 @@ async function loadMonthlyCommissions(
 export default async function KasaPage() {
   const { business, supabase } = await getBusinessOwnerForPage();
 
+  const { data: staffData } = await supabase.from("staff").select("*").eq("business_id", business.id).eq("status", "active");
+  const staffList = (staffData ?? []) as Staff[];
+
   const [{ data: fixedExpenseData }, commissions] = await Promise.all([
     supabase
       .from("fixed_expenses")
       .select("*")
       .eq("business_id", business.id)
       .order("created_at", { ascending: true }),
-    loadMonthlyCommissions(supabase, business),
+    loadMonthlyCommissions(supabase, business, staffList),
   ]);
 
   const fixedExpenses = (fixedExpenseData ?? []) as FixedExpense[];
@@ -40,7 +42,10 @@ export default async function KasaPage() {
           <h1 className="text-xl font-semibold capitalize">{formatDateTR(new Date().toISOString())}</h1>
         </div>
 
-        <KasaClient initialFixedExpenses={fixedExpenses} />
+        <KasaClient
+          initialFixedExpenses={fixedExpenses}
+          staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name }))}
+        />
 
         {commissions.length > 0 && (
           <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2.5 mt-2">

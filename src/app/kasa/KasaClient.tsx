@@ -5,7 +5,12 @@ import { formatTL } from "@/lib/date";
 import { parseTLInput } from "@/lib/money";
 import BadgeStat from "@/components/BadgeStat";
 import EmptyState from "@/components/EmptyState";
-import type { ExpenseCategory, FixedExpense, OneTimeExpense } from "@/types/database";
+import type { ExpenseCategory, FixedExpense, OneTimeExpense, OneTimeSale } from "@/types/database";
+
+interface StaffOption {
+  id: string;
+  full_name: string;
+}
 
 /** Tarayıcının yerel (Türkiye) gününe göre "YYYY-MM-DD" — toISOString() UTC'ye kaydırdığı için kullanılmadı. */
 function toDateKey(d: Date): string {
@@ -107,6 +112,7 @@ interface RangeSummary {
   previousRevenue: number;
   revenueChangePercent: number | null;
   oneTimeExpenses: OneTimeExpense[];
+  oneTimeSales: OneTimeSale[];
   dailyChart: { date: string; revenue: number }[] | null;
 }
 
@@ -410,6 +416,180 @@ function OneTimeExpensesSection({
   );
 }
 
+function OneTimeSalesSection({
+  range,
+  items,
+  staffList,
+  onChanged,
+}: {
+  range: { from: string; to: string };
+  items: OneTimeSale[];
+  staffList: StaffOption[];
+  onChanged: () => void;
+}) {
+  const [dateDraft, setDateDraft] = useState(range.to);
+  const [descDraft, setDescDraft] = useState("");
+  const [amountDraft, setAmountDraft] = useState("");
+  const [staffDraft, setStaffDraft] = useState("");
+  const [paymentDraft, setPaymentDraft] = useState<"nakit" | "kart" | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const total = items.reduce((sum, s) => sum + Number(s.amount), 0);
+  const staffName = (id: string | null) => staffList.find((s) => s.id === id)?.full_name ?? "İşletme (genel)";
+
+  async function addSale() {
+    const amount = parseTLInput(amountDraft);
+    const description = descDraft.trim();
+    if (!description || Number.isNaN(amount) || amount < 0 || !dateDraft) return;
+
+    setAdding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/kasa/one-time-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sale_date: dateDraft,
+          description,
+          amount,
+          staff_id: staffDraft || null,
+          payment_method: paymentDraft,
+        }),
+      });
+      if (res.ok) {
+        setDescDraft("");
+        setAmountDraft("");
+        onChanged();
+      } else {
+        setError("Satış eklenemedi, lütfen tekrar dene.");
+      }
+    } catch {
+      setError("Satış eklenemedi, lütfen tekrar dene.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function removeSale(id: string) {
+    setRemovingId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/kasa/one-time-sales/${id}`, { method: "DELETE" });
+      if (res.ok) onChanged();
+      else setError("Satış silinemedi, lütfen tekrar dene.");
+    } catch {
+      setError("Satış silinemedi, lütfen tekrar dene.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
+      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Ürün / Ek Satış</p>
+      <p className="text-[12px] text-ink-muted -mt-1.5">
+        Randevu dışı ürün/ek satışlar — seçilirse personelin primi de hesaba katılır.
+      </p>
+
+      {items.length === 0 ? (
+        <EmptyState message="Seçili aralıkta ürün/ek satış yok." />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {items.map((s) => (
+            <div key={s.id} className="flex items-center gap-2.5">
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] text-ink truncate">{s.description}</p>
+                <p className="text-[11px] text-ink-muted">
+                  {s.sale_date} · {staffName(s.staff_id)}
+                </p>
+              </div>
+              <span className="font-semibold font-display text-[13px] shrink-0">{formatTL(Number(s.amount))}</span>
+              <button
+                onClick={() => removeSale(s.id)}
+                disabled={removingId === s.id}
+                aria-label="Satışı sil"
+                className="text-ink-muted disabled:opacity-50 shrink-0"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
+            <span>Aralık toplamı</span>
+            <span className="font-display">{formatTL(total)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateDraft}
+            onChange={(e) => setDateDraft(e.target.value)}
+            className="border border-border rounded-lg px-2 py-2 text-[13px] shrink-0"
+          />
+          <select
+            value={staffDraft}
+            onChange={(e) => setStaffDraft(e.target.value)}
+            className="flex-1 min-w-0 border border-border rounded-lg px-2 py-2 text-[13px] bg-surface"
+          >
+            <option value="">İşletme (genel)</option>
+            {staffList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input
+            value={descDraft}
+            onChange={(e) => setDescDraft(e.target.value)}
+            placeholder="Açıklama (ör. Bakım kremi)"
+            className="flex-1 min-w-0 border border-border rounded-lg px-2.5 py-2 text-[13px]"
+          />
+          <input
+            value={amountDraft}
+            onChange={(e) => setAmountDraft(e.target.value)}
+            inputMode="decimal"
+            placeholder="Tutar"
+            className="w-24 border border-border rounded-lg px-2 py-2 text-right text-[13px]"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex gap-1.5 flex-1">
+            {(["nakit", "kart"] as const).map((method) => (
+              <button
+                key={method}
+                type="button"
+                onClick={() => setPaymentDraft((prev) => (prev === method ? null : method))}
+                className={`px-2.5 py-1.5 rounded-full text-[12px] font-semibold border ${
+                  paymentDraft === method ? "bg-accent text-white border-accent" : "border-border text-ink-muted"
+                }`}
+              >
+                {method === "nakit" ? "Nakit" : "Kart"}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={addSale}
+            disabled={adding || !descDraft.trim() || !amountDraft.trim()}
+            className="bg-accent text-white rounded-lg px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50 shrink-0"
+          >
+            Ekle
+          </button>
+        </div>
+        {error && <p className="text-[12px] text-bad">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedExpense[] }) {
   const [items, setItems] = useState(initialFixedExpenses);
   const [descDraft, setDescDraft] = useState("");
@@ -592,7 +772,13 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   );
 }
 
-export default function KasaClient({ initialFixedExpenses }: { initialFixedExpenses: FixedExpense[] }) {
+export default function KasaClient({
+  initialFixedExpenses,
+  staffList,
+}: {
+  initialFixedExpenses: FixedExpense[];
+  staffList: StaffOption[];
+}) {
   const [preset, setPreset] = useState<PresetKey>("today");
   const [customFrom, setCustomFrom] = useState(toDateKey(new Date()));
   const [customTo, setCustomTo] = useState(toDateKey(new Date()));
@@ -637,12 +823,21 @@ export default function KasaClient({ initialFixedExpenses }: { initialFixedExpen
       />
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
         {summary && summary.from === range.from && summary.to === range.to && (
-          <OneTimeExpensesSection
-            key={range.to}
-            range={range}
-            items={summary.oneTimeExpenses}
-            onChanged={() => setRefreshTick((t) => t + 1)}
-          />
+          <>
+            <OneTimeExpensesSection
+              key={`exp-${range.to}`}
+              range={range}
+              items={summary.oneTimeExpenses}
+              onChanged={() => setRefreshTick((t) => t + 1)}
+            />
+            <OneTimeSalesSection
+              key={`sale-${range.to}`}
+              range={range}
+              items={summary.oneTimeSales}
+              staffList={staffList}
+              onChanged={() => setRefreshTick((t) => t + 1)}
+            />
+          </>
         )}
         <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
       </div>

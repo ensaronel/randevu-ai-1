@@ -537,15 +537,19 @@ async function computeRevenueTotals(from: string, to: string, ctx: ToolContext):
   const { startUtc, endUtc } = rangeToUtc(from, to);
   const admin = createAdminSupabaseClient();
 
-  const { data } = await admin
-    .from("appointments")
-    .select("status, attendance, starts_at, appointment_services(planned_price, final_price)")
-    .eq("business_id", ctx.businessId)
-    .gte("starts_at", startUtc)
-    .lte("starts_at", endUtc);
+  const [{ data }, { data: salesData }] = await Promise.all([
+    admin
+      .from("appointments")
+      .select("status, attendance, starts_at, appointment_services(planned_price, final_price)")
+      .eq("business_id", ctx.businessId)
+      .gte("starts_at", startUtc)
+      .lte("starts_at", endUtc),
+    admin.from("one_time_sales").select("amount").eq("business_id", ctx.businessId).gte("sale_date", from).lte("sale_date", to),
+  ]);
 
   const rows = data ?? [];
-  if (rows.length === 0) return null;
+  const salesRows = salesData ?? [];
+  if (rows.length === 0 && salesRows.length === 0) return null;
 
   let revenue = 0;
   let appointmentCount = 0;
@@ -561,6 +565,10 @@ async function computeRevenueTotals(from: string, to: string, ctx: ToolContext):
     for (const svc of row.appointment_services) {
       revenue += Number(svc.final_price ?? svc.planned_price);
     }
+  }
+
+  for (const sale of salesRows) {
+    revenue += Number(sale.amount);
   }
 
   return { revenue, appointments: appointmentCount, cancelled: cancelledCount };
@@ -883,12 +891,21 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   }
 
   const { startUtc, endUtc } = rangeToUtc(from, to);
-  const { data: apptRows } = await admin
-    .from("appointments")
-    .select("status, attendance, starts_at, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
-    .eq("business_id", ctx.businessId)
-    .gte("starts_at", startUtc)
-    .lte("starts_at", endUtc);
+  const [{ data: apptRows }, { data: salesRows }] = await Promise.all([
+    admin
+      .from("appointments")
+      .select("status, attendance, starts_at, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
+      .eq("business_id", ctx.businessId)
+      .gte("starts_at", startUtc)
+      .lte("starts_at", endUtc),
+    admin
+      .from("one_time_sales")
+      .select("amount")
+      .eq("business_id", ctx.businessId)
+      .eq("staff_id", staff.id)
+      .gte("sale_date", from)
+      .lte("sale_date", to),
+  ]);
 
   let revenue = 0;
   let bookedMinutes = 0;
@@ -910,11 +927,16 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
     }
   }
 
+  const salesCount = salesRows?.length ?? 0;
+  for (const sale of salesRows ?? []) {
+    revenue += Number(sale.amount);
+  }
+
   const availableMinutes = await computeAvailableMinutes(admin, staff.id, from, to, staff.working_hours, staff.leave_dates ?? []);
   const occupancyPercent = availableMinutes > 0 ? Math.round((bookedMinutes / availableMinutes) * 100) : 0;
   const cancellationRatePercent = totalAssignments > 0 ? Math.round((cancelledCount / totalAssignments) * 100) : 0;
 
-  if (totalAssignments === 0) {
+  if (totalAssignments === 0 && salesCount === 0) {
     return JSON.stringify({ no_data: true, message: `${staff.full_name} için bu tarih aralığında hiç randevu yok.` });
   }
 

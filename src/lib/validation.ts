@@ -86,6 +86,14 @@ export const oneTimeExpenseCreateSchema = z.object({
   category: expenseCategorySchema,
 });
 
+export const oneTimeSaleCreateSchema = z.object({
+  sale_date: z.iso.date(),
+  description: z.string().trim().min(1).max(200),
+  amount: z.number().nonnegative(),
+  staff_id: z.string().uuid().nullable().optional(),
+  payment_method: z.enum(["nakit", "kart"]).nullable().optional(),
+});
+
 export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });

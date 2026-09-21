@@ -766,3 +766,33 @@ grant select, insert, update, delete on payments to service_role;
 -- Supabase Storage bucket'ı gerekmiyor.
 -- ============================================================
 alter table action_objects add column share_image jsonb;
+
+-- ============================================================
+-- Ürün/ek satış takibi (2026-09-21). Kasa'daki ciro şimdiye kadar sadece
+-- randevu hizmetlerinden hesaplanıyordu; güzellik merkezleri randevu dışı
+-- ürün de sattığı için bu satışları ayrı bir tabloda tutuyoruz.
+-- one_time_expenses ile aynı desende (kategori yok, serbest metin +
+-- tutar), farkı: personel atfedilebiliyor ve o personelin prim oranı
+-- appointment_services.commission_rate_snapshot ile AYNI mantıkla
+-- donduruluyor (sonradan oran değişse bile geçmiş satışın primi bozulmaz).
+-- staff_id NULLABLE: bazı satışlar belirli bir personele atfedilemeyebilir.
+-- ============================================================
+create table one_time_sales (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  sale_date date not null,
+  description text not null,
+  amount numeric(12,2) not null check (amount >= 0),
+  staff_id uuid references staff(id),
+  commission_rate_snapshot numeric(5,2),
+  payment_method text check (payment_method in ('nakit','kart') or payment_method is null),
+  created_at timestamptz not null default now()
+);
+
+create index idx_one_time_sales_business_date on one_time_sales(business_id, sale_date);
+create index idx_one_time_sales_staff on one_time_sales(staff_id);
+
+alter table one_time_sales enable row level security;
+create policy "own one_time_sales" on one_time_sales
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());

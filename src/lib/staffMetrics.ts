@@ -1,5 +1,5 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { monthRangeUtcISO, dateKeyTR } from "@/lib/date";
+import { monthRangeUtcISO, dateKeyTR, dateKeyFromIso, addDaysToKey } from "@/lib/date";
 import { parseTimeToMinutes } from "@/lib/capacity";
 import { isRealizedRevenue } from "@/lib/revenue";
 import type { Business, Staff } from "@/types/database";
@@ -71,17 +71,28 @@ export async function loadStaffMonthlyMetrics(
   staffList: Staff[]
 ): Promise<StaffMonthlyMetrics[]> {
   const { startUtc, endUtc } = monthRangeUtcISO();
+  const fromKey = dateKeyFromIso(startUtc);
+  const toKey = addDaysToKey(dateKeyFromIso(endUtc), -1);
 
-  const { data } = await supabase
-    .from("appointments")
-    .select(
-      "status, attendance, starts_at, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot, service:services(duration_minutes))"
-    )
-    .eq("business_id", business.id)
-    .gte("starts_at", startUtc)
-    .lt("starts_at", endUtc);
+  const [{ data }, { data: salesData }] = await Promise.all([
+    supabase
+      .from("appointments")
+      .select(
+        "status, attendance, starts_at, appointment_services(planned_price, final_price, staff_id, commission_rate_snapshot, service:services(duration_minutes))"
+      )
+      .eq("business_id", business.id)
+      .gte("starts_at", startUtc)
+      .lt("starts_at", endUtc),
+    supabase
+      .from("one_time_sales")
+      .select("amount, staff_id, commission_rate_snapshot")
+      .eq("business_id", business.id)
+      .gte("sale_date", fromKey)
+      .lte("sale_date", toKey),
+  ]);
 
   const rows = (data ?? []) as unknown as AppointmentRow[];
+  const salesRows = (salesData ?? []) as { amount: number; staff_id: string | null; commission_rate_snapshot: number | null }[];
 
   return staffList.map((staff) => {
     let revenue = 0;
@@ -105,6 +116,14 @@ export async function loadStaffMonthlyMetrics(
         commission += price * (Number(rate) / 100);
         bookedMinutes += serviceDuration(svc.service);
       }
+    }
+
+    for (const sale of salesRows) {
+      if (sale.staff_id !== staff.id) continue;
+      const amount = Number(sale.amount);
+      const rate = sale.commission_rate_snapshot ?? staff.commission_rate;
+      revenue += amount;
+      commission += amount * (Number(rate) / 100);
     }
 
     const availableMinutes = computeAvailableMinutesMonthToDate(staff, business);

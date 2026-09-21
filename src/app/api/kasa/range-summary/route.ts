@@ -14,6 +14,8 @@ type ApptRow = {
   appointment_services: { planned_price: number; final_price: number | null; payment_method: string | null }[];
 };
 
+type SaleRow = { sale_date: string; amount: number; payment_method: string | null };
+
 function revenueOf(appointments: ApptRow[]): number {
   return appointments
     .filter((a) => isRealizedRevenue(a.status, a.attendance, a.starts_at))
@@ -21,6 +23,10 @@ function revenueOf(appointments: ApptRow[]): number {
       (sum, a) => sum + a.appointment_services.reduce((s, svc) => s + Number(svc.final_price ?? svc.planned_price), 0),
       0
     );
+}
+
+function salesRevenueOf(sales: SaleRow[]): number {
+  return sales.reduce((sum, s) => sum + Number(s.amount), 0);
 }
 
 /**
@@ -51,6 +57,8 @@ export async function GET(request: NextRequest) {
       { data: previousAppointments, error: prevApptError },
       { data: fixedExpenses, error: fixedError },
       { data: oneTimeExpenses, error: oneTimeError },
+      { data: sales, error: salesError },
+      { data: previousSales, error: prevSalesError },
     ] = await Promise.all([
       supabase
         .from("appointments")
@@ -72,15 +80,32 @@ export async function GET(request: NextRequest) {
         .gte("expense_date", from)
         .lte("expense_date", to)
         .order("expense_date", { ascending: false }),
+      supabase
+        .from("one_time_sales")
+        .select("*")
+        .eq("business_id", owner.business_id)
+        .gte("sale_date", from)
+        .lte("sale_date", to)
+        .order("sale_date", { ascending: false }),
+      supabase
+        .from("one_time_sales")
+        .select("sale_date, amount, payment_method")
+        .eq("business_id", owner.business_id)
+        .gte("sale_date", previousFrom)
+        .lte("sale_date", previousTo),
     ]);
     if (apptError) throw apptError;
     if (prevApptError) throw prevApptError;
     if (fixedError) throw fixedError;
     if (oneTimeError) throw oneTimeError;
+    if (salesError) throw salesError;
+    if (prevSalesError) throw prevSalesError;
 
     const apptRows = (appointments ?? []) as ApptRow[];
-    const revenue = revenueOf(apptRows);
-    const previousRevenue = revenueOf((previousAppointments ?? []) as ApptRow[]);
+    const saleRows = (sales ?? []) as SaleRow[];
+    const revenue = revenueOf(apptRows) + salesRevenueOf(saleRows);
+    const previousRevenue =
+      revenueOf((previousAppointments ?? []) as ApptRow[]) + salesRevenueOf((previousSales ?? []) as SaleRow[]);
     const revenueChangePercent = previousRevenue > 0 ? ((revenue - previousRevenue) / previousRevenue) * 100 : null;
 
     let cashRevenue = 0;
@@ -94,6 +119,12 @@ export async function GET(request: NextRequest) {
         else if (svc.payment_method === "kart") cardRevenue += amount;
         else unspecifiedRevenue += amount;
       }
+    }
+    for (const sale of saleRows) {
+      const amount = Number(sale.amount);
+      if (sale.payment_method === "nakit") cashRevenue += amount;
+      else if (sale.payment_method === "kart") cardRevenue += amount;
+      else unspecifiedRevenue += amount;
     }
 
     const totalMonthlyExpense = (fixedExpenses ?? []).reduce((sum, e) => sum + Number(e.monthly_amount), 0);
@@ -119,6 +150,9 @@ export async function GET(request: NextRequest) {
         );
         byDate.set(key, (byDate.get(key) ?? 0) + apptRevenue);
       }
+      for (const sale of saleRows) {
+        byDate.set(sale.sale_date, (byDate.get(sale.sale_date) ?? 0) + Number(sale.amount));
+      }
       dailyChart = Array.from(byDate.entries()).map(([date, rev]) => ({ date, revenue: rev }));
     }
 
@@ -136,6 +170,7 @@ export async function GET(request: NextRequest) {
         previousRevenue,
         revenueChangePercent,
         oneTimeExpenses: oneTimeExpenses ?? [],
+        oneTimeSales: sales ?? [],
         dailyChart,
       },
     });
