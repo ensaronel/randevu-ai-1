@@ -1,5 +1,5 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
-import { formatDateTR, formatTL } from "@/lib/date";
+import { formatDateTR } from "@/lib/date";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
 import AppShell from "@/components/AppShell";
 import PageHeader from "@/components/PageHeader";
@@ -43,21 +43,8 @@ export default async function KasaPage() {
         <KasaClient
           initialFixedExpenses={fixedExpenses}
           staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name }))}
+          commissions={commissions}
         />
-
-        {commissions.length > 0 && (
-          <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-2.5 mt-2">
-            <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bu Ayki Personel Primleri</p>
-            <div className="flex flex-col gap-2.5 max-h-64 overflow-y-auto pr-0.5">
-              {commissions.map((c) => (
-                <div key={c.name} className="flex items-center justify-between text-sm">
-                  <span>{c.name}</span>
-                  <span className="font-semibold font-display">{formatTL(c.amount)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
     </AppShell>
   );
 }

@@ -96,86 +96,94 @@ export default function SuggestionsClient({
 
   const visibleRisk = items.filter((item) => !resolvedIds.has(item.id));
   const showSurvey = dailySurvey && !surveyResolved;
+  const hasAny = visibleRisk.length > 0 || showSurvey;
 
   return (
     <div className="flex flex-col gap-2.5">
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Öneriler</p>
       {error && <p className="text-[12px] text-bad">{error}</p>}
 
-      {visibleRisk.length === 0 && !showSurvey && (
+      {!hasAny && (
         <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl shadow-card p-4">
           Şu an bekleyen öneri yok — AI, uzun süredir gelmeyen bir müşteri fark ettiğinde ya da gün
           sonunda anket önerisi hazırladığında burada çıkacak.
         </p>
       )}
 
-      {visibleRisk.length > 0 && (
-        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3">
-          <div className="flex items-center gap-2.5">
-            <IconCircle tone="risk">
-              <circle cx="12" cy="12" r="8.5" />
-              <path d="M12 8v4.5M12 15.5v.01" />
-            </IconCircle>
-            <div>
-              <p className="text-[14px] font-bold font-display text-ink">Risk Altında Müşteriler</p>
-              <p className="text-[11.5px] text-ink-muted">{visibleRisk.length} müşteri bir süredir gelmedi</p>
-            </div>
-          </div>
-          <div className="flex flex-col divide-y divide-border">
-            {visibleRisk.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-2 text-[13px] py-2 first:pt-0 last:pb-0">
-                <span className="text-ink font-medium truncate">{item.customer_name ?? "Müşteri"}</span>
-                <span className="text-[12px] text-ink-muted shrink-0">{shortReason(item)}</span>
+      {/* Önceden risk ve anket iki ayrı karttı — ikisi de "öneri, onayla/reddet"
+          aynı etkileşimi paylaştığı için artık tek kartın ayraçla bölünmüş
+          bölümleri. */}
+      {hasAny && (
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-4">
+          {visibleRisk.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5">
+                <IconCircle tone="risk">
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="M12 8v4.5M12 15.5v.01" />
+                </IconCircle>
+                <div>
+                  <p className="text-[14px] font-bold font-display text-ink">Risk Altında Müşteriler</p>
+                  <p className="text-[11.5px] text-ink-muted">{visibleRisk.length} müşteri bir süredir gelmedi</p>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "approved")}
-              disabled={busy !== null}
-              className="flex-1 bg-block1-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
-            >
-              Hepsine Gönder
-            </button>
-            <button
-              onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "rejected")}
-              disabled={busy !== null}
-              className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
-            >
-              Hepsini Reddet
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showSurvey && dailySurvey && (
-        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3">
-          <div className="flex items-center gap-2.5">
-            <IconCircle tone="survey">
-              <path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v8A2.5 2.5 0 0117.5 16H10l-4 4v-4H6.5A2.5 2.5 0 014 13.5z" />
-            </IconCircle>
-            <div>
-              <p className="text-[14px] font-bold font-display text-ink">Günlük Değerlendirme Anketi</p>
-              <p className="text-[11.5px] text-ink-muted">Bugün gelen müşterilere WhatsApp&apos;tan gönderilir</p>
+              <div className="flex flex-col divide-y divide-border">
+                {visibleRisk.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-2 text-[13px] py-2 first:pt-0 last:pb-0">
+                    <span className="text-ink font-medium truncate">{item.customer_name ?? "Müşteri"}</span>
+                    <span className="text-[12px] text-ink-muted shrink-0">{shortReason(item)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "approved")}
+                  disabled={busy !== null}
+                  className="flex-1 bg-block1-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
+                >
+                  Hepsine Gönder
+                </button>
+                <button
+                  onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "rejected")}
+                  disabled={busy !== null}
+                  className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
+                >
+                  Hepsini Reddet
+                </button>
+              </div>
             </div>
-          </div>
-          <p className="text-[13px] text-ink-muted leading-relaxed">{dailySurvey.suggestion}</p>
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => resolveSurvey("approved")}
-              disabled={busy !== null}
-              className="flex-1 bg-good-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
-            >
-              Gönder
-            </button>
-            <button
-              onClick={() => resolveSurvey("rejected")}
-              disabled={busy !== null}
-              className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
-            >
-              Bugün Gönderme
-            </button>
-          </div>
+          )}
+
+          {showSurvey && dailySurvey && (
+            <div className={`flex flex-col gap-3 ${visibleRisk.length > 0 ? "pt-4 border-t border-border" : ""}`}>
+              <div className="flex items-center gap-2.5">
+                <IconCircle tone="survey">
+                  <path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v8A2.5 2.5 0 0117.5 16H10l-4 4v-4H6.5A2.5 2.5 0 014 13.5z" />
+                </IconCircle>
+                <div>
+                  <p className="text-[14px] font-bold font-display text-ink">Günlük Değerlendirme Anketi</p>
+                  <p className="text-[11.5px] text-ink-muted">Bugün gelen müşterilere WhatsApp&apos;tan gönderilir</p>
+                </div>
+              </div>
+              <p className="text-[13px] text-ink-muted leading-relaxed">{dailySurvey.suggestion}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => resolveSurvey("approved")}
+                  disabled={busy !== null}
+                  className="flex-1 bg-good-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
+                >
+                  Gönder
+                </button>
+                <button
+                  onClick={() => resolveSurvey("rejected")}
+                  disabled={busy !== null}
+                  className="flex-1 border border-border rounded-lg py-2.5 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
+                >
+                  Bugün Gönderme
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

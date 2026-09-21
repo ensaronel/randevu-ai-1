@@ -217,78 +217,91 @@ export default function MusteriDetayClient({
         )}
       </div>
 
+      {/* Önceden her AI önerisi kendi gölgeli kartıydı — birkaç öneri birikince
+          sayfa küçük, aynı ağırlıktaki kutucuklarla dolup dağınık görünüyordu.
+          Artık TEK kart, aralarında ince ayraç olan satırlar. */}
       <div className="flex flex-col gap-2.5">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">AI Öneri Geçmişi</p>
-        {actionHistory.length === 0 && <EmptyState message="Bu müşteri için henüz AI önerisi yok." />}
-        {actionHistory.map((a) => (
-          <div key={a.id} className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">
-                {TYPE_LABELS[a.type] ?? a.type}
-              </span>
-              <span className="text-[11px] text-ink-muted">{formatDateTR(a.created_at)}</span>
-            </div>
-            <p className="text-[13.5px] text-ink">{a.suggestion}</p>
-            <p className="text-[12px] text-ink-muted">{a.reasoning}</p>
-            {a.customer_message && (
-              <p className="text-[12.5px] text-ink-muted italic border-l-2 border-border pl-2.5">
-                &quot;{a.customer_message}&quot;
-              </p>
-            )}
-            <span
-              className={`text-[12px] font-semibold ${
-                a.status === "pending" ? "text-accent" : a.status === "rejected" ? "text-bad" : "text-good-ink"
-              }`}
-            >
-              {STATUS_LABELS[a.status] ?? a.status}
-              {a.outcome ? ` — ${a.outcome}` : ""}
-            </span>
-            {a.status === "pending" && (
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => resolveAction(a.id, "approved")}
-                  disabled={busyActionId === a.id}
-                  className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2 text-[12.5px] font-semibold disabled:opacity-50"
+        {actionHistory.length === 0 ? (
+          <EmptyState message="Bu müşteri için henüz AI önerisi yok." />
+        ) : (
+          <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col divide-y divide-border">
+            {actionHistory.map((a) => (
+              <div key={a.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11.5px] font-bold text-accent uppercase tracking-wide">
+                    {TYPE_LABELS[a.type] ?? a.type}
+                  </span>
+                  <span className="text-[11px] text-ink-muted">{formatDateTR(a.created_at)}</span>
+                </div>
+                <p className="text-[13.5px] text-ink">{a.suggestion}</p>
+                <p className="text-[12px] text-ink-muted">{a.reasoning}</p>
+                {a.customer_message && (
+                  <p className="text-[12.5px] text-ink-muted italic border-l-2 border-border pl-2.5">
+                    &quot;{a.customer_message}&quot;
+                  </p>
+                )}
+                <span
+                  className={`text-[12px] font-semibold ${
+                    a.status === "pending" ? "text-accent" : a.status === "rejected" ? "text-bad" : "text-good-ink"
+                  }`}
                 >
-                  Onayla ve Gönder
-                </button>
-                <button
-                  onClick={() => resolveAction(a.id, "rejected")}
-                  disabled={busyActionId === a.id}
-                  className="flex-1 border border-border rounded-lg py-2 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
-                >
-                  Reddet
-                </button>
+                  {STATUS_LABELS[a.status] ?? a.status}
+                  {a.outcome ? ` — ${a.outcome}` : ""}
+                </span>
+                {a.status === "pending" && (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => resolveAction(a.id, "approved")}
+                      disabled={busyActionId === a.id}
+                      className="flex-1 bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] py-2 text-[12.5px] font-semibold disabled:opacity-50"
+                    >
+                      Onayla ve Gönder
+                    </button>
+                    <button
+                      onClick={() => resolveAction(a.id, "rejected")}
+                      disabled={busyActionId === a.id}
+                      className="flex-1 border border-border rounded-lg py-2 text-[12.5px] font-semibold text-ink-muted disabled:opacity-50"
+                    >
+                      Reddet
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       <div className="flex flex-col gap-2.5">
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Randevu Geçmişi</p>
-        {appointments.length === 0 && <EmptyState message="Henüz randevu kaydı yok." />}
-        {appointments.map((a) => {
-          const total = a.services.reduce((s, svc) => s + svc.price, 0);
-          return (
-            <div key={a.id} className="bg-surface border border-border rounded-2xl shadow-card p-3.5 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-semibold capitalize">
-                  {formatDateTR(a.starts_at)}, {formatTimeTR(a.starts_at)}
-                </span>
-                <span className="text-sm font-semibold font-display">{formatTL(total)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[12.5px] text-ink-muted truncate">
-                  {a.services.map((s) => s.name).join(", ")}
-                </p>
-                {a.status === "cancelled" && (
-                  <span className="text-[11px] font-bold text-bad shrink-0">İptal</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {appointments.length === 0 ? (
+          <EmptyState message="Henüz randevu kaydı yok." />
+        ) : (
+          <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col divide-y divide-border">
+            {appointments.map((a) => {
+              const total = a.services.reduce((s, svc) => s + svc.price, 0);
+              return (
+                <div key={a.id} className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-semibold capitalize">
+                      {formatDateTR(a.starts_at)}, {formatTimeTR(a.starts_at)}
+                    </span>
+                    <span className="text-sm font-semibold font-display">{formatTL(total)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[12.5px] text-ink-muted truncate">
+                      {a.services.map((s) => s.name).join(", ")}
+                    </p>
+                    {a.status === "cancelled" && (
+                      <span className="text-[11px] font-bold text-bad shrink-0">İptal</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

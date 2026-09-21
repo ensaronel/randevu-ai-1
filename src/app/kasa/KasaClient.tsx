@@ -12,6 +12,11 @@ interface StaffOption {
   full_name: string;
 }
 
+interface CommissionItem {
+  name: string;
+  amount: number;
+}
+
 /** Tarayıcının yerel (Türkiye) gününe göre "YYYY-MM-DD" — toISOString() UTC'ye kaydırdığı için kullanılmadı. */
 function toDateKey(d: Date): string {
   const y = d.getFullYear();
@@ -146,14 +151,14 @@ function DeleteButton({ onConfirm, busy, label }: { onConfirm: () => void; busy:
 }
 
 /**
- * Kasa'daki üç işlem listesi (Sabit Gider/Tek Seferlik Gider/Ürün Satış) girdikçe
- * sınırsız uzuyor, sayfayı "biriken" bir hale getiriyordu — varsayılan olarak
- * sadece ilk N kayıt gösterilir, "Tümünü Gör" ile genişleyince de sabit yükseklikte
- * iç scroll'a geçer (Çalışanlar sayfasındaki genişlet/daralt deseniyle aynı fikir).
+ * Kasa'daki işlem listeleri (Sabit Gider/Tek Seferlik Gider/Ürün Satış/Primler)
+ * girdikçe sınırsız uzuyor, sayfayı "biriken" bir hale getiriyordu — varsayılan
+ * olarak sadece ilk N kayıt gösterilir, "Tümünü Gör" ile genişleyince de sabit
+ * yükseklikte iç scroll'a geçer.
  */
 function ExpandableList<T>({
   items,
-  collapsedCount = 4,
+  collapsedCount = 5,
   keyOf,
   renderItem,
 }: {
@@ -223,7 +228,7 @@ function RangeRevenueChart({ data }: { data: { date: string; revenue: number }[]
 function HeroNet({ summary }: { summary: RangeSummary }) {
   const isProfit = summary.net >= 0;
   return (
-    <div className={`rounded-[24px] p-5 flex flex-col gap-1 ${isProfit ? "bg-ink text-white" : "bg-bad-soft"}`}>
+    <div className={`rounded-[20px] p-5 flex flex-col gap-1 ${isProfit ? "bg-ink text-white" : "bg-bad-soft"}`}>
       <p className={`text-[12.5px] font-bold uppercase tracking-wide ${isProfit ? "text-white/65" : "text-bad-ink/80"}`}>
         {isProfit ? "Net Kâr" : "Net Zarar"}
       </p>
@@ -252,6 +257,12 @@ function HeroNet({ summary }: { summary: RangeSummary }) {
   );
 }
 
+/**
+ * Önceden Net Kâr / Ciro-Gider rozetleri / nakit-kart kırılımı / günlük grafik
+ * dört ayrı beyaz kart olarak alt alta diziliyordu — tek başına anlamlı olsa da
+ * bir arada "dağınık, kutu kutu" bir sayfa hissi veriyordu. Artık hepsi TEK bir
+ * kartın içinde, ince ayraçlarla bölünmüş bölümler olarak duruyor.
+ */
 function RangeCalculator({
   preset,
   setPreset,
@@ -324,7 +335,7 @@ function RangeCalculator({
       ) : isStale ? (
         <p className="text-[12.5px] text-ink-muted">Hesaplanıyor…</p>
       ) : (
-        <>
+        <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-4">
           <HeroNet summary={summary} />
 
           <div className="grid grid-cols-2 gap-2.5">
@@ -333,7 +344,7 @@ function RangeCalculator({
           </div>
 
           {hasPaymentSplit && (
-            <div className="bg-surface border border-border rounded-2xl shadow-card p-3.5 flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4 pt-3.5 border-t border-border">
               <div className="flex items-center gap-1.5 text-[12.5px]">
                 <span className="w-2 h-2 rounded-full bg-good-ink" />
                 <span className="text-ink-muted">Nakit</span>
@@ -355,18 +366,18 @@ function RangeCalculator({
           )}
 
           {summary.dailyChart && summary.dailyChart.length > 1 && (
-            <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 pt-3.5 border-t border-border">
               <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Günlük Ciro</p>
               <RangeRevenueChart data={summary.dailyChart} />
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-function OneTimeExpensesSection({
+function OneTimeExpensesBody({
   range,
   items,
   onChanged,
@@ -427,9 +438,8 @@ function OneTimeExpensesSection({
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
-      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Tek Seferlik Giderler</p>
-      <p className="text-[12px] text-ink-muted -mt-1.5">
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-ink-muted">
         Tamirat, ekipman alımı gibi bir kerelik giderler — seçili tarih aralığındakiler listelenir.
       </p>
 
@@ -501,7 +511,7 @@ function OneTimeExpensesSection({
   );
 }
 
-function OneTimeSalesSection({
+function OneTimeSalesBody({
   range,
   items,
   staffList,
@@ -572,9 +582,8 @@ function OneTimeSalesSection({
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
-      <p className="text-[12.5px] font-bold text-good-ink uppercase tracking-wide">Ürün / Ek Satış</p>
-      <p className="text-[12px] text-ink-muted -mt-1.5">
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-ink-muted">
         Randevu dışı ürün/ek satışlar — seçilirse personelin primi de hesaba katılır.
       </p>
 
@@ -673,7 +682,7 @@ function OneTimeSalesSection({
   );
 }
 
-function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedExpense[] }) {
+function FixedExpensesBody({ initialFixedExpenses }: { initialFixedExpenses: FixedExpense[] }) {
   const [items, setItems] = useState(initialFixedExpenses);
   const [descDraft, setDescDraft] = useState("");
   const [amountDraft, setAmountDraft] = useState("");
@@ -758,9 +767,8 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   }
 
   return (
-    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3">
-      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Sabit Giderler</p>
-      <p className="text-[12px] text-ink-muted -mt-1.5">
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-ink-muted">
         Kira, şampuan gibi her ay tekrar eden giderler — bir kere gir, zam gelince tutarını güncelle.
       </p>
 
@@ -854,12 +862,70 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
   );
 }
 
+function CommissionsBody({ commissions }: { commissions: CommissionItem[] }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-ink-muted">Bu ayın başından bugüne, randevu + ürün satışlarından personel bazlı prim.</p>
+      {commissions.length === 0 ? (
+        <EmptyState message="Bu ay için henüz personel primi oluşmadı." />
+      ) : (
+        <ExpandableList
+          items={commissions}
+          keyOf={(c) => c.name}
+          renderItem={(c) => (
+            <div className="flex items-center justify-between text-[13px] py-0.5">
+              <span className="text-ink">{c.name}</span>
+              <span className="font-semibold font-display">{formatTL(c.amount)}</span>
+            </div>
+          )}
+        />
+      )}
+    </div>
+  );
+}
+
+type KasaTab = "satis" | "tek" | "sabit" | "prim";
+
+const KASA_TABS: { key: KasaTab; label: string }[] = [
+  { key: "satis", label: "Satış" },
+  { key: "tek", label: "Tek Seferlik" },
+  { key: "sabit", label: "Sabit Gider" },
+  { key: "prim", label: "Primler" },
+];
+
+/**
+ * Önceden dört işlem grubu (Sabit Gider/Tek Seferlik Gider/Ürün Satış/Primler)
+ * hep aynı anda görünen dört ayrı kart olarak alt alta diziliyordu — özet
+ * kartıyla birlikte sayfada aynı anda 5-6 kutu birden görünüyordu. Reklam
+ * sayfasındaki sekme desenini uygulayarak tek bir kartta, aynı anda tek bir
+ * grup gösteriliyor.
+ */
+function KasaTabBar({ tab, setTab }: { tab: KasaTab; setTab: (t: KasaTab) => void }) {
+  return (
+    <div className="flex gap-1 bg-bg border border-border rounded-xl p-1">
+      {KASA_TABS.map((t) => (
+        <button
+          key={t.key}
+          onClick={() => setTab(t.key)}
+          className={`flex-1 text-center text-[12.5px] font-semibold rounded-lg py-2 px-1 transition-colors ${
+            tab === t.key ? "bg-surface text-ink shadow-sm" : "text-ink-muted"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function KasaClient({
   initialFixedExpenses,
   staffList,
+  commissions,
 }: {
   initialFixedExpenses: FixedExpense[];
   staffList: StaffOption[];
+  commissions: CommissionItem[];
 }) {
   const [preset, setPreset] = useState<PresetKey>("today");
   const [customFrom, setCustomFrom] = useState(toDateKey(new Date()));
@@ -867,6 +933,7 @@ export default function KasaClient({
   const [summary, setSummary] = useState<RangeSummary | null>(null);
   const [fetchError, setFetchError] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [tab, setTab] = useState<KasaTab>("satis");
 
   const range = preset === "custom" ? { from: customFrom, to: customTo } : presetRange(preset);
 
@@ -889,6 +956,8 @@ export default function KasaClient({
     };
   }, [range.from, range.to, refreshTick]);
 
+  const summaryReady = summary && summary.from === range.from && summary.to === range.to;
+
   return (
     <>
       <RangeCalculator
@@ -903,29 +972,38 @@ export default function KasaClient({
         fetchError={fetchError}
         onRetry={() => setRefreshTick((t) => t + 1)}
       />
-      <div className="flex flex-col gap-5">
-        {summary && summary.from === range.from && summary.to === range.to && (
-          <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
-            <OneTimeExpensesSection
-              key={`exp-${range.to}`}
-              range={range}
-              items={summary.oneTimeExpenses}
-              onChanged={() => setRefreshTick((t) => t + 1)}
-            />
-            <OneTimeSalesSection
+
+      <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col gap-3.5">
+        <KasaTabBar tab={tab} setTab={setTab} />
+
+        {tab === "satis" &&
+          (summaryReady ? (
+            <OneTimeSalesBody
               key={`sale-${range.to}`}
               range={range}
               items={summary.oneTimeSales}
               staffList={staffList}
               onChanged={() => setRefreshTick((t) => t + 1)}
             />
-          </div>
-        )}
-        {/* Sabit giderler ayrı, tam genişlikte bir satırda — tarih aralığına göre
-            değişen yukarıdaki iki işlem listesinden kavramsal olarak farklı
-            (her ay tekrar eden, aralık seçiminden bağımsız bir liste), aynı
-            grid'e sıkıştırılınca üçüncü kart yalnız kalıp dengesiz görünüyordu. */}
-        <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
+          ) : (
+            <p className="text-[12.5px] text-ink-muted">Yükleniyor…</p>
+          ))}
+
+        {tab === "tek" &&
+          (summaryReady ? (
+            <OneTimeExpensesBody
+              key={`exp-${range.to}`}
+              range={range}
+              items={summary.oneTimeExpenses}
+              onChanged={() => setRefreshTick((t) => t + 1)}
+            />
+          ) : (
+            <p className="text-[12.5px] text-ink-muted">Yükleniyor…</p>
+          ))}
+
+        {tab === "sabit" && <FixedExpensesBody initialFixedExpenses={initialFixedExpenses} />}
+
+        {tab === "prim" && <CommissionsBody commissions={commissions} />}
       </div>
     </>
   );

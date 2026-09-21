@@ -204,66 +204,82 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* HERO: koyu kart + dalga illüstrasyonu — maskot sahnesiyle aynı imza
-          motif, buyuk halka gercek bir "an" hissi versin diye ortalanmis.
-          Kasitli olarak sabit yukseklikte: gunluk randevu listesi burada
-          gosterilmiyor (o listeye Takvim'den bakilir) - aksi halde randevu
-          sayisi arttikca kart gereksiz sekilde uzuyordu. */}
-      <div className="bg-accent text-white rounded-[28px] p-5 lg:p-7 flex flex-col gap-4 relative overflow-hidden">
-        <svg viewBox="0 0 400 90" className="absolute bottom-0 left-0 w-full h-[64px] pointer-events-none" preserveAspectRatio="none" aria-hidden="true">
-          <path d="M0 40 Q 100 0 200 30 T 400 20 V90 H0 Z" fill="white" opacity="0.045" />
-          <path d="M0 60 Q 120 25 220 55 T 400 45 V90 H0 Z" fill="white" opacity="0.06" />
-        </svg>
+      {/* Önceden doluluk halkası, istatistik rozetleri, haftalık grafik ve
+          finans notu dört ayrı kart olarak alt alta diziliyordu — kutu kutu,
+          dağınık bir "bugün" hissi veriyordu. Artık tek bir kartın, ince
+          ayraçlarla bölünmüş bölümleri: aynı Kasa'daki Özet kartıyla aynı
+          desen, uygulama genelinde tutarlı olsun diye. */}
+      <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-4">
+        {/* Koyu iç kart + dalga illüstrasyonu — maskot sahnesiyle aynı imza
+            motif, buyuk halka gercek bir "an" hissi versin diye ortalanmis.
+            Kasitli olarak sabit yukseklikte: gunluk randevu listesi burada
+            gosterilmiyor (o listeye Takvim'den bakilir) - aksi halde randevu
+            sayisi arttikca kart gereksiz sekilde uzuyordu. */}
+        <div className="bg-accent text-white rounded-[20px] p-5 flex flex-col gap-4 relative overflow-hidden">
+          <svg viewBox="0 0 400 90" className="absolute bottom-0 left-0 w-full h-[64px] pointer-events-none" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 40 Q 100 0 200 30 T 400 20 V90 H0 Z" fill="white" opacity="0.045" />
+            <path d="M0 60 Q 120 25 220 55 T 400 45 V90 H0 Z" fill="white" opacity="0.06" />
+          </svg>
 
-        <div className="flex items-center gap-5 relative">
-          <div className="relative w-[86px] h-[86px] shrink-0">
-            <svg width="100%" height="100%" viewBox="0 0 86 86">
-              <circle cx="43" cy="43" r="36" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="8" />
-              <circle
-                cx="43"
-                cy="43"
-                r="36"
-                fill="none"
-                stroke="white"
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={2 * Math.PI * 36}
-                strokeDashoffset={2 * Math.PI * 36 * (1 - occupancyPercent / 100)}
-                transform="rotate(-90 43 43)"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[20px] font-bold font-display leading-none">%{occupancyPercent}</span>
+          <div className="flex items-center gap-5 relative">
+            <div className="relative w-[86px] h-[86px] shrink-0">
+              <svg width="100%" height="100%" viewBox="0 0 86 86">
+                <circle cx="43" cy="43" r="36" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="8" />
+                <circle
+                  cx="43"
+                  cy="43"
+                  r="36"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 36}
+                  strokeDashoffset={2 * Math.PI * 36 * (1 - occupancyPercent / 100)}
+                  transform="rotate(-90 43 43)"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-[20px] font-bold font-display leading-none">%{occupancyPercent}</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Bugünün Doluluğu</p>
+              <p className="text-[15px] font-semibold mt-0.5">
+                {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
+              </p>
             </div>
           </div>
-          <div>
-            <p className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Bugünün Doluluğu</p>
-            <p className="text-[15px] font-semibold mt-0.5">
-              {formatMinutesAsHours(freeMinutes)} boş kapasite kaldı
-            </p>
-          </div>
+
+          <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1 relative">
+            Takvimi Gör
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </Link>
         </div>
 
-        <Link href="/takvim" className="self-start text-[12.5px] font-bold text-white/85 flex items-center gap-1 relative">
-          Takvimi Gör
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </Link>
-      </div>
+        {/* İkon-rozetli istatistik kartları — referans 1'deki "ikon dairesi +
+            buyuk sayi" oruntusu. */}
+        <div className="grid grid-cols-2 gap-3">
+          <BadgeStat icon="calendar" label="Bugünkü Randevu" value={String(today.appointmentCount)} tone="accentSoft" />
+          <BadgeStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
+        </div>
 
-      {/* İkon-rozetli istatistik kartları — referans 1'deki "ikon dairesi +
-          buyuk sayi" oruntusu. */}
-      <div className="grid grid-cols-2 gap-3">
-        <BadgeStat icon="calendar" label="Bugünkü Randevu" value={String(today.appointmentCount)} tone="accentSoft" />
-        <BadgeStat icon="x" label="İptal" value={String(today.cancelledCount)} tone={today.cancelledCount > 0 ? "warn" : "block2"} />
-      </div>
+        <WeekRevenueChartSection data={weekChart} />
 
-      <WeekRevenueChart data={weekChart} />
+        {financeNote && (
+          <div className="flex flex-col gap-1.5 pt-3.5 border-t border-border">
+            <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
+            <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
+          </div>
+        )}
+      </div>
 
       {/* Danışman sahnesi — referans 3'teki buyuk illustrasyonlu "start your
           day" karti gibi gercek bir sahne: buyuk maskot, zemin/gokyuzu
-          illustrasyonu, hap CTA butonu — kucuk bir satir linki degil. */}
+          illustrasyonu, hap CTA butonu — kucuk bir satir linki degil. Bilerek
+          ayrı: bu bir veri kartı değil, bir yönlendirme/CTA, kendi başına
+          durması gerekiyor. */}
       <Link
         href="/asistan"
         className="bg-accent2-soft rounded-[28px] p-6 pb-5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
@@ -282,24 +298,17 @@ export default async function DashboardPage() {
         </span>
       </Link>
 
-      {financeNote && (
-        <div className="bg-accent-soft border border-accent/30 rounded-2xl p-4 lg:p-5 flex flex-col gap-1.5">
-          <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
-          <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
-        </div>
-      )}
-
       <SuggestionsClient items={suggestions} dailySurvey={dailySurvey} />
     </AppShell>
   );
 }
 
-/** Referans 2'deki "Statistic" ekranındaki çubuk grafik örüntüsü — 7 günlük ciro. */
-function WeekRevenueChart({ data }: { data: { label: string; revenue: number; isToday: boolean }[] }) {
+/** Referans 2'deki "Statistic" ekranındaki çubuk grafik örüntüsü — 7 günlük ciro. Artık bağımsız bir kart değil, özet kartın bir bölümü. */
+function WeekRevenueChartSection({ data }: { data: { label: string; revenue: number; isToday: boolean }[] }) {
   const max = Math.max(...data.map((d) => d.revenue), 1);
   const total = data.reduce((sum, d) => sum + d.revenue, 0);
   return (
-    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pt-3.5 border-t border-border">
       <div>
         <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Bu Hafta</p>
         <p className="text-[22px] font-bold font-display">{formatTL(total)}</p>
