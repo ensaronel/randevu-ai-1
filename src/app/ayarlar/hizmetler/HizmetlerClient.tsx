@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTL } from "@/lib/date";
 import { parseTLInput } from "@/lib/money";
+import EmptyState from "@/components/EmptyState";
 
 export interface ServiceItem {
   id: string;
@@ -113,6 +114,10 @@ export default function HizmetlerClient({ services }: { services: ServiceItem[] 
         </button>
         {error && <p className="text-[12px] text-bad">{error}</p>}
       </div>
+
+      {services.length === 0 && (
+        <EmptyState message="Henüz hizmet eklenmedi — yukarıdaki formla ilk hizmetini ekleyebilirsin." />
+      )}
 
       <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-2.5">
         {services.map((service) => (

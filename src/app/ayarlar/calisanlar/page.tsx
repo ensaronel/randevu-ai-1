@@ -1,6 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { loadStaffMonthlyMetrics } from "@/lib/staffMetrics";
 import AppShell from "@/components/AppShell";
+import PageHeader from "@/components/PageHeader";
 import CalisanlarClient, { type StaffItem } from "@/app/ayarlar/calisanlar/CalisanlarClient";
 import type { Staff } from "@/types/database";
 
@@ -35,7 +36,7 @@ export default async function CalisanlarPage() {
 
   return (
     <AppShell businessName={business.name}>
-        <h1 className="text-2xl font-semibold">Çalışanlar</h1>
+        <PageHeader eyebrow={business.name} title="Çalışanlar" />
         <CalisanlarClient staff={items} />
     </AppShell>
   );

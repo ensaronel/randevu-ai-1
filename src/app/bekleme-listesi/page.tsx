@@ -1,6 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
 
 const WEEKDAY_LABELS_TR: Record<string, string> = {
   sun: "Paz",
@@ -48,15 +49,11 @@ export default async function BeklemeListesiPage() {
 
   return (
     <AppShell businessName={business.name}>
-      <div>
-        <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">{business.name}</p>
-        <h1 className="text-2xl font-semibold">Bekleme Listesi</h1>
-        <p className="text-[13px] text-ink-muted mt-1">
-          {entries.length === 0
-            ? "Şu an bekleyen kimse yok."
-            : `${entries.length} kişi uygun bir randevu bekliyor.`}
-        </p>
-      </div>
+      <PageHeader
+        eyebrow={business.name}
+        title="Bekleme Listesi"
+        subtitle={entries.length === 0 ? "Şu an bekleyen kimse yok." : `${entries.length} kişi uygun bir randevu bekliyor.`}
+      />
 
       {entries.length === 0 ? (
         <EmptyState message="Bir müşteri istediği tarihte uygun saat bulamayıp WhatsApp'tan beklemeyi kabul ederse burada görünecek — bir randevu iptal olduğunda sistem sıradaki kişiye otomatik WhatsApp mesajı gönderir, hiçbir şey yapmana gerek yok." />

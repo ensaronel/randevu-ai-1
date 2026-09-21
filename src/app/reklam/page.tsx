@@ -1,6 +1,7 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
 import ReklamClient from "./ReklamClient";
 import ReklamTabs from "./ReklamTabs";
 import { TYPE_LABELS } from "./typeLabels";
@@ -36,15 +37,15 @@ export default async function ReklamPage() {
 
   return (
     <AppShell businessName={business.name}>
-      <div>
-        <p className="text-[12.5px] font-bold text-ink-muted tracking-wide uppercase">{business.name}</p>
-        <h1 className="text-2xl font-semibold">Reklam</h1>
-        <p className="text-[13px] text-ink-muted mt-1">
-          {items.length === 0
+      <PageHeader
+        eyebrow={business.name}
+        title="Reklam"
+        subtitle={
+          items.length === 0
             ? "Henüz paylaşılacak bir içerik yok."
-            : "AI'nin işletmeniz için otomatik hazırladığı, paylaşıma hazır görseller."}
-        </p>
-      </div>
+            : "AI'nin işletmeniz için otomatik hazırladığı, paylaşıma hazır görseller."
+        }
+      />
 
       <ReklamTabs active="content" />
 

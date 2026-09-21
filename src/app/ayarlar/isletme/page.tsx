@@ -1,5 +1,6 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
+import PageHeader from "@/components/PageHeader";
 import IsletmeClient from "@/app/ayarlar/isletme/IsletmeClient";
 
 export default async function IsletmePage() {
@@ -7,7 +8,7 @@ export default async function IsletmePage() {
 
   return (
     <AppShell businessName={business.name}>
-        <h1 className="text-2xl font-semibold">İşletme Ayarları</h1>
+        <PageHeader eyebrow={business.name} title="İşletme Ayarları" />
         <IsletmeClient initialWorkingHours={business.working_hours} initialClosedDates={business.closed_dates} />
     </AppShell>
   );

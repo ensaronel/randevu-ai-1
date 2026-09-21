@@ -1,5 +1,6 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
+import PageHeader from "@/components/PageHeader";
 import HizmetlerClient from "@/app/ayarlar/hizmetler/HizmetlerClient";
 
 export default async function HizmetlerPage() {
@@ -14,7 +15,7 @@ export default async function HizmetlerPage() {
 
   return (
     <AppShell businessName={business.name}>
-        <h1 className="text-2xl font-semibold">Hizmetler</h1>
+        <PageHeader eyebrow={business.name} title="Hizmetler" />
         <HizmetlerClient services={data ?? []} />
     </AppShell>
   );

@@ -1,5 +1,6 @@
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
+import PageHeader from "@/components/PageHeader";
 import MusterilerClient, { type CustomerListItem } from "@/app/musteriler/MusterilerClient";
 import type { Customer } from "@/types/database";
 
@@ -64,7 +65,7 @@ export default async function MusterilerPage() {
 
   return (
     <AppShell businessName={business.name}>
-        <h1 className="text-2xl font-semibold">Müşteriler</h1>
+        <PageHeader eyebrow={business.name} title="Müşteriler" />
         <MusterilerClient customers={items} />
     </AppShell>
   );

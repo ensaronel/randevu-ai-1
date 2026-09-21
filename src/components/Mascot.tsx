@@ -21,13 +21,6 @@ export default function Mascot({ size = 56, waving = false }: { size?: number; w
         </g>
       )}
       <circle cx="32" cy="34" r="19" fill="var(--accent2)" />
-      <path
-        d="M24 32c1.5 2 3 3 3 6.5"
-        stroke="var(--accent2-ink)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        opacity="0"
-      />
       {/* yanaklar */}
       <circle cx="23.5" cy="37" r="2.6" fill="var(--accent2-ink)" opacity="0.18" />
       <circle cx="40.5" cy="37" r="2.6" fill="var(--accent2-ink)" opacity="0.18" />

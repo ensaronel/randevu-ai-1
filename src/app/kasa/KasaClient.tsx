@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatTL } from "@/lib/date";
 import { parseTLInput } from "@/lib/money";
 import BadgeStat from "@/components/BadgeStat";
@@ -96,6 +96,92 @@ function CategorySelect({ value, onChange }: { value: string; onChange: (v: stri
       <option value="malzeme">Malzeme</option>
       <option value="bakim">Bakım</option>
     </select>
+  );
+}
+
+/** Satır bazlı satış ikonu — giderlerin CategoryIcon'una paralel ama "gelir" hissi için yeşil. */
+function SaleIcon() {
+  return (
+    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-good-soft text-good-ink">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 10v4a1 1 0 001 1h2l5 4V5L6 9H4a1 1 0 00-1 1z" />
+        <path d="M16 8.5a4 4 0 010 7" />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Tek tıkla geri alınamaz silme yerine "emin misin, tekrar bas" onayı —
+ * Reklam kartlarındaki desenle aynı, tüm silme aksiyonlarında tutarlı olsun diye.
+ */
+function DeleteButton({ onConfirm, busy, label }: { onConfirm: () => void; busy: boolean; label: string }) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        if (!confirming) {
+          setConfirming(true);
+          return;
+        }
+        setConfirming(false);
+        onConfirm();
+      }}
+      onBlur={() => setConfirming(false)}
+      disabled={busy}
+      aria-label={label}
+      className={`shrink-0 rounded-full flex items-center justify-center disabled:opacity-50 transition-colors ${
+        confirming ? "px-2 h-6 bg-bad text-white text-[10.5px] font-bold" : "w-6 h-6 text-ink-muted"
+      }`}
+    >
+      {confirming ? (
+        "Sil?"
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Kasa'daki üç işlem listesi (Sabit Gider/Tek Seferlik Gider/Ürün Satış) girdikçe
+ * sınırsız uzuyor, sayfayı "biriken" bir hale getiriyordu — varsayılan olarak
+ * sadece ilk N kayıt gösterilir, "Tümünü Gör" ile genişleyince de sabit yükseklikte
+ * iç scroll'a geçer (Çalışanlar sayfasındaki genişlet/daralt deseniyle aynı fikir).
+ */
+function ExpandableList<T>({
+  items,
+  collapsedCount = 4,
+  keyOf,
+  renderItem,
+}: {
+  items: T[];
+  collapsedCount?: number;
+  keyOf: (item: T) => string;
+  renderItem: (item: T) => ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, collapsedCount);
+  const hiddenCount = items.length - visible.length;
+
+  return (
+    <>
+      <div className={`flex flex-col gap-1.5 ${expanded ? "max-h-72 overflow-y-auto pr-0.5" : ""}`}>
+        {visible.map((item) => (
+          <div key={keyOf(item)}>{renderItem(item)}</div>
+        ))}
+      </div>
+      {items.length > collapsedCount && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="text-[12px] font-semibold text-accent self-start"
+        >
+          {expanded ? "Daha az göster" : `Tümünü gör (${hiddenCount} tane daha)`}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -351,26 +437,25 @@ function OneTimeExpensesSection({
         <EmptyState message="Seçili aralıkta tek seferlik gider yok." />
       ) : (
         <div className="flex flex-col gap-1.5">
-          {items.map((e) => (
-            <div key={e.id} className="flex items-center gap-2.5">
-              <CategoryIcon category={e.category} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-ink truncate">{e.description}</p>
-                <p className="text-[11px] text-ink-muted">{e.expense_date}</p>
+          <ExpandableList
+            items={items}
+            keyOf={(e) => e.id}
+            renderItem={(e) => (
+              <div className="flex items-center gap-2.5">
+                <CategoryIcon category={e.category} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-ink truncate">{e.description}</p>
+                  <p className="text-[11px] text-ink-muted">{e.expense_date}</p>
+                </div>
+                <span className="font-semibold font-display text-[13px] shrink-0">{formatTL(Number(e.amount))}</span>
+                <DeleteButton
+                  onConfirm={() => removeExpense(e.id)}
+                  busy={removingId === e.id}
+                  label="Gideri sil"
+                />
               </div>
-              <span className="font-semibold font-display text-[13px] shrink-0">{formatTL(Number(e.amount))}</span>
-              <button
-                onClick={() => removeExpense(e.id)}
-                disabled={removingId === e.id}
-                aria-label="Gideri sil"
-                className="text-ink-muted disabled:opacity-50 shrink-0"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-          ))}
+            )}
+          />
           <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
             <span>Aralık toplamı</span>
             <span className="font-display">{formatTL(total)}</span>
@@ -488,7 +573,7 @@ function OneTimeSalesSection({
 
   return (
     <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
-      <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Ürün / Ek Satış</p>
+      <p className="text-[12.5px] font-bold text-good-ink uppercase tracking-wide">Ürün / Ek Satış</p>
       <p className="text-[12px] text-ink-muted -mt-1.5">
         Randevu dışı ürün/ek satışlar — seçilirse personelin primi de hesaba katılır.
       </p>
@@ -497,30 +582,28 @@ function OneTimeSalesSection({
         <EmptyState message="Seçili aralıkta ürün/ek satış yok." />
       ) : (
         <div className="flex flex-col gap-1.5">
-          {items.map((s) => (
-            <div key={s.id} className="flex items-center gap-2.5">
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-ink truncate">{s.description}</p>
-                <p className="text-[11px] text-ink-muted">
-                  {s.sale_date} · {staffName(s.staff_id)}
-                </p>
+          <ExpandableList
+            items={items}
+            keyOf={(s) => s.id}
+            renderItem={(s) => (
+              <div className="flex items-center gap-2.5">
+                <SaleIcon />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-ink truncate">{s.description}</p>
+                  <p className="text-[11px] text-ink-muted">
+                    {s.sale_date} · {staffName(s.staff_id)}
+                  </p>
+                </div>
+                <span className="font-semibold font-display text-[13px] shrink-0 text-good-ink">
+                  +{formatTL(Number(s.amount))}
+                </span>
+                <DeleteButton onConfirm={() => removeSale(s.id)} busy={removingId === s.id} label="Satışı sil" />
               </div>
-              <span className="font-semibold font-display text-[13px] shrink-0">{formatTL(Number(s.amount))}</span>
-              <button
-                onClick={() => removeSale(s.id)}
-                disabled={removingId === s.id}
-                aria-label="Satışı sil"
-                className="text-ink-muted disabled:opacity-50 shrink-0"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-          ))}
+            )}
+          />
           <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
             <span>Aralık toplamı</span>
-            <span className="font-display">{formatTL(total)}</span>
+            <span className="font-display text-good-ink">+{formatTL(total)}</span>
           </div>
         </div>
       )}
@@ -685,54 +768,53 @@ function FixedExpenses({ initialFixedExpenses }: { initialFixedExpenses: FixedEx
         <EmptyState message="Henüz sabit gider eklenmedi." />
       ) : (
         <div className="flex flex-col gap-1.5">
-          {items.map((e) => {
-            const isEditing = editingId === e.id;
-            return (
-              <div key={e.id} className="flex items-center gap-2.5">
-                <CategoryIcon category={e.category} />
-                <span className="text-ink truncate flex-1 min-w-0 text-[13px]">{e.description}</span>
-                <div className="flex items-center gap-2 shrink-0">
-                  {isEditing ? (
-                    <>
-                      <input
-                        autoFocus
-                        value={editAmountDraft}
-                        onChange={(ev) => setEditAmountDraft(ev.target.value)}
-                        className="w-20 border border-border rounded px-1.5 py-0.5 text-right text-[13px]"
-                      />
+          <ExpandableList
+            items={items}
+            keyOf={(e) => e.id}
+            renderItem={(e) => {
+              const isEditing = editingId === e.id;
+              return (
+                <div className="flex items-center gap-2.5">
+                  <CategoryIcon category={e.category} />
+                  <span className="text-ink truncate flex-1 min-w-0 text-[13px]">{e.description}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isEditing ? (
+                      <>
+                        <input
+                          autoFocus
+                          value={editAmountDraft}
+                          onChange={(ev) => setEditAmountDraft(ev.target.value)}
+                          className="w-20 border border-border rounded px-1.5 py-0.5 text-right text-[13px]"
+                        />
+                        <button
+                          onClick={() => saveAmount(e.id)}
+                          disabled={busyId === e.id}
+                          className="text-accent font-semibold text-[12.5px]"
+                        >
+                          Kaydet
+                        </button>
+                      </>
+                    ) : (
                       <button
-                        onClick={() => saveAmount(e.id)}
-                        disabled={busyId === e.id}
-                        className="text-accent font-semibold text-[12.5px]"
+                        onClick={() => {
+                          setEditingId(e.id);
+                          setEditAmountDraft(String(e.monthly_amount));
+                        }}
+                        className="font-semibold font-display underline decoration-dotted text-[13px]"
                       >
-                        Kaydet
+                        {formatTL(Number(e.monthly_amount))}/ay
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setEditingId(e.id);
-                        setEditAmountDraft(String(e.monthly_amount));
-                      }}
-                      className="font-semibold font-display underline decoration-dotted text-[13px]"
-                    >
-                      {formatTL(Number(e.monthly_amount))}/ay
-                    </button>
-                  )}
-                  <button
-                    onClick={() => removeFixedExpense(e.id)}
-                    disabled={busyId === e.id}
-                    aria-label="Gideri sil"
-                    className="text-ink-muted disabled:opacity-50"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
+                    )}
+                    <DeleteButton
+                      onConfirm={() => removeFixedExpense(e.id)}
+                      busy={busyId === e.id}
+                      label="Gideri sil"
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            }}
+          />
           <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
             <span>Aylık toplam</span>
             <span className="font-display">{formatTL(total)}</span>
@@ -821,9 +903,9 @@ export default function KasaClient({
         fetchError={fetchError}
         onRetry={() => setRefreshTick((t) => t + 1)}
       />
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
+      <div className="flex flex-col gap-5">
         {summary && summary.from === range.from && summary.to === range.to && (
-          <>
+          <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5">
             <OneTimeExpensesSection
               key={`exp-${range.to}`}
               range={range}
@@ -837,8 +919,12 @@ export default function KasaClient({
               staffList={staffList}
               onChanged={() => setRefreshTick((t) => t + 1)}
             />
-          </>
+          </div>
         )}
+        {/* Sabit giderler ayrı, tam genişlikte bir satırda — tarih aralığına göre
+            değişen yukarıdaki iki işlem listesinden kavramsal olarak farklı
+            (her ay tekrar eden, aralık seçiminden bağımsız bir liste), aynı
+            grid'e sıkıştırılınca üçüncü kart yalnız kalıp dengesiz görünüyordu. */}
         <FixedExpenses initialFixedExpenses={initialFixedExpenses} />
       </div>
     </>
