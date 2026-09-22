@@ -916,6 +916,7 @@ function CustomerPackagesBody({
   const [serviceDraft, setServiceDraft] = useState("");
   const [sessionsDraft, setSessionsDraft] = useState("");
   const [amountDraft, setAmountDraft] = useState("");
+  const [intervalDraft, setIntervalDraft] = useState("");
   const [staffDraft, setStaffDraft] = useState("");
   const [paymentDraft, setPaymentDraft] = useState<"nakit" | "kart" | null>(null);
   const [adding, setAdding] = useState(false);
@@ -944,6 +945,7 @@ function CustomerPackagesBody({
           price: amount,
           staff_id: staffDraft || null,
           payment_method: paymentDraft,
+          interval_days: intervalDraft.trim() ? Number(intervalDraft) : null,
         }),
       });
       if (res.ok) {
@@ -951,6 +953,7 @@ function CustomerPackagesBody({
         setServiceDraft("");
         setSessionsDraft("");
         setAmountDraft("");
+        setIntervalDraft("");
         onChanged();
       } else {
         setError("Paket eklenemedi, lütfen tekrar dene.");
@@ -998,6 +1001,7 @@ function CustomerPackagesBody({
                   </p>
                   <p className="text-[11px] text-ink-muted">
                     {p.sale_date} · {p.usedSessions}/{p.total_sessions} seans kullanıldı
+                    {p.interval_days ? ` · seanslar arası min. ${p.interval_days} gün` : ""}
                   </p>
                 </div>
                 <span className="font-semibold font-display text-[13px] shrink-0 text-good-ink">
@@ -1061,6 +1065,15 @@ function CustomerPackagesBody({
             inputMode="decimal"
             placeholder="Tutar"
             className="w-24 border border-border rounded-lg px-2 py-2 text-right text-[13px]"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input
+            value={intervalDraft}
+            onChange={(e) => setIntervalDraft(e.target.value)}
+            inputMode="numeric"
+            placeholder="Seanslar arası min. gün (opsiyonel)"
+            className="flex-1 min-w-0 border border-border rounded-lg px-2 py-2 text-[13px]"
           />
         </div>
         <div className="flex items-center gap-1.5">

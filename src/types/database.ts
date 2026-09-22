@@ -170,6 +170,8 @@ export interface CustomerPackage {
   staff_id: string | null;
   commission_rate_snapshot: number | null;
   payment_method: "nakit" | "kart" | null;
+  /** Seanslar arası minimum gün — boşsa kısıtlama uygulanmaz. Bkz. schema.sql yorumu. */
+  interval_days: number | null;
   created_at: string;
 }
 

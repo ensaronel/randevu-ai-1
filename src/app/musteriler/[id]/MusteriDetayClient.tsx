@@ -23,6 +23,7 @@ export interface PackageItem {
   remainingSessions: number;
   price: number;
   saleDate: string;
+  intervalDays: number | null;
 }
 
 export interface ActionHistoryItem {
@@ -250,6 +251,7 @@ export default function MusteriDetayClient({
                   <p className="text-[11px] text-ink-muted">
                     {p.saleDate} satın alındı · {formatTL(p.price)}
                     {isFinished ? " · tamamlandı" : ` · ${p.remainingSessions} seans kaldı`}
+                    {p.intervalDays ? ` · seanslar arası min. ${p.intervalDays} gün` : ""}
                   </p>
                 </div>
               );

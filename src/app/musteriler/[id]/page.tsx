@@ -78,6 +78,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
     remainingSessions: p.remainingSessions,
     price: Number(p.price),
     saleDate: p.sale_date,
+    intervalDays: p.interval_days,
   }));
 
   const appointmentHistory: AppointmentHistoryItem[] = appointments.map((a) => ({

@@ -7,7 +7,7 @@ import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { formatDateTR, formatTimeTR, formatHourSpokenTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
 import { parseAssignmentsArg } from "@/lib/ai/safetyGate";
-import { attachRemainingSessions, findActivePackageForService } from "@/lib/packages";
+import { attachRemainingSessions, findActivePackageForService, getLastSessionDate } from "@/lib/packages";
 import type { Appointment, AppointmentService } from "@/types/database";
 
 export const AI_TOOLS: FunctionDeclaration[] = [
@@ -73,7 +73,10 @@ export const AI_TOOLS: FunctionDeclaration[] = [
       "gerçek randevuyu oluşturur. Müşterinin açıkça onayı olmadan asla çağırma. Müşterinin " +
       "o hizmet için kalan seansı olan bir paketi varsa OTOMATİK uygulanır — dönen " +
       "packages_applied dizisi doluysa o hizmet(ler) için müşteriden ücret İSTEME, sadece " +
-      "'paketinizden 1 seans kullanıldı, X seans kaldı' diye bilgilendir.",
+      "'paketinizden 1 seans kullanıldı, X seans kaldı' diye bilgilendir. Paketin seanslar " +
+      "arası minimum gün kuralı varsa ve bu süre dolmadıysa randevu OLUŞTURULMAZ, dönen " +
+      "hata mesajında en erken uygun tarih yazar — bunu müşteriye ilet ve o tarihten " +
+      "itibaren check_availability ile yeni bir saat öner.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -108,6 +111,8 @@ export const AI_TOOLS: FunctionDeclaration[] = [
     description:
       "Müşterinin satın aldığı seans paketlerini (ör. '6 seanslık lazer epilasyon') ve her birinden " +
       "kaç seans kaldığını döner. 'Kaç seansım kaldı?', 'paketim ne durumda?' gibi sorularda çağır. " +
+      "next_eligible_date doluysa (paketin seanslar arası minimum gün kuralı varsa) 'bir sonraki " +
+      "seansımı ne zaman alabilirim' sorusuna da bu tarihi kullanarak doğrudan cevap ver. " +
       "create_appointment zaten uygun bir paket varsa otomatik uyguluyor, bunu SADECE bilgi almak " +
       "için ayrıca çağırman gerekir.",
     parametersJsonSchema: { type: "object", properties: {} },
@@ -429,6 +434,27 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     resolved.map((r) => findActivePackageForService(admin, exec.ctx.business.id, exec.customerId, r.service!.id))
   );
 
+  // Paket satılırken işletme "seanslar arası en az X gün" girdiyse (interval_days),
+  // bu paketten karşılanacak her hizmet için son gerçekleşmiş seanstan bu yana yeterli
+  // süre geçtiğini doğrula. Yetmiyorsa randevuyu HİÇ oluşturma — sadece en erken uygun
+  // tarihi modele bildir, model müşteriye onu önersin. Bkz. schema.sql'deki interval_days
+  // yorumu: bu bir uygulama-seviyesi kısıtlama, DB'de constraint yok.
+  for (let i = 0; i < resolved.length; i++) {
+    const pkg = packageAssignments[i];
+    if (!pkg || !pkg.interval_days) continue;
+    const lastSessionDate = await getLastSessionDate(admin, pkg.id);
+    if (!lastSessionDate) continue;
+    const earliestValidMs = new Date(lastSessionDate).getTime() + pkg.interval_days * 86400000;
+    if (new Date(startsAt).getTime() < earliestValidMs) {
+      return JSON.stringify({
+        error:
+          `${resolved[i].service!.name} paketinde seanslar arası en az ${pkg.interval_days} gün olmalı, ` +
+          `bu süre henüz dolmadı. En erken uygun tarih: ${formatDateTR(new Date(earliestValidMs).toISOString())}. ` +
+          "Müşteriye bunu söyle ve bu tarihten itibaren check_availability ile yeni bir saat öner.",
+      });
+    }
+  }
+
   // Owner'ın manuel randevu oluşturma yolu (/api/appointments POST) ile AYNI
   // atomik çakışma-kontrolü + insert RPC'si — iki farklı kod yolunun farklı
   // davranıp birbiriyle çelişen (çift rezervasyon gibi) sonuçlar üretmesini
@@ -516,25 +542,44 @@ async function runGetMyPackages(exec: ToolExecContext): Promise<string> {
     .eq("customer_id", exec.customerId)
     .order("sale_date", { ascending: false });
 
-  const packages = (data ?? []) as unknown as { id: string; service: { name: string } | { name: string }[] | null; total_sessions: number; price: number; sale_date: string }[];
+  const packages = (data ?? []) as unknown as {
+    id: string;
+    service: { name: string } | { name: string }[] | null;
+    total_sessions: number;
+    price: number;
+    sale_date: string;
+    interval_days: number | null;
+  }[];
   if (packages.length === 0) {
     return JSON.stringify({ packages: [], message: "Kayıtlı bir paketiniz yok." });
   }
 
   const withRemaining = await attachRemainingSessions(admin, packages as unknown as Parameters<typeof attachRemainingSessions>[1]);
 
-  return JSON.stringify({
-    packages: withRemaining.map((p, i) => {
+  const enriched = await Promise.all(
+    withRemaining.map(async (p, i) => {
       const service = packages[i].service;
       const serviceName = Array.isArray(service) ? service[0]?.name : service?.name;
+      let nextEligibleDate: string | null = null;
+      if (p.interval_days && p.remainingSessions > 0) {
+        const lastSessionDate = await getLastSessionDate(admin, p.id);
+        if (lastSessionDate) {
+          nextEligibleDate = formatDateTR(new Date(new Date(lastSessionDate).getTime() + p.interval_days * 86400000).toISOString());
+        }
+      }
       return {
         service_name: serviceName ?? "Hizmet",
         total_sessions: p.total_sessions,
         remaining_sessions: p.remainingSessions,
         sale_date: p.sale_date,
+        // Doluysa "bir sonraki seansımı ne zaman alabilirim" sorusuna hazır cevap — bu
+        // tarihten ÖNCE create_appointment zaten reddedecek, model bunu önceden söyleyebilir.
+        next_eligible_date: nextEligibleDate,
       };
-    }),
-  });
+    })
+  );
+
+  return JSON.stringify({ packages: enriched });
 }
 
 async function runListMyAppointments(exec: ToolExecContext): Promise<string> {

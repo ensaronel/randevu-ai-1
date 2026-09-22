@@ -953,3 +953,19 @@ begin
   return v_appointment_id;
 end;
 $$;
+
+-- ============================================================
+-- Paket seansları arası minimum gün (2026-09-22). Kullanıcı isteği: "seans
+-- günleri belirli olsun, işletme bu günleri belirlesin" — sabit bir takvim
+-- yerine, paketi SATARKEN o pakete özel serbest bir aralık girilebiliyor
+-- (ör. lazer epilasyonda "en az 21 gün"). Nullable: boş bırakılırsa hiçbir
+-- kısıtlama uygulanmaz (mevcut davranış aynen korunur). Uygulama, WhatsApp
+-- AI'nin create_appointment akışında (src/lib/ai/tools.ts) bu pakete bağlı
+-- son gerçekleşmiş seansın tarihini bulup + interval_days ekleyerek en erken
+-- uygun tarihi hesaplıyor ve daha erken bir tarih istenirse randevuyu hiç
+-- oluşturmadan müşteriyi bilgilendiriyor. Burada, DB seviyesinde bir CHECK
+-- constraint YOK ki (RPC'nin çakışma kontrolü gibi atomik bir bütünlük kuralı
+-- değil, sadece bir uygulama-seviyesi öneri) — check aşağıda sadece pozitif
+-- sayı garantisi için var.
+-- ============================================================
+alter table customer_packages add column interval_days int check (interval_days is null or interval_days > 0);

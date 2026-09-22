@@ -102,6 +102,7 @@ export const customerPackageCreateSchema = z.object({
   sale_date: z.iso.date(),
   staff_id: z.string().uuid().nullable().optional(),
   payment_method: z.enum(["nakit", "kart"]).nullable().optional(),
+  interval_days: z.number().int().positive().nullable().optional(),
 });
 
 export const actionObjectUpdateSchema = z.object({

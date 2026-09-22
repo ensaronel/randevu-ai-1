@@ -58,6 +58,31 @@ export async function attachRemainingSessions(
 }
 
 /**
+ * Bir pakete bağlı, iptal olmayan en son (en yeni tarihli) randevunun starts_at'ini döner —
+ * interval_days kısıtlamasının "son seanstan bu yana kaç gün geçti" hesabı için. Randevu hiç
+ * yoksa null (ilk seansta kısıtlama uygulanmaz).
+ */
+export async function getLastSessionDate(supabase: AnySupabaseClient, packageId: string): Promise<string | null> {
+  const { data: usageRows } = await supabase
+    .from("appointment_services")
+    .select("appointment_id")
+    .eq("customer_package_id", packageId);
+
+  const appointmentIds = [...new Set((usageRows ?? []).map((r) => r.appointment_id as string))];
+  if (appointmentIds.length === 0) return null;
+
+  const { data: appts } = await supabase
+    .from("appointments")
+    .select("starts_at, status")
+    .in("id", appointmentIds)
+    .neq("status", "cancelled")
+    .order("starts_at", { ascending: false })
+    .limit(1);
+
+  return (appts ?? [])[0]?.starts_at ?? null;
+}
+
+/**
  * WhatsApp AI'nin create_appointment'ta otomatik uygulaması için: bir müşterinin belirli bir
  * hizmet için kalan seansı olan (en eski satılan) aktif paketini bulur — varsa o seans otomatik
  * kullanılır, müşteriden ayrıca ücret istenmez.
