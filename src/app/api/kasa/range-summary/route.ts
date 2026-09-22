@@ -3,6 +3,8 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { dateKeyRangeUtcISO, daysBetweenKeys, addDaysToKey, dateKeyFromIso } from "@/lib/date";
 import { isRealizedRevenue } from "@/lib/revenue";
+import { attachRemainingSessions } from "@/lib/packages";
+import type { CustomerPackage } from "@/types/database";
 
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CHART_DAYS = 31;
@@ -15,6 +17,7 @@ type ApptRow = {
 };
 
 type SaleRow = { sale_date: string; amount: number; payment_method: string | null };
+type PackageRow = { sale_date: string; price: number; payment_method: string | null };
 
 function revenueOf(appointments: ApptRow[]): number {
   return appointments
@@ -25,7 +28,7 @@ function revenueOf(appointments: ApptRow[]): number {
     );
 }
 
-function salesRevenueOf(sales: SaleRow[]): number {
+function salesRevenueOf(sales: { amount: number }[]): number {
   return sales.reduce((sum, s) => sum + Number(s.amount), 0);
 }
 
@@ -59,6 +62,8 @@ export async function GET(request: NextRequest) {
       { data: oneTimeExpenses, error: oneTimeError },
       { data: sales, error: salesError },
       { data: previousSales, error: prevSalesError },
+      { data: packages, error: packagesError },
+      { data: previousPackages, error: prevPackagesError },
     ] = await Promise.all([
       supabase
         .from("appointments")
@@ -93,6 +98,19 @@ export async function GET(request: NextRequest) {
         .eq("business_id", owner.business_id)
         .gte("sale_date", previousFrom)
         .lte("sale_date", previousTo),
+      supabase
+        .from("customer_packages")
+        .select("*, customer:customers(full_name), service:services(name)")
+        .eq("business_id", owner.business_id)
+        .gte("sale_date", from)
+        .lte("sale_date", to)
+        .order("sale_date", { ascending: false }),
+      supabase
+        .from("customer_packages")
+        .select("sale_date, price, payment_method")
+        .eq("business_id", owner.business_id)
+        .gte("sale_date", previousFrom)
+        .lte("sale_date", previousTo),
     ]);
     if (apptError) throw apptError;
     if (prevApptError) throw prevApptError;
@@ -100,12 +118,17 @@ export async function GET(request: NextRequest) {
     if (oneTimeError) throw oneTimeError;
     if (salesError) throw salesError;
     if (prevSalesError) throw prevSalesError;
+    if (packagesError) throw packagesError;
+    if (prevPackagesError) throw prevPackagesError;
 
     const apptRows = (appointments ?? []) as ApptRow[];
     const saleRows = (sales ?? []) as SaleRow[];
-    const revenue = revenueOf(apptRows) + salesRevenueOf(saleRows);
+    const packageRows = (packages ?? []) as PackageRow[];
+    const revenue = revenueOf(apptRows) + salesRevenueOf(saleRows) + salesRevenueOf(packageRows.map((p) => ({ amount: p.price })));
     const previousRevenue =
-      revenueOf((previousAppointments ?? []) as ApptRow[]) + salesRevenueOf((previousSales ?? []) as SaleRow[]);
+      revenueOf((previousAppointments ?? []) as ApptRow[]) +
+      salesRevenueOf((previousSales ?? []) as SaleRow[]) +
+      salesRevenueOf(((previousPackages ?? []) as PackageRow[]).map((p) => ({ amount: p.price })));
     const revenueChangePercent = previousRevenue > 0 ? ((revenue - previousRevenue) / previousRevenue) * 100 : null;
 
     let cashRevenue = 0;
@@ -126,6 +149,14 @@ export async function GET(request: NextRequest) {
       else if (sale.payment_method === "kart") cardRevenue += amount;
       else unspecifiedRevenue += amount;
     }
+    for (const pkg of packageRows) {
+      const amount = Number(pkg.price);
+      if (pkg.payment_method === "nakit") cashRevenue += amount;
+      else if (pkg.payment_method === "kart") cardRevenue += amount;
+      else unspecifiedRevenue += amount;
+    }
+
+    const packagesWithRemaining = await attachRemainingSessions(supabase, (packages ?? []) as unknown as CustomerPackage[]);
 
     const totalMonthlyExpense = (fixedExpenses ?? []).reduce((sum, e) => sum + Number(e.monthly_amount), 0);
     const fixedExpenseShare = (totalMonthlyExpense / 30) * dayCount;
@@ -153,6 +184,9 @@ export async function GET(request: NextRequest) {
       for (const sale of saleRows) {
         byDate.set(sale.sale_date, (byDate.get(sale.sale_date) ?? 0) + Number(sale.amount));
       }
+      for (const pkg of packageRows) {
+        byDate.set(pkg.sale_date, (byDate.get(pkg.sale_date) ?? 0) + Number(pkg.price));
+      }
       dailyChart = Array.from(byDate.entries()).map(([date, rev]) => ({ date, revenue: rev }));
     }
 
@@ -171,6 +205,7 @@ export async function GET(request: NextRequest) {
         revenueChangePercent,
         oneTimeExpenses: oneTimeExpenses ?? [],
         oneTimeSales: sales ?? [],
+        customerPackages: packagesWithRemaining,
         dailyChart,
       },
     });

@@ -6,6 +6,16 @@ import PageHeader from "@/components/PageHeader";
 import KasaClient from "@/app/kasa/KasaClient";
 import type { Business, FixedExpense, Staff } from "@/types/database";
 
+interface ServiceOption {
+  id: string;
+  name: string;
+}
+
+interface CustomerOption {
+  id: string;
+  full_name: string;
+}
+
 async function loadMonthlyCommissions(
   supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
   business: Business,
@@ -25,16 +35,30 @@ export default async function KasaPage() {
   const { data: staffData } = await supabase.from("staff").select("*").eq("business_id", business.id).eq("status", "active");
   const staffList = (staffData ?? []) as Staff[];
 
-  const [{ data: fixedExpenseData }, commissions] = await Promise.all([
+  const [{ data: fixedExpenseData }, { data: serviceData }, { data: customerData }, commissions] = await Promise.all([
     supabase
       .from("fixed_expenses")
       .select("*")
       .eq("business_id", business.id)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("services")
+      .select("id, name")
+      .eq("business_id", business.id)
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+    supabase
+      .from("customers")
+      .select("id, full_name")
+      .eq("business_id", business.id)
+      .eq("status", "active")
+      .order("full_name", { ascending: true }),
     loadMonthlyCommissions(supabase, business, staffList),
   ]);
 
   const fixedExpenses = (fixedExpenseData ?? []) as FixedExpense[];
+  const serviceList = (serviceData ?? []) as ServiceOption[];
+  const customerList = (customerData ?? []) as CustomerOption[];
 
   return (
     <AppShell businessName={business.name}>
@@ -43,6 +67,8 @@ export default async function KasaPage() {
         <KasaClient
           initialFixedExpenses={fixedExpenses}
           staffList={staffList.map((s) => ({ id: s.id, full_name: s.full_name }))}
+          serviceList={serviceList}
+          customerList={customerList}
           commissions={commissions}
         />
     </AppShell>

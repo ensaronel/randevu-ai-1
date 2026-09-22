@@ -3,10 +3,11 @@ import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dateKeyTR, formatDateTR } from "@/lib/date";
 import { dayRangeUtcISOForDate, weekdayKeyForDate } from "@/lib/ai/availability";
 import { parseTimeToMinutes } from "@/lib/capacity";
+import { attachRemainingSessions } from "@/lib/packages";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
 import TakvimAppointmentBlocks from "@/app/takvim/TakvimAppointmentBlocks";
-import type { Staff } from "@/types/database";
+import type { Staff, CustomerPackage } from "@/types/database";
 
 const DEFAULT_GRID_START_HOUR = 9;
 const DEFAULT_GRID_END_HOUR = 19;
@@ -32,6 +33,7 @@ type ApptServiceRow = {
   final_price: number | null;
   adjustment_note: string | null;
   payment_method: "nakit" | "kart" | null;
+  customer_package_id: string | null;
   service: ServiceInfo | ServiceInfo[] | null;
 };
 type ApptRow = {
@@ -64,7 +66,7 @@ export default async function TakvimPage({
     supabase
       .from("appointments")
       .select(
-        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, staff_id, planned_price, final_price, adjustment_note, payment_method, service:services(name, duration_minutes))"
+        "id, starts_at, status, customer:customers(full_name, phone), appointment_services(id, staff_id, planned_price, final_price, adjustment_note, payment_method, customer_package_id, service:services(name, duration_minutes))"
       )
       .eq("business_id", business.id)
       .gte("starts_at", startUtc)
@@ -74,6 +76,27 @@ export default async function TakvimPage({
 
   const staffList = (staffData ?? []) as Staff[];
   const appointments = (apptData ?? []) as unknown as ApptRow[];
+
+  // Randevu bloklarında "Seans 3/6" rozeti gösterebilmek için, bugünkü
+  // randevularda geçen paketlerin toplam/kullanılan seans sayısı toplu çekilir
+  // (bkz. schema.sql customer_packages yorumu — kalan seans hep hesaplanır, hiç
+  // sayaç olarak tutulmaz).
+  const referencedPackageIds = [
+    ...new Set(
+      appointments.flatMap((a) => a.appointment_services.map((s) => s.customer_package_id).filter((id): id is string => !!id))
+    ),
+  ];
+  const packageProgressById: Record<string, { used: number; total: number }> = {};
+  if (referencedPackageIds.length > 0) {
+    const { data: packagesData } = await supabase
+      .from("customer_packages")
+      .select("*")
+      .in("id", referencedPackageIds);
+    const withRemaining = await attachRemainingSessions(supabase, (packagesData ?? []) as CustomerPackage[]);
+    for (const p of withRemaining) {
+      packageProgressById[p.id] = { used: p.usedSessions, total: p.total_sessions };
+    }
+  }
   const weekdayKey = weekdayKeyForDate(dateKey);
 
   // Grid, sabit 09:00-19:00 yerine o günkü gerçek en erken açılış/en geç kapanışa
@@ -227,6 +250,7 @@ export default async function TakvimPage({
                 startUtc={startUtc}
                 gridStartHour={GRID_START_HOUR}
                 gridMinutes={gridMinutes}
+                packageProgressById={packageProgressById}
               />
             </div>
           </div>

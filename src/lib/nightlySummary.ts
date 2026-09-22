@@ -10,7 +10,7 @@ export async function computeRevenueForRange(admin: AdminClient, businessId: str
   const fromKey = dateKeyFromIso(startUtc);
   const toKey = addDaysToKey(dateKeyFromIso(endUtc), -1);
 
-  const [{ data }, { data: salesData }] = await Promise.all([
+  const [{ data }, { data: salesData }, { data: packagesData }] = await Promise.all([
     admin
       .from("appointments")
       .select("status, appointment_services(planned_price, final_price)")
@@ -20,6 +20,12 @@ export async function computeRevenueForRange(admin: AdminClient, businessId: str
     admin
       .from("one_time_sales")
       .select("amount")
+      .eq("business_id", businessId)
+      .gte("sale_date", fromKey)
+      .lte("sale_date", toKey),
+    admin
+      .from("customer_packages")
+      .select("price")
       .eq("business_id", businessId)
       .gte("sale_date", fromKey)
       .lte("sale_date", toKey),
@@ -33,8 +39,9 @@ export async function computeRevenueForRange(admin: AdminClient, businessId: str
       0
     );
   const salesRevenue = (salesData ?? []).reduce((sum, s) => sum + Number(s.amount), 0);
+  const packagesRevenue = (packagesData ?? []).reduce((sum, p) => sum + Number(p.price), 0);
 
-  return appointmentRevenue + salesRevenue;
+  return appointmentRevenue + salesRevenue + packagesRevenue;
 }
 
 // "Anlamlı sapma" eşiği — bunun altındaki farklar için yorum üretilmez (gürültü olmasın diye).

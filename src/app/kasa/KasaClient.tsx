@@ -5,9 +5,19 @@ import { formatTL } from "@/lib/date";
 import { parseTLInput } from "@/lib/money";
 import BadgeStat from "@/components/BadgeStat";
 import EmptyState from "@/components/EmptyState";
-import type { ExpenseCategory, FixedExpense, OneTimeExpense, OneTimeSale } from "@/types/database";
+import type { ExpenseCategory, FixedExpense, OneTimeExpense, OneTimeSale, CustomerPackage } from "@/types/database";
 
 interface StaffOption {
+  id: string;
+  full_name: string;
+}
+
+interface ServiceOption {
+  id: string;
+  name: string;
+}
+
+interface CustomerOption {
   id: string;
   full_name: string;
 }
@@ -16,6 +26,13 @@ interface CommissionItem {
   name: string;
   amount: number;
 }
+
+type CustomerPackageRow = CustomerPackage & {
+  usedSessions: number;
+  remainingSessions: number;
+  customer: { full_name: string } | { full_name: string }[] | null;
+  service: { name: string } | { name: string }[] | null;
+};
 
 /** Tarayıcının yerel (Türkiye) gününe göre "YYYY-MM-DD" — toISOString() UTC'ye kaydırdığı için kullanılmadı. */
 function toDateKey(d: Date): string {
@@ -204,7 +221,24 @@ interface RangeSummary {
   revenueChangePercent: number | null;
   oneTimeExpenses: OneTimeExpense[];
   oneTimeSales: OneTimeSale[];
+  customerPackages: CustomerPackageRow[];
   dailyChart: { date: string; revenue: number }[] | null;
+}
+
+/** Satır ikonu — paketler bir "seans" hakkı sattığı için diğer gelir kalemlerinden ayırt edici bilet/kupon hissi. */
+function PackageIcon() {
+  return (
+    <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-good-soft text-good-ink">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 8a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 000-4V8z" />
+        <path d="M10 8v8" strokeDasharray="1.6 2" />
+      </svg>
+    </div>
+  );
+}
+
+function one<T>(value: T | T[] | null): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value;
 }
 
 function RangeRevenueChart({ data }: { data: { date: string; revenue: number }[] }) {
@@ -862,6 +896,214 @@ function FixedExpensesBody({ initialFixedExpenses }: { initialFixedExpenses: Fix
   );
 }
 
+function CustomerPackagesBody({
+  range,
+  items,
+  staffList,
+  serviceList,
+  customerList,
+  onChanged,
+}: {
+  range: { from: string; to: string };
+  items: CustomerPackageRow[];
+  staffList: StaffOption[];
+  serviceList: ServiceOption[];
+  customerList: CustomerOption[];
+  onChanged: () => void;
+}) {
+  const [dateDraft, setDateDraft] = useState(range.to);
+  const [customerDraft, setCustomerDraft] = useState("");
+  const [serviceDraft, setServiceDraft] = useState("");
+  const [sessionsDraft, setSessionsDraft] = useState("");
+  const [amountDraft, setAmountDraft] = useState("");
+  const [staffDraft, setStaffDraft] = useState("");
+  const [paymentDraft, setPaymentDraft] = useState<"nakit" | "kart" | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const total = items.reduce((sum, p) => sum + Number(p.price), 0);
+
+  async function addPackage() {
+    const sessions = Number(sessionsDraft);
+    const amount = parseTLInput(amountDraft);
+    if (!customerDraft || !serviceDraft || !Number.isInteger(sessions) || sessions <= 0 || Number.isNaN(amount) || amount < 0 || !dateDraft)
+      return;
+
+    setAdding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/kasa/customer-packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sale_date: dateDraft,
+          customer_id: customerDraft,
+          service_id: serviceDraft,
+          total_sessions: sessions,
+          price: amount,
+          staff_id: staffDraft || null,
+          payment_method: paymentDraft,
+        }),
+      });
+      if (res.ok) {
+        setCustomerDraft("");
+        setServiceDraft("");
+        setSessionsDraft("");
+        setAmountDraft("");
+        onChanged();
+      } else {
+        setError("Paket eklenemedi, lütfen tekrar dene.");
+      }
+    } catch {
+      setError("Paket eklenemedi, lütfen tekrar dene.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function removePackage(id: string) {
+    setRemovingId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/kasa/customer-packages/${id}`, { method: "DELETE" });
+      if (res.ok) onChanged();
+      else setError("Paket silinemedi — kullanılmış seansı olan bir paket silinemez.");
+    } catch {
+      setError("Paket silinemedi, lütfen tekrar dene.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-ink-muted">
+        Çok seanslı hizmet paketi satışı (ör. lazer epilasyon) — randevu alınırken kalan seans otomatik kullanılır.
+      </p>
+
+      {items.length === 0 ? (
+        <EmptyState message="Seçili aralıkta paket satışı yok." />
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <ExpandableList
+            items={items}
+            keyOf={(p) => p.id}
+            renderItem={(p) => (
+              <div className="flex items-center gap-2.5">
+                <PackageIcon />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-ink truncate">
+                    {one(p.customer)?.full_name ?? "Müşteri"} · {one(p.service)?.name ?? "Hizmet"}
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
+                    {p.sale_date} · {p.usedSessions}/{p.total_sessions} seans kullanıldı
+                  </p>
+                </div>
+                <span className="font-semibold font-display text-[13px] shrink-0 text-good-ink">
+                  +{formatTL(Number(p.price))}
+                </span>
+                <DeleteButton onConfirm={() => removePackage(p.id)} busy={removingId === p.id} label="Paketi sil" />
+              </div>
+            )}
+          />
+          <div className="flex items-center justify-between text-[13px] font-semibold pt-1 border-t border-border">
+            <span>Aralık toplamı</span>
+            <span className="font-display text-good-ink">+{formatTL(total)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateDraft}
+            onChange={(e) => setDateDraft(e.target.value)}
+            className="border border-border rounded-lg px-2 py-2 text-[13px] shrink-0"
+          />
+          <select
+            value={customerDraft}
+            onChange={(e) => setCustomerDraft(e.target.value)}
+            className="flex-1 min-w-0 border border-border rounded-lg px-2 py-2 text-[13px] bg-surface"
+          >
+            <option value="">Müşteri seç...</option>
+            {customerList.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={serviceDraft}
+            onChange={(e) => setServiceDraft(e.target.value)}
+            className="flex-1 min-w-0 border border-border rounded-lg px-2 py-2 text-[13px] bg-surface"
+          >
+            <option value="">Hizmet seç...</option>
+            {serviceList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={sessionsDraft}
+            onChange={(e) => setSessionsDraft(e.target.value)}
+            inputMode="numeric"
+            placeholder="Seans"
+            className="w-20 border border-border rounded-lg px-2 py-2 text-right text-[13px]"
+          />
+          <input
+            value={amountDraft}
+            onChange={(e) => setAmountDraft(e.target.value)}
+            inputMode="decimal"
+            placeholder="Tutar"
+            className="w-24 border border-border rounded-lg px-2 py-2 text-right text-[13px]"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={staffDraft}
+            onChange={(e) => setStaffDraft(e.target.value)}
+            className="flex-1 min-w-0 border border-border rounded-lg px-2 py-2 text-[13px] bg-surface"
+          >
+            <option value="">İşletme (genel)</option>
+            {staffList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.full_name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-1.5">
+            {(["nakit", "kart"] as const).map((method) => (
+              <button
+                key={method}
+                type="button"
+                onClick={() => setPaymentDraft((prev) => (prev === method ? null : method))}
+                className={`px-2.5 py-1.5 rounded-full text-[12px] font-semibold border ${
+                  paymentDraft === method ? "bg-accent text-white border-accent" : "border-border text-ink-muted"
+                }`}
+              >
+                {method === "nakit" ? "Nakit" : "Kart"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={addPackage}
+          disabled={adding || !customerDraft || !serviceDraft || !sessionsDraft.trim() || !amountDraft.trim()}
+          className="bg-accent text-white rounded-lg shadow-[0_2px_10px_-3px_rgba(30,46,79,0.55)] active:scale-[0.98] px-3.5 py-2 text-[13px] font-semibold disabled:opacity-50"
+        >
+          Paketi Sat
+        </button>
+        {error && <p className="text-[12px] text-bad">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function CommissionsBody({ commissions }: { commissions: CommissionItem[] }) {
   return (
     <div className="flex flex-col gap-3">
@@ -884,12 +1126,13 @@ function CommissionsBody({ commissions }: { commissions: CommissionItem[] }) {
   );
 }
 
-type KasaTab = "satis" | "tek" | "sabit" | "prim";
+type KasaTab = "satis" | "tek" | "sabit" | "paket" | "prim";
 
 const KASA_TABS: { key: KasaTab; label: string }[] = [
   { key: "satis", label: "Satış" },
   { key: "tek", label: "Tek Seferlik" },
   { key: "sabit", label: "Sabit Gider" },
+  { key: "paket", label: "Paketler" },
   { key: "prim", label: "Primler" },
 ];
 
@@ -921,10 +1164,14 @@ function KasaTabBar({ tab, setTab }: { tab: KasaTab; setTab: (t: KasaTab) => voi
 export default function KasaClient({
   initialFixedExpenses,
   staffList,
+  serviceList,
+  customerList,
   commissions,
 }: {
   initialFixedExpenses: FixedExpense[];
   staffList: StaffOption[];
+  serviceList: ServiceOption[];
+  customerList: CustomerOption[];
   commissions: CommissionItem[];
 }) {
   const [preset, setPreset] = useState<PresetKey>("today");
@@ -1002,6 +1249,21 @@ export default function KasaClient({
           ))}
 
         {tab === "sabit" && <FixedExpensesBody initialFixedExpenses={initialFixedExpenses} />}
+
+        {tab === "paket" &&
+          (summaryReady ? (
+            <CustomerPackagesBody
+              key={`pkg-${range.to}`}
+              range={range}
+              items={summary.customerPackages}
+              staffList={staffList}
+              serviceList={serviceList}
+              customerList={customerList}
+              onChanged={() => setRefreshTick((t) => t + 1)}
+            />
+          ) : (
+            <p className="text-[12.5px] text-ink-muted">Yükleniyor…</p>
+          ))}
 
         {tab === "prim" && <CommissionsBody commissions={commissions} />}
       </div>

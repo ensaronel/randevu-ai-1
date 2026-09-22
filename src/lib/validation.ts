@@ -94,6 +94,16 @@ export const oneTimeSaleCreateSchema = z.object({
   payment_method: z.enum(["nakit", "kart"]).nullable().optional(),
 });
 
+export const customerPackageCreateSchema = z.object({
+  customer_id: z.string().uuid(),
+  service_id: z.string().uuid(),
+  total_sessions: z.number().int().positive(),
+  price: z.number().nonnegative(),
+  sale_date: z.iso.date(),
+  staff_id: z.string().uuid().nullable().optional(),
+  payment_method: z.enum(["nakit", "kart"]).nullable().optional(),
+});
+
 export const actionObjectUpdateSchema = z.object({
   status: z.enum(["approved", "rejected"]),
 });

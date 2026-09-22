@@ -7,6 +7,7 @@ import { sendWhatsappTextMessage } from "@/lib/whatsapp/client";
 import { formatDateTR, formatTimeTR, formatHourSpokenTR } from "@/lib/date";
 import type { AiBusinessContext } from "@/lib/ai/context";
 import { parseAssignmentsArg } from "@/lib/ai/safetyGate";
+import { attachRemainingSessions, findActivePackageForService } from "@/lib/packages";
 import type { Appointment, AppointmentService } from "@/types/database";
 
 export const AI_TOOLS: FunctionDeclaration[] = [
@@ -69,7 +70,10 @@ export const AI_TOOLS: FunctionDeclaration[] = [
     name: "create_appointment",
     description:
       "Müşteri check_availability'nin önerdiği bir saati onayladıktan SONRA çağrılır — " +
-      "gerçek randevuyu oluşturur. Müşterinin açıkça onayı olmadan asla çağırma.",
+      "gerçek randevuyu oluşturur. Müşterinin açıkça onayı olmadan asla çağırma. Müşterinin " +
+      "o hizmet için kalan seansı olan bir paketi varsa OTOMATİK uygulanır — dönen " +
+      "packages_applied dizisi doluysa o hizmet(ler) için müşteriden ücret İSTEME, sadece " +
+      "'paketinizden 1 seans kullanıldı, X seans kaldı' diye bilgilendir.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -97,6 +101,15 @@ export const AI_TOOLS: FunctionDeclaration[] = [
       "Müşterinin yaklaşan (henüz gerçekleşmemiş) randevularını, her birinin appointment_id'siyle " +
       "birlikte listeler. İptal veya erteleme talebi geldiğinde, hangi randevudan bahsettiğini " +
       "netleştirmek ve doğru appointment_id'yi almak için önce bunu çağır.",
+    parametersJsonSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_my_packages",
+    description:
+      "Müşterinin satın aldığı seans paketlerini (ör. '6 seanslık lazer epilasyon') ve her birinden " +
+      "kaç seans kaldığını döner. 'Kaç seansım kaldı?', 'paketim ne durumda?' gibi sorularda çağır. " +
+      "create_appointment zaten uygun bir paket varsa otomatik uyguluyor, bunu SADECE bilgi almak " +
+      "için ayrıca çağırman gerekir.",
     parametersJsonSchema: { type: "object", properties: {} },
   },
   {
@@ -206,6 +219,9 @@ export async function executeAiTool(
   }
   if (name === "list_my_appointments") {
     return { result: await runListMyAppointments(exec), escalated: false };
+  }
+  if (name === "get_my_packages") {
+    return { result: await runGetMyPackages(exec), escalated: false };
   }
   if (name === "cancel_appointment") {
     return { result: await runCancelAppointment(input, exec), escalated: false };
@@ -404,6 +420,15 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
 
   const admin = createAdminSupabaseClient();
 
+  // Müşterinin bu hizmet için kalan seansı olan aktif bir paketi varsa otomatik
+  // uygulanır: fiyat 0 yazılır (para zaten pakette tahsil edildi) ve randevu
+  // servisi o pakete bağlanır — müşteriye AYRICA ücret sorulmaz. Bkz. schema.sql
+  // customer_packages yorumu: bu sayede ciro/prim hesaplayan hiçbir fonksiyona
+  // dokunmadan çifte sayım önleniyor.
+  const packageAssignments = await Promise.all(
+    resolved.map((r) => findActivePackageForService(admin, exec.ctx.business.id, exec.customerId, r.service!.id))
+  );
+
   // Owner'ın manuel randevu oluşturma yolu (/api/appointments POST) ile AYNI
   // atomik çakışma-kontrolü + insert RPC'si — iki farklı kod yolunun farklı
   // davranıp birbiriyle çelişen (çift rezervasyon gibi) sonuçlar üretmesini
@@ -417,11 +442,15 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     // "phone_ai" diye ayrica tanimli bir deger olmasina ragmen hic kullanilmiyordu
     // (2026-09-12 denetiminde bulundu) - kaynak raporlama/analiz icin yanlis cikiyordu.
     p_source: exec.channel === "voice" ? "phone_ai" : "whatsapp_ai",
-    p_services: resolved.map((r) => ({
-      service_id: r.service!.id,
-      staff_id: r.staff!.id,
-      planned_price: r.service!.price,
-    })),
+    p_services: resolved.map((r, i) => {
+      const activePackage = packageAssignments[i];
+      return {
+        service_id: r.service!.id,
+        staff_id: r.staff!.id,
+        planned_price: activePackage ? 0 : r.service!.price,
+        customer_package_id: activePackage ? activePackage.id : null,
+      };
+    }),
     p_business_id: exec.ctx.business.id,
   });
 
@@ -450,12 +479,61 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
     ).catch((err) => console.error("WhatsApp özet mesajı gönderilemedi (randevu oluşturma)", err));
   }
 
+  // Bir paket otomatik uygulandıysa AI'ya bunu müşteriye söylemesi için hazır bir
+  // bilgi veriyoruz (kendi hesabını katmasın diye kalan seans sayısı burada, bu
+  // randevunun kullandığı seans düşülmüş olarak hazır — bkz. check_availability'deki
+  // spoken_slots_summary yorumu, aynı prensip: modele hazır metin/rakam ver).
+  const packagesApplied = resolved
+    .map((r, i) => {
+      const pkg = packageAssignments[i];
+      if (!pkg) return null;
+      return {
+        service_name: r.service!.name,
+        remaining_sessions_after_this: pkg.remainingSessions - 1,
+      };
+    })
+    .filter((p): p is { service_name: string; remaining_sessions_after_this: number } => p !== null);
+
   return JSON.stringify({
     success: true,
     appointment_id: appointmentId,
     display: `${formatDateTR(startsAt)} ${formatTimeTR(startsAt)}`,
     // Sesli akışta saati SÖYLERKEN bunu kullan, display'i değil — bkz. formatHourSpokenTR yorumu.
     spoken_time: formatHourSpokenTR(startsAt),
+    // Boşsa hiç paket kullanılmadı, normal ücretli randevu — AI ücretten bahsetsin.
+    // Doluysa bu hizmet(ler) paketten karşılandı — AI müşteriden ayrıca ücret İSTEMESİN,
+    // "paketinizden 1 seans kullanıldı, X seans kaldı" diye bilgilendirsin.
+    packages_applied: packagesApplied,
+  });
+}
+
+async function runGetMyPackages(exec: ToolExecContext): Promise<string> {
+  const admin = createAdminSupabaseClient();
+  const { data } = await admin
+    .from("customer_packages")
+    .select("*, service:services(name)")
+    .eq("business_id", exec.ctx.business.id)
+    .eq("customer_id", exec.customerId)
+    .order("sale_date", { ascending: false });
+
+  const packages = (data ?? []) as unknown as { id: string; service: { name: string } | { name: string }[] | null; total_sessions: number; price: number; sale_date: string }[];
+  if (packages.length === 0) {
+    return JSON.stringify({ packages: [], message: "Kayıtlı bir paketiniz yok." });
+  }
+
+  const withRemaining = await attachRemainingSessions(admin, packages as unknown as Parameters<typeof attachRemainingSessions>[1]);
+
+  return JSON.stringify({
+    packages: withRemaining.map((p, i) => {
+      const service = packages[i].service;
+      const serviceName = Array.isArray(service) ? service[0]?.name : service?.name;
+      return {
+        service_name: serviceName ?? "Hizmet",
+        total_sessions: p.total_sessions,
+        remaining_sessions: p.remainingSessions,
+        sale_date: p.sale_date,
+      };
+    }),
   });
 }
 

@@ -804,3 +804,152 @@ create policy "own one_time_sales" on one_time_sales
 -- for table" hatasıyla ilgili TÜM sorgular (Kasa'nın tamamı dahil) çöküyor.
 grant select, insert, update, delete on one_time_sales to authenticated;
 grant all on one_time_sales to service_role;
+
+-- ============================================================
+-- Seans/paket satışı (2026-09-22). randevunet.com'daki "paket satışı ve seans
+-- takibi" özelliğine karşılık — güzellik salonlarında lazer epilasyon gibi
+-- hizmetler neredeyse hep çok seanslı paket olarak satılıyor. Paket satışı
+-- ANINDA tam tutarıyla ciroya yazılır (bkz. one_time_sales ile aynı desen:
+-- personel + komisyon + ödeme yöntemi). "Kalan seans" HİÇBİR YERDE sayaç
+-- olarak TUTULMUYOR — appointment_services.customer_package_id ile bu pakete
+-- bağlı, iptal olmayan randevu sayısı total_sessions'tan düşülerek HER
+-- SEFERİNDE hesaplanır (Kasa'daki ciro/prim gibi: tek gerçek kaynak, senkron
+-- bozulma riski yok). Bir seans bu paketten kullanıldığında o randevunun
+-- appointment_services.planned_price/final_price'ı 0 yazılır (para zaten
+-- pakette tahsil edildi) — bu sayede TÜM mevcut ciro/prim fonksiyonları hiç
+-- değişmeden doğru sonucu verir, ayrıca "paket mi değil mi" kontrolü eklemek
+-- gerekmez. Bilinçli tasarım kararı: komisyon SADECE paketi satan personele
+-- (satış anında) ödenir; seansı uygulayan personel (satanla aynı olmayabilir)
+-- o seans için ayrıca prim almaz.
+-- ============================================================
+create table customer_packages (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  customer_id uuid not null references customers(id) on delete cascade,
+  service_id uuid not null references services(id),
+  total_sessions int not null check (total_sessions > 0),
+  price numeric(10,2) not null check (price >= 0),
+  sale_date date not null,
+  staff_id uuid references staff(id),
+  commission_rate_snapshot numeric(5,2),
+  payment_method text check (payment_method in ('nakit','kart') or payment_method is null),
+  created_at timestamptz not null default now()
+);
+
+create index idx_customer_packages_customer on customer_packages(customer_id);
+create index idx_customer_packages_business_date on customer_packages(business_id, sale_date);
+
+alter table customer_packages enable row level security;
+create policy "own customer_packages" on customer_packages
+  for all using (business_id = current_business_id())
+  with check (business_id = current_business_id());
+
+grant select, insert, update, delete on customer_packages to authenticated;
+grant all on customer_packages to service_role;
+
+-- Bir randevu hizmetinin hangi pakete karşılık geldiği (nullable — çoğu randevu
+-- pakete bağlı değildir). Paketi silmek, ondan seans kullanılmış randevu
+-- servisleri varsa varsayılan (no action) FK davranışıyla engellenir — satış
+-- geçmişi yanlışlıkla kaybolmasın diye.
+alter table appointment_services add column customer_package_id uuid references customer_packages(id);
+create index idx_appointment_services_package on appointment_services(customer_package_id);
+
+-- create_appointment_with_services'e (satır 415) opsiyonel customer_package_id
+-- desteği eklendi — p_services dizisindeki her öğe artık isteğe bağlı
+-- "customer_package_id" içerebilir. Diğer davranış birebir aynı (bkz. eski
+-- imzayı drop etme deseni, create_appointment_with_services'in kendi yorumu).
+drop function if exists create_appointment_with_services(uuid, timestamptz, timestamptz, text, jsonb, uuid);
+
+create or replace function create_appointment_with_services(
+  p_customer_id uuid,
+  p_starts_at timestamptz,
+  p_ends_at timestamptz,
+  p_source text,
+  p_services jsonb, -- [{ "service_id": "...", "staff_id": "...", "planned_price": 100, "customer_package_id": null }, ...]
+  p_business_id uuid default null
+)
+returns uuid
+language plpgsql
+security invoker
+as $$
+declare
+  v_business_id uuid := coalesce(p_business_id, current_business_id());
+  v_appointment_id uuid;
+  v_conflict_count int;
+  v_service jsonb;
+  v_staff_id uuid;
+begin
+  if v_business_id is null then
+    raise exception 'unauthorized';
+  end if;
+
+  if p_ends_at <= p_starts_at then
+    raise exception 'invalid_time_range';
+  end if;
+
+  if not exists (
+    select 1 from customers where id = p_customer_id and business_id = v_business_id
+  ) then
+    raise exception 'invalid_reference';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_services) s
+    where not exists (
+      select 1 from services where id = (s->>'service_id')::uuid and business_id = v_business_id
+    )
+    or not exists (
+      select 1 from staff where id = (s->>'staff_id')::uuid and business_id = v_business_id
+    )
+  ) then
+    raise exception 'invalid_reference';
+  end if;
+
+  if (select count(*) from jsonb_array_elements(p_services)) <>
+     (select count(distinct (s->>'staff_id')) from jsonb_array_elements(p_services) s)
+  then
+    raise exception 'staff_conflict';
+  end if;
+
+  for v_staff_id in
+    select distinct (s->>'staff_id')::uuid
+    from jsonb_array_elements(p_services) s
+    order by 1
+  loop
+    perform pg_advisory_xact_lock(hashtext(v_staff_id::text));
+  end loop;
+
+  select count(*) into v_conflict_count
+  from appointment_services asvc
+  join appointments a on a.id = asvc.appointment_id
+  where a.business_id = v_business_id
+    and a.status != 'cancelled'
+    and asvc.staff_id in (select (s->>'staff_id')::uuid from jsonb_array_elements(p_services) s)
+    and a.starts_at < p_ends_at
+    and a.ends_at > p_starts_at;
+
+  if v_conflict_count > 0 then
+    raise exception 'staff_conflict';
+  end if;
+
+  insert into appointments (business_id, customer_id, starts_at, ends_at, source)
+  values (v_business_id, p_customer_id, p_starts_at, p_ends_at, coalesce(p_source, 'manual'))
+  returning id into v_appointment_id;
+
+  for v_service in select * from jsonb_array_elements(p_services)
+  loop
+    insert into appointment_services (appointment_id, service_id, staff_id, planned_price, commission_rate_snapshot, customer_package_id)
+    values (
+      v_appointment_id,
+      (v_service->>'service_id')::uuid,
+      (v_service->>'staff_id')::uuid,
+      (v_service->>'planned_price')::numeric,
+      (select commission_rate from staff where id = (v_service->>'staff_id')::uuid),
+      nullif(v_service->>'customer_package_id', '')::uuid
+    );
+  end loop;
+
+  return v_appointment_id;
+end;
+$$;

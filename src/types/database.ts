@@ -159,6 +159,20 @@ export interface OneTimeSale {
   created_at: string;
 }
 
+export interface CustomerPackage {
+  id: string;
+  business_id: string;
+  customer_id: string;
+  service_id: string;
+  total_sessions: number;
+  price: number;
+  sale_date: string;
+  staff_id: string | null;
+  commission_rate_snapshot: number | null;
+  payment_method: "nakit" | "kart" | null;
+  created_at: string;
+}
+
 export interface ActionObject {
   id: string;
   business_id: string;

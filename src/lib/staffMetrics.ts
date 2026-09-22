@@ -74,7 +74,7 @@ export async function loadStaffMonthlyMetrics(
   const fromKey = dateKeyFromIso(startUtc);
   const toKey = addDaysToKey(dateKeyFromIso(endUtc), -1);
 
-  const [{ data }, { data: salesData }] = await Promise.all([
+  const [{ data }, { data: salesData }, { data: packagesData }] = await Promise.all([
     supabase
       .from("appointments")
       .select(
@@ -89,10 +89,17 @@ export async function loadStaffMonthlyMetrics(
       .eq("business_id", business.id)
       .gte("sale_date", fromKey)
       .lte("sale_date", toKey),
+    supabase
+      .from("customer_packages")
+      .select("price, staff_id, commission_rate_snapshot")
+      .eq("business_id", business.id)
+      .gte("sale_date", fromKey)
+      .lte("sale_date", toKey),
   ]);
 
   const rows = (data ?? []) as unknown as AppointmentRow[];
   const salesRows = (salesData ?? []) as { amount: number; staff_id: string | null; commission_rate_snapshot: number | null }[];
+  const packageRows = (packagesData ?? []) as { price: number; staff_id: string | null; commission_rate_snapshot: number | null }[];
 
   return staffList.map((staff) => {
     let revenue = 0;
@@ -122,6 +129,14 @@ export async function loadStaffMonthlyMetrics(
       if (sale.staff_id !== staff.id) continue;
       const amount = Number(sale.amount);
       const rate = sale.commission_rate_snapshot ?? staff.commission_rate;
+      revenue += amount;
+      commission += amount * (Number(rate) / 100);
+    }
+
+    for (const pkg of packageRows) {
+      if (pkg.staff_id !== staff.id) continue;
+      const amount = Number(pkg.price);
+      const rate = pkg.commission_rate_snapshot ?? staff.commission_rate;
       revenue += amount;
       commission += amount * (Number(rate) / 100);
     }

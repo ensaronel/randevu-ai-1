@@ -537,7 +537,7 @@ async function computeRevenueTotals(from: string, to: string, ctx: ToolContext):
   const { startUtc, endUtc } = rangeToUtc(from, to);
   const admin = createAdminSupabaseClient();
 
-  const [{ data }, { data: salesData }] = await Promise.all([
+  const [{ data }, { data: salesData }, { data: packagesData }] = await Promise.all([
     admin
       .from("appointments")
       .select("status, attendance, starts_at, appointment_services(planned_price, final_price)")
@@ -545,11 +545,13 @@ async function computeRevenueTotals(from: string, to: string, ctx: ToolContext):
       .gte("starts_at", startUtc)
       .lte("starts_at", endUtc),
     admin.from("one_time_sales").select("amount").eq("business_id", ctx.businessId).gte("sale_date", from).lte("sale_date", to),
+    admin.from("customer_packages").select("price").eq("business_id", ctx.businessId).gte("sale_date", from).lte("sale_date", to),
   ]);
 
   const rows = data ?? [];
   const salesRows = salesData ?? [];
-  if (rows.length === 0 && salesRows.length === 0) return null;
+  const packageRows = packagesData ?? [];
+  if (rows.length === 0 && salesRows.length === 0 && packageRows.length === 0) return null;
 
   let revenue = 0;
   let appointmentCount = 0;
@@ -569,6 +571,9 @@ async function computeRevenueTotals(from: string, to: string, ctx: ToolContext):
 
   for (const sale of salesRows) {
     revenue += Number(sale.amount);
+  }
+  for (const pkg of packageRows) {
+    revenue += Number(pkg.price);
   }
 
   return { revenue, appointments: appointmentCount, cancelled: cancelledCount };
@@ -891,7 +896,7 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   }
 
   const { startUtc, endUtc } = rangeToUtc(from, to);
-  const [{ data: apptRows }, { data: salesRows }] = await Promise.all([
+  const [{ data: apptRows }, { data: salesRows }, { data: packageRows }] = await Promise.all([
     admin
       .from("appointments")
       .select("status, attendance, starts_at, appointment_services(staff_id, planned_price, final_price, service:services(duration_minutes))")
@@ -901,6 +906,13 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
     admin
       .from("one_time_sales")
       .select("amount")
+      .eq("business_id", ctx.businessId)
+      .eq("staff_id", staff.id)
+      .gte("sale_date", from)
+      .lte("sale_date", to),
+    admin
+      .from("customer_packages")
+      .select("price")
       .eq("business_id", ctx.businessId)
       .eq("staff_id", staff.id)
       .gte("sale_date", from)
@@ -931,12 +943,16 @@ async function getStaffPerformance(input: Record<string, unknown>, ctx: ToolCont
   for (const sale of salesRows ?? []) {
     revenue += Number(sale.amount);
   }
+  const packageCount = packageRows?.length ?? 0;
+  for (const pkg of packageRows ?? []) {
+    revenue += Number(pkg.price);
+  }
 
   const availableMinutes = await computeAvailableMinutes(admin, staff.id, from, to, staff.working_hours, staff.leave_dates ?? []);
   const occupancyPercent = availableMinutes > 0 ? Math.round((bookedMinutes / availableMinutes) * 100) : 0;
   const cancellationRatePercent = totalAssignments > 0 ? Math.round((cancelledCount / totalAssignments) * 100) : 0;
 
-  if (totalAssignments === 0 && salesCount === 0) {
+  if (totalAssignments === 0 && salesCount === 0 && packageCount === 0) {
     return JSON.stringify({ no_data: true, message: `${staff.full_name} için bu tarih aralığında hiç randevu yok.` });
   }
 

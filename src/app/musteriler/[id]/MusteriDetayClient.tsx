@@ -15,6 +15,16 @@ export interface AppointmentHistoryItem {
   services: { name: string; staffName: string | null; price: number; adjustmentNote: string | null }[];
 }
 
+export interface PackageItem {
+  id: string;
+  serviceName: string;
+  totalSessions: number;
+  usedSessions: number;
+  remainingSessions: number;
+  price: number;
+  saleDate: string;
+}
+
 export interface ActionHistoryItem {
   id: string;
   type: string;
@@ -49,6 +59,7 @@ export default function MusteriDetayClient({
   badges,
   appointments,
   actionHistory,
+  packages,
 }: {
   customer: Customer;
   staffList: { id: string; full_name: string; status: "active" | "inactive" }[];
@@ -58,6 +69,7 @@ export default function MusteriDetayClient({
   badges: { retentionRisk: boolean; rhythmInvite: boolean };
   appointments: AppointmentHistoryItem[];
   actionHistory: ActionHistoryItem[];
+  packages: PackageItem[];
 }) {
   const router = useRouter();
   const [notes, setNotes] = useState(customer.notes ?? "");
@@ -216,6 +228,35 @@ export default function MusteriDetayClient({
           <p className="text-[11.5px] text-ink-muted">KVKK onayı: {formatDateTR(customer.kvkk_consent_at)}</p>
         )}
       </div>
+
+      {packages.length > 0 && (
+        <div className="flex flex-col gap-2.5">
+          <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Paketler</p>
+          <div className="bg-surface border border-border rounded-2xl shadow-card p-4 flex flex-col divide-y divide-border">
+            {packages.map((p) => {
+              const percentUsed = p.totalSessions > 0 ? Math.round((p.usedSessions / p.totalSessions) * 100) : 0;
+              const isFinished = p.remainingSessions === 0;
+              return (
+                <div key={p.id} className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${isFinished ? "opacity-50" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-semibold">{p.serviceName}</span>
+                    <span className="text-[12.5px] font-semibold font-display text-good-ink">
+                      {p.usedSessions}/{p.totalSessions} seans
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                    <div className="h-full bg-good-ink rounded-full" style={{ width: `${percentUsed}%` }} />
+                  </div>
+                  <p className="text-[11px] text-ink-muted">
+                    {p.saleDate} satın alındı · {formatTL(p.price)}
+                    {isFinished ? " · tamamlandı" : ` · ${p.remainingSessions} seans kaldı`}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Önceden her AI önerisi kendi gölgeli kartıydı — birkaç öneri birikince
           sayfa küçük, aynı ağırlıktaki kutucuklarla dolup dağınık görünüyordu.

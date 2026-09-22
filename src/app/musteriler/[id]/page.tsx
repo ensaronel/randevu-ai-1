@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import { getBusinessOwnerForPage } from "@/lib/auth";
+import { attachRemainingSessions } from "@/lib/packages";
 import AppShell from "@/components/AppShell";
 import MusteriDetayClient, {
   type AppointmentHistoryItem,
   type ActionHistoryItem,
+  type PackageItem,
 } from "@/app/musteriler/[id]/MusteriDetayClient";
-import type { Customer, Staff } from "@/types/database";
+import type { Customer, Staff, CustomerPackage } from "@/types/database";
 
 type OneOrMany<T> = T | T[] | null;
 type ApptServiceRow = {
@@ -40,7 +42,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
   if (!customerData) notFound();
   const customer = customerData as Customer;
 
-  const [{ data: staffData }, { data: apptData }, { data: actionData }] = await Promise.all([
+  const [{ data: staffData }, { data: apptData }, { data: actionData }, { data: packagesData }] = await Promise.all([
     supabase.from("staff").select("*").eq("business_id", business.id).order("full_name", { ascending: true }),
     supabase
       .from("appointments")
@@ -56,10 +58,27 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
       .eq("business_id", business.id)
       .eq("related_customer_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("customer_packages")
+      .select("*, service:services(name)")
+      .eq("business_id", business.id)
+      .eq("customer_id", id)
+      .order("sale_date", { ascending: false }),
   ]);
 
   const staffList = (staffData ?? []) as Staff[];
   const appointments = (apptData ?? []) as unknown as ApptRow[];
+  const rawPackages = (packagesData ?? []) as unknown as (CustomerPackage & { service: { name: string } | { name: string }[] | null })[];
+  const packagesWithRemaining = await attachRemainingSessions(supabase, rawPackages);
+  const packages: PackageItem[] = packagesWithRemaining.map((p, i) => ({
+    id: p.id,
+    serviceName: one(rawPackages[i].service)?.name ?? "Hizmet",
+    totalSessions: p.total_sessions,
+    usedSessions: p.usedSessions,
+    remainingSessions: p.remainingSessions,
+    price: Number(p.price),
+    saleDate: p.sale_date,
+  }));
 
   const appointmentHistory: AppointmentHistoryItem[] = appointments.map((a) => ({
     id: a.id,
@@ -109,6 +128,7 @@ export default async function MusteriDetayPage(props: PageProps<"/musteriler/[id
           }}
           appointments={appointmentHistory}
           actionHistory={actionHistory}
+          packages={packages}
         />
     </AppShell>
   );

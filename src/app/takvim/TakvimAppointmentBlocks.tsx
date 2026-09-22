@@ -24,6 +24,7 @@ export interface TakvimAppointment {
     final_price: number | null;
     adjustment_note: string | null;
     payment_method: "nakit" | "kart" | null;
+    customer_package_id: string | null;
     service: OneOrMany<{ name: string; duration_minutes: number }>;
   }[];
 }
@@ -34,12 +35,15 @@ export default function TakvimAppointmentBlocks({
   startUtc,
   gridStartHour,
   gridMinutes,
+  packageProgressById,
 }: {
   appointments: TakvimAppointment[];
   staffIds: string[];
   startUtc: string;
   gridStartHour: number;
   gridMinutes: number;
+  /** Seans bloğuna "Seans 3/6" rozeti basabilmek için customer_package_id -> {used, total}. */
+  packageProgressById: Record<string, { used: number; total: number }>;
 }) {
   const router = useRouter();
   const [openApptId, setOpenApptId] = useState<string | null>(null);
@@ -121,6 +125,7 @@ export default function TakvimAppointmentBlocks({
                     if (!service) return null;
                     const customer = one(appt.customer);
                     const blockHeight = Math.max(26, service.duration_minutes - 4);
+                    const progress = svc.customer_package_id ? packageProgressById[svc.customer_package_id] : undefined;
 
                     return (
                       <button
@@ -141,7 +146,14 @@ export default function TakvimAppointmentBlocks({
                           {customer?.full_name ?? "Müşteri"}
                         </span>
                         {blockHeight >= 40 && (
-                          <span className="block truncate opacity-85 pl-3">{service.name}</span>
+                          <span className="flex items-center gap-1 truncate opacity-85 pl-3">
+                            {service.name}
+                            {progress && (
+                              <span className="shrink-0 text-[9.5px] font-bold bg-white/35 rounded-full px-1.5 py-px">
+                                Seans {progress.used}/{progress.total}
+                              </span>
+                            )}
+                          </span>
                         )}
                       </button>
                     );
@@ -181,8 +193,14 @@ export default function TakvimAppointmentBlocks({
                 const service = one(svc.service);
                 const isEditing = editingServiceId === svc.id;
                 const currentPrice = svc.final_price ?? svc.planned_price;
+                const progress = svc.customer_package_id ? packageProgressById[svc.customer_package_id] : undefined;
                 return (
                   <div key={svc.id} className="flex flex-col gap-1 border border-border rounded-xl p-2.5">
+                    {progress && (
+                      <span className="self-start text-[10.5px] font-bold text-good-ink bg-good-soft rounded-full px-2 py-0.5">
+                        Paketten · Seans {progress.used}/{progress.total}
+                      </span>
+                    )}
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="text-ink-muted">{service?.name}</span>
                       {isEditing ? (
