@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
-import { AI_MODEL } from "@/lib/ai/model";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { generateContentResilient } from "@/lib/ai/gemini";
 
 export interface BriefNarrativeInput {
   businessName: string;
@@ -45,8 +42,7 @@ ve tırnak işareti kullanma. Ton: profesyonel ve sıcak.
 Yalnızca şu JSON'u döndür: {"headline":"...","recommendation":"..."}`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: AI_MODEL,
+    const response = await generateContentResilient({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: { responseMimeType: "application/json" },
     });

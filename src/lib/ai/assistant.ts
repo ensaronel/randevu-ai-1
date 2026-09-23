@@ -1,12 +1,10 @@
-import { GoogleGenAI, type Content, type FunctionCall } from "@google/genai";
+import type { Content, FunctionCall } from "@google/genai";
 import { ASSISTANT_TOOLS, executeAssistantTool } from "@/lib/ai/assistantTools";
-import { AI_MODEL } from "@/lib/ai/model";
+import { generateContentResilient } from "@/lib/ai/gemini";
 import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business } from "@/types/database";
 
 const MAX_TOOL_ITERATIONS = 10;
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const WEEKDAY_LABELS_TR: Record<string, string> = {
   mon: "Pazartesi", tue: "Salı", wed: "Çarşamba", thu: "Perşembe", fri: "Cuma", sat: "Cumartesi", sun: "Pazar",
@@ -132,7 +130,7 @@ export async function askAssistant(business: Business, question: string, history
   };
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-    const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
+    const response = await generateContentResilient({ contents, config });
     const functionCalls: FunctionCall[] = response.functionCalls ?? [];
 
     if (functionCalls.length === 0) {

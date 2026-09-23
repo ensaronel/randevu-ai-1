@@ -1,8 +1,8 @@
-import { GoogleGenAI, type Content, type FunctionCall } from "@google/genai";
+import type { Content, FunctionCall } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { AI_TOOLS, executeAiTool } from "@/lib/ai/tools";
-import { AI_MODEL } from "@/lib/ai/model";
+import { generateContentResilient } from "@/lib/ai/gemini";
 import { dateKeyTR, weekdayKeyTR, formatDateTR, dateKeyFromIso } from "@/lib/date";
 import {
   shouldBlockMutation,
@@ -25,8 +25,6 @@ const HISTORY_LIMIT = 20;
 // (müşteri o ara vazgeçip GÜNLERCE sonra bambaşka bir şey için randevu almışsa) olursa
 // alakasız/şaşırtıcı kaçar, bu yüzden sadece bu pencere içinde tetiklenir.
 const PENDING_BUSY_OFFER_WINDOW_MS = 6 * 60 * 60 * 1000;
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface AiReplyResult {
   replyText: string;
@@ -135,8 +133,13 @@ KURALLAR:
   test edildi: model bu durumda aracı sessizce tekrar deneyip sonra "API hatası" diye UYDURMA bir
   sebeple escalate etti — bu YANLIŞ, müşteri gayet net bir istekte bulunmuştu, sadece son bir kez
   açık onay gerekiyordu.
-- Ne istediğini anlayamadığın, sistemin karşılayamayacağı (fiyat pazarlığı, şikayet gibi henüz
-  desteklenmeyen konular) bir mesaj gelirse tahmin etmek yerine escalate aracını çağır.
+- EKSİK BİLGİ ESKALASYON SEBEBİ DEĞİLDİR: müşteri gün/saat verdi ama hizmeti söylemediyse (ör. "Pazartesi saat
+  3'te" ya da "boş yeriniz var mı"), ya da hizmeti söyledi ama gün/saat vermediyse, escalate ETME — eksik
+  bilgiyi kısa ve samimi tek bir soruyla sor (ör. "Saç kesimi mi sakal tıraşı mı istersin?"). Müşteri
+  arka arkaya birkaç mesaj yazdıysa hepsini birlikte değerlendirip TEK bir cevap ver.
+- Sadece şu durumlarda escalate aracını çağır: müşterinin talebi sistemin karşılayamayacağı bir konu
+  (fiyat pazarlığı, şikayet, iade vb.) ya da mesaj gerçekten anlamsız/alakasız (rastgele karakterler,
+  konuyla ilgisiz metin) ve bir açıklama sorusu da işe yaramıyorsa. Tahmin etmek yerine escalate et.
 - Randevu dışı sohbete (hava durumu vb.) girme, nazikçe konuyu randevuya getir.`;
 }
 
@@ -146,15 +149,16 @@ function buildWaitlistOfferSentence(requestedDateKey: string): string {
   return `Bu arada, ${dayLabel} için de sizi bekleme listesine alalım mı? Boşluk çıkarsa hemen haber veririz.`;
 }
 
-async function loadHistory(customerId: string): Promise<Content[]> {
+async function loadHistory(customerId: string, beforeCreatedAt?: string): Promise<Content[]> {
   const admin = createAdminSupabaseClient();
-  const { data } = await admin
+  let query = admin
     .from("whatsapp_message_log")
     .select("direction, body")
     .eq("customer_id", customerId)
-    .eq("message_type", "freeform")
-    .order("created_at", { ascending: false })
-    .limit(HISTORY_LIMIT);
+    .eq("message_type", "freeform");
+  // Bu çağrının kendi mesajı ve ondan sonra gelenler geçmişe girmesin (kendi mesajı zaten son "user" turu).
+  if (beforeCreatedAt) query = query.lt("created_at", beforeCreatedAt);
+  const { data } = await query.order("created_at", { ascending: false }).limit(HISTORY_LIMIT);
 
   return (data ?? [])
     .reverse()
@@ -168,10 +172,11 @@ async function loadHistory(customerId: string): Promise<Content[]> {
 export async function generateAiReply(
   business: Business,
   customer: Customer,
-  incomingText: string
+  incomingText: string,
+  options?: { historyBefore?: string }
 ): Promise<AiReplyResult> {
   const ctx = await loadBusinessContext(business.id);
-  const history = await loadHistory(customer.id);
+  const history = await loadHistory(customer.id, options?.historyBefore);
 
   const contents: Content[] = [...history, { role: "user", parts: [{ text: incomingText }] }];
   const config = {
@@ -201,7 +206,7 @@ export async function generateAiReply(
   const admin = createAdminSupabaseClient();
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-    const response = await ai.models.generateContent({ model: AI_MODEL, contents, config });
+    const response = await generateContentResilient({ contents, config });
 
     const functionCalls: FunctionCall[] = response.functionCalls ?? [];
 

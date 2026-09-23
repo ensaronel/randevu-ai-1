@@ -3,6 +3,7 @@ import type { Content } from "@google/genai";
 import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { askAssistant } from "@/lib/ai/assistant";
+import { isAiUnavailableError } from "@/lib/ai/gemini";
 import { assistantQuestionSchema } from "@/lib/validation";
 import type { Business } from "@/types/database";
 
@@ -36,7 +37,20 @@ export async function POST(request: NextRequest) {
       .reverse()
       .map((m) => ({ role: m.role as "user" | "model", parts: [{ text: m.body }] }));
 
-    const reply = await askAssistant(business as Business, question, historyContents);
+    let reply;
+    try {
+      reply = await askAssistant(business as Business, question, historyContents);
+    } catch (err) {
+      if (!isAiUnavailableError(err)) throw err;
+      // Yapay zeka sağlayıcısı kota/aşırı yük/zaman aşımı yüzünden cevap vermedi — genel bir "hata oluştu"
+      // yerine gerçek sebebi söylüyoruz. Bu konuşma geçmişe yazılmıyor, tekrar denenebilir.
+      console.error("[assistant] AI servisi cevap vermedi:", err);
+      return NextResponse.json({
+        replyText:
+          "Yapay zeka servisi şu an çok yoğun ya da kullanım kotası dolmuş olabilir, cevap veremedim. " +
+          "Birkaç dakika sonra aynı soruyu tekrar sorar mısın?",
+      });
+    }
 
     await supabase.from("assistant_message_log").insert([
       { business_id: owner.business_id, role: "user", body: question },

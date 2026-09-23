@@ -969,3 +969,21 @@ $$;
 -- sayı garantisi için var.
 -- ============================================================
 alter table customer_packages add column interval_days int check (interval_days is null or interval_days > 0);
+
+-- ============================================================
+-- WhatsApp webhook tekrar-teslim koruması (2026-09-23). Meta, webhook'a hızlı cevap gelmezse AYNI
+-- mesajı tekrar gönderir; AI cevabı yavaş olduğunda bu, aynı mesajın birkaç kez işlenip müşteriye
+-- çelişkili birden çok cevap gitmesine yol açıyordu. Her mesajın Meta'daki benzersiz kimliği (wamid)
+-- işlenmeden önce buraya yazılır; ikinci kez gelirse (primary key çakışması) atlanır. Sadece
+-- service_role erişir (RLS açık, policy yok). Eski kayıtlar gece cron'unda 14 gün sonra silinir.
+-- ============================================================
+create table whatsapp_processed_messages (
+  wamid text primary key,
+  created_at timestamptz not null default now()
+);
+
+create index idx_whatsapp_processed_messages_created on whatsapp_processed_messages(created_at);
+
+alter table whatsapp_processed_messages enable row level security;
+
+grant all on whatsapp_processed_messages to service_role;

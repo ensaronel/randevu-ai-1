@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { timingSafeEqual, createHmac } from "crypto";
 import * as Sentry from "@sentry/nextjs";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -62,7 +62,11 @@ export function GET(request: NextRequest) {
   return new NextResponse("forbidden", { status: 403 });
 }
 
+// AI cevabı + arka plan işleme (after) birkaç model çağrısı sürebilir; varsayılan süre yetmeyebilir.
+export const maxDuration = 60;
+
 interface WhatsappWebhookMessage {
+  id?: string;
   from: string;
   type: string;
   text?: { body: string };
@@ -227,6 +231,60 @@ export async function POST(request: NextRequest) {
   }
   if (!payload) return NextResponse.json({ ok: true });
 
+  // Meta cevabı hızlı (birkaç sn içinde) bekler; gelmezse AYNI mesajı tekrar tekrar gönderir. AI cevabı
+  // (birden çok model çağrısı) uzun sürebildiği için önceden bu tekrarlar aynı mesajın birkaç kez
+  // işlenmesine ve müşteriye birbirinden habersiz, çelişkili birden çok cevap gitmesine yol açıyordu
+  // (2026-09-23'te canlı kayıtlarda görüldü). Şimdi hemen 200 dönüp asıl işi cevaptan SONRA yapıyoruz.
+  after(async () => {
+    try {
+      await processWebhookPayload(payload);
+    } catch (err) {
+      console.error("Webhook işlenirken beklenmeyen hata:", err);
+      Sentry.captureException(err);
+    }
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * Aynı WhatsApp mesajı (wamid) ikinci kez gelirse true döner. Meta yeniden denemelerinde ya da aynı olay
+ * iki kez teslim edildiğinde mesajın tekrar işlenmesini önler. Tablo henüz yoksa (SQL çalıştırılmadıysa)
+ * sessizce "yeni mesaj" sayılır — bot çalışmaya devam eder, sadece koruma devre dışı kalır.
+ */
+async function isDuplicateMessage(admin: ReturnType<typeof createAdminSupabaseClient>, wamid: string): Promise<boolean> {
+  const { error } = await admin.from("whatsapp_processed_messages").insert({ wamid });
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  console.error("wamid kaydedilemedi (whatsapp_processed_messages tablosu yok olabilir):", error.message);
+  return false;
+}
+
+/**
+ * Müşteri bu mesajdan SONRA yeni bir mesaj yazdıysa true: bu mesajın cevabı gönderilmemeli, çünkü daha
+ * yeni mesaj tüm geçmişle birlikte zaten cevaplanacak. Aksi halde art arda mesaj atan müşteriye her
+ * mesaj için birbirinden habersiz ayrı cevaplar gidiyordu (aynı soruya 4 farklı cevap, 6 kez "onaylıyor musun?").
+ */
+async function hasNewerInboundMessage(
+  admin: ReturnType<typeof createAdminSupabaseClient>,
+  businessId: string,
+  customerId: string,
+  afterCreatedAt: string
+): Promise<boolean> {
+  const { data } = await admin
+    .from("whatsapp_message_log")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("customer_id", customerId)
+    .eq("direction", "inbound")
+    .gt("created_at", afterCreatedAt)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function processWebhookPayload(payload: any) {
   const admin = createAdminSupabaseClient();
 
   const entries = payload.entry ?? [];
@@ -250,6 +308,11 @@ export async function POST(request: NextRequest) {
 
       for (const message of messages) {
         try {
+          if (message.id && (await isDuplicateMessage(admin, message.id))) {
+            console.log(`[whatsapp] tekrar teslim edilen mesaj atlandı (${message.id})`);
+            continue;
+          }
+
           const body = message.text?.body ?? null;
 
           let { data: customer } = await admin
@@ -514,17 +577,23 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // AI, henüz DB'ye yazılmamış geçmişi okuyacağı için çağrıyı inbound
-          // log satırından önce başlatıyoruz — aksi halde bu mesaj geçmişte
-          // iki kez görünür (bir kez history'de, bir kez son user turn'de).
-          const aiReplyPromise = generateAiReply(business as Business, customer, body);
+          // Bu mesajı ÖNCE logluyoruz ve AI'ya "geçmiş = bu satırdan önceki her şey" diyoruz (historyBefore).
+          // Önceden AI çağrısı log satırından önce başlatılıyordu ama geçmişi okuması bir yarıştı: log
+          // satırı çoğunlukla ondan ÖNCE yazılıyor, mesaj geçmişte iki kez görünüyor ve model şaşırıyordu.
+          const { data: inboundLog } = await admin
+            .from("whatsapp_message_log")
+            .insert({
+              business_id: business.id,
+              customer_id: customer.id,
+              direction: "inbound",
+              message_type: "freeform",
+              body,
+            })
+            .select("created_at")
+            .single();
 
-          await admin.from("whatsapp_message_log").insert({
-            business_id: business.id,
-            customer_id: customer.id,
-            direction: "inbound",
-            message_type: "freeform",
-            body,
+          const aiReplyPromise = generateAiReply(business as Business, customer, body, {
+            historyBefore: inboundLog?.created_at,
           });
 
           await ensureKvkkConsent(admin, business.id, customer);
@@ -534,6 +603,13 @@ export async function POST(request: NextRequest) {
             Sentry.captureException(err);
             return null;
           });
+
+          // Müşteri bu arada yeni bir mesaj yazdıysa cevabımız artık bayat: yeni mesaj tüm geçmişle
+          // zaten cevaplanacak, ikisi birden gitmesin.
+          if (inboundLog && (await hasNewerInboundMessage(admin, business.id, customer.id, inboundLog.created_at))) {
+            console.log("[whatsapp] müşteri daha yeni bir mesaj yazdı, bu mesajın cevabı gönderilmiyor");
+            continue;
+          }
 
           if (!aiReply) {
             await sendWhatsappTextMessage(message.from, SYSTEM_ERROR_CUSTOMER_FALLBACK).catch((err) =>
@@ -599,6 +675,4 @@ export async function POST(request: NextRequest) {
       }
     }
   }
-
-  return NextResponse.json({ ok: true });
 }
