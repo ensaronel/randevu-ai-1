@@ -45,7 +45,10 @@ export function isAiUnavailableError(err: unknown): boolean {
  * aşırı yük / takılma / kota bitişinde sıradaki denemeye geçer. Hepsi başarısız olursa son hatayı
  * fırlatır (çağıran taraf kendi güvenli yedek davranışına sahiptir).
  */
-export async function generateContentResilient(params: Omit<GenerateContentParameters, "model">): Promise<GenerateContentResponse> {
+export async function generateContentResilient(
+  params: Omit<GenerateContentParameters, "model">,
+  options?: { deadline?: number }
+): Promise<GenerateContentResponse> {
   let lastError: unknown;
   const skipThisCall = new Set<string>();
 
@@ -53,10 +56,20 @@ export async function generateContentResilient(params: Omit<GenerateContentParam
     if (skipThisCall.has(attempt.model)) continue;
     if ((cooldownUntil.get(attempt.model) ?? 0) > Date.now() && attempt !== ATTEMPTS[ATTEMPTS.length - 1]) continue;
 
+    // Çağıranın toplam süre bütçesi (deadline, ms zaman damgası) varsa deneme süresi ona göre kısılır;
+    // bütçe bittiyse platform zaman aşımıyla ölmek yerine kontrollü bir hata fırlatılır.
+    let timeoutMs = attempt.timeoutMs;
+    if (options?.deadline) {
+      const remaining = options.deadline - Date.now();
+      if (remaining < 3_000) throw lastError ?? new Error("ai_deadline_exceeded");
+      timeoutMs = Math.min(timeoutMs, remaining);
+    }
+
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), attempt.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const startedAt = Date.now();
     try {
-      return await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         ...params,
         model: attempt.model,
         config: {
@@ -67,6 +80,8 @@ export async function generateContentResilient(params: Omit<GenerateContentParam
           abortSignal: controller.signal,
         },
       });
+      console.log(`[gemini] ${attempt.model} ${Date.now() - startedAt} ms`);
+      return response;
     } catch (err) {
       lastError = err;
       const reason = err instanceof ApiError ? `HTTP ${err.status}` : err instanceof Error ? err.name : "hata";

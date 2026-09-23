@@ -5,6 +5,7 @@ import { dateKeyTR, weekdayKeyTR } from "@/lib/date";
 import type { Business } from "@/types/database";
 
 const MAX_TOOL_ITERATIONS = 10;
+const ASSISTANT_TIME_BUDGET_MS = 50_000;
 
 const WEEKDAY_LABELS_TR: Record<string, string> = {
   mon: "Pazartesi", tue: "Salı", wed: "Çarşamba", thu: "Perşembe", fri: "Cuma", sat: "Cumartesi", sun: "Pazar",
@@ -35,7 +36,9 @@ DERİN ANALİZ PROTOKOLÜ (strateji/beyin fırtınası sorularında ZORUNLU):
   + simulate_scenario; hedef -> plan_revenue_target.
 - Rakamları sadece sıralama; BAĞLANTI KUR ("Salı 14:00-17:00 %20 dolu VE bu saatlerde çalışan Ayşe'nin doluluğu %35 ->
   boşluğun sebebi talep değil, saat tercihi olabilir").
-- Etki tahmini gerekiyorsa KENDİN UYDURMA: simulate_scenario ile hesaplat ve varsayımıyla birlikte sun.
+- Etki tahmini gerekiyorsa KENDİN UYDURMA: önce hazır verideki fırsatların impactTL/impactNote değerlerini
+  (varsayımıyla) kullan; owner belirli bir "ya şöyle yapsam" senaryosu sorarsa ya da hazır verilerde karşılığı yoksa
+  simulate_scenario ile hesaplat. Ön çekilmiş veri varken gereksiz ek araç turu açma, doğrudan cevabı yaz.
 - Cevap yapısı (kısa tut, taranabilir olsun):
   ilk paragraf: en önemli tespit ve genel resim (2-3 cümle);
   "## Bulgular": 3-5 madde, her biri somut rakamla;
@@ -67,7 +70,7 @@ BİÇİM KURALLARI:
   karakter görür); düz, sıcak, kısa bir metin yaz.
 - Para tutarlarını "12.500 TL" gibi biçimle. Yüzdeleri yuvarla.
 
-UYGULAMA HARİTASI (owner'ı doğru yere yönlendirmek için): Dashboard (İşletme Nabzı, Fırsat Radarı, günlük özet),
+UYGULAMA HARİTASI (owner'ı doğru yere yönlendirmek için): Dashboard (Fırsat Radarı, günlük finans özeti),
 Takvim, Müşteriler, Kasa (sekmeler: Satış, Tek Seferlik, Sabit Gider, Paketler, Primler), Ayarlar > Hizmetler,
 Ayarlar > Çalışanlar (personelin "Verdiği Hizmetler" seçimi, izinler), Ayarlar > İşletme (çalışma saatleri), Reklam
 (AI'nin hazırladığı kampanya/içerik taslakları), Bekleme Listesi, Danışman (sen). Bir öneri bir sayfada yapılıyorsa
@@ -76,7 +79,8 @@ nerede yapılacağını söyle.
 RAPORLAMA KURALLARI:
 - SADECE araçların döndürdüğü GERÇEK verilerle cevap ver. Rakam, tarih veya isim UYDURMA — hiçbir
   zaman tahmin etme (etki tahmini için simulate_scenario kullan).
-- Bir soruyu yanıtlamak için önce mutlaka ilgili aracı çağır. Araç "no_data" veya "error" dönerse,
+- Bir soruyu yanıtlamak için önce mutlaka ilgili aracı çağır (İSTİSNA: soru mesajında "ÖNCEDEN ÇEKİLMİŞ GÜNCEL
+  VERİLER" bölümü varsa o araçlar zaten çalıştırılmıştır, tekrar çağırma). Araç "no_data" veya "error" dönerse,
   ya da elindeki veri soruyu güvenilir şekilde yanıtlamaya yetmiyorsa, açıkça "Bu soruyu yanıtlayacak
   yeterli veri yok" de — bu özellikle finansal sorularda çok önemli, yanlış güvenle yanlış cevap verme.
 - Göreli tarihleri ("bu ay", "geçen hafta", "yarın") bugünün tarihine göre kendin YYYY-MM-DD aralığına
@@ -122,16 +126,72 @@ export interface AssistantReply {
   replyText: string;
 }
 
+/**
+ * Açık uçlu / stratejik sorular (büyüme, plan, neden, fırsat...) için model normalde önce hangi araçları
+ * çağıracağına karar verir (1. model çağrısı), sonra verileri okuyup cevaplar (2-3. çağrı). Model
+ * çağrıları en yavaş kısım olduğundan (bkz. model.ts), bu sorularda gereken verileri MODELDEN ÖNCE
+ * kodla toplayıp ilk isteğe ekliyoruz: araç seçme turları atlanır, model doğrudan cevaplar.
+ */
+const STRATEGIC_QUESTION_PATTERN =
+  /büyüt|strateji|\bplan|öner|fikir|analiz|nasıl (artır|geliştir|doldur|kazan|yüksel|büyü|iyileş)|ne yapmal|iyileştir|fırsat|kârl|karl[ıi]|verimli|neden|sorun|zayıf|güçlü|hedef|boş saat|boşluk|kaybet|geri kazan|yükselt|düşür|güzelleştir|geliştir|durum(um|umuz)? nasıl|genel durum/i;
+
+const MUTATING_TOOLS = new Set([
+  "cancel_appointment_action",
+  "create_appointment_action",
+  "reschedule_appointment_action",
+  "send_whatsapp_message_to_customer",
+]);
+
+const PRELOAD_TOOLS = [
+  "get_business_pulse",
+  "get_customer_segments",
+  "get_service_performance",
+  "get_time_patterns",
+  "get_cancellation_analysis",
+  "get_team_overview",
+  "get_profit_and_expenses",
+  "get_packages_overview",
+];
+
+async function preloadStrategicData(businessId: string): Promise<string> {
+  const parts = await Promise.all(
+    PRELOAD_TOOLS.map(async (name) => `### ${name}\n${await executeAssistantTool(name, {}, { businessId })}`)
+  );
+  return parts.join("\n\n");
+}
+
 export async function askAssistant(business: Business, question: string, history: Content[]): Promise<AssistantReply> {
-  const contents: Content[] = [...history, { role: "user", parts: [{ text: question }] }];
+  let questionText = question;
+  if (STRATEGIC_QUESTION_PATTERN.test(question)) {
+    const data = await preloadStrategicData(business.id).catch((err) => {
+      console.error("[assistant] ön veri çekme başarısız, normal araç akışına düşülüyor:", err);
+      return null;
+    });
+    if (data) {
+      questionText =
+        `${question}\n\n` +
+        "[ÖNCEDEN ÇEKİLMİŞ GÜNCEL VERİLER — bu sorunun analizi için aşağıdaki araçlar senin adına şimdi çalıştırıldı " +
+        "(analiz araçları için tarih aralığı: son 30 gün). Bu araçları TEKRAR ÇAĞIRMA, doğrudan bu verileri kullan. " +
+        "Bunların dışında bir bilgi gerekirse (senaryo simülasyonu, hedef planı, operasyon durumu, farklı tarih " +
+        "aralığı, tek müşteri/personel detayı vb.) ilgili aracı çağırabilirsin.]\n\n" +
+        data;
+    }
+  }
+
+  // Platform sınırı 60 sn (bkz. route.ts maxDuration): ondan önce kontrollü bir hata verebilmek için toplam bütçe.
+  const deadline = Date.now() + ASSISTANT_TIME_BUDGET_MS;
+  const contents: Content[] = [...history, { role: "user", parts: [{ text: questionText }] }];
   const config = {
     systemInstruction: buildSystemPrompt(business),
     tools: [{ functionDeclarations: ASSISTANT_TOOLS }],
   };
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-    const response = await generateContentResilient({ contents, config });
+    const response = await generateContentResilient({ contents, config }, { deadline });
     const functionCalls: FunctionCall[] = response.functionCalls ?? [];
+    if (functionCalls.length > 0) {
+      console.log(`[assistant] araç çağrıları: ${functionCalls.map((c) => c.name).join(", ")}`);
+    }
 
     if (functionCalls.length === 0) {
       const text = (response.text ?? "").trim();
@@ -141,12 +201,22 @@ export async function askAssistant(business: Business, question: string, history
     const modelTurn = response.candidates?.[0]?.content;
     if (modelTurn) contents.push(modelTurn);
 
-    const functionResponseParts: Content["parts"] = [];
-    for (const call of functionCalls) {
+    const runCall = async (call: FunctionCall) => {
       const result = await executeAssistantTool(call.name ?? "", (call.args as Record<string, unknown>) ?? {}, {
         businessId: business.id,
       });
-      functionResponseParts!.push({ functionResponse: { name: call.name, response: { result }, id: call.id } });
+      return { functionResponse: { name: call.name, response: { result }, id: call.id } };
+    };
+
+    // Salt-okunur araçlar birbirinden bağımsız: paralel çalıştır. Değişiklik yapan bir araç varsa
+    // (iptal/oluştur/ertele/mesaj) eskisi gibi SIRAYLA çalıştır ki sıra ve yarış durumu riski olmasın.
+    const hasMutation = functionCalls.some((c) => MUTATING_TOOLS.has(c.name ?? ""));
+    let functionResponseParts: Content["parts"];
+    if (hasMutation) {
+      functionResponseParts = [];
+      for (const call of functionCalls) functionResponseParts.push(await runCall(call));
+    } else {
+      functionResponseParts = await Promise.all(functionCalls.map(runCall));
     }
     contents.push({ role: "user", parts: functionResponseParts });
   }

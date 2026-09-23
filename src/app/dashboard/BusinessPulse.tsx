@@ -10,12 +10,6 @@ const TONE_STYLES: Record<OpportunityTone, { circle: string; chip: string }> = {
   info: { circle: "bg-accent-soft text-accent", chip: "bg-accent-soft text-accent" },
 };
 
-function scoreColor(score: number): string {
-  if (score >= 65) return "var(--good)";
-  if (score >= 45) return "var(--warn)";
-  return "var(--bad)";
-}
-
 function OpportunityIconSvg({ name }: { name: OpportunityIcon }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   switch (name) {
@@ -75,34 +69,6 @@ function OpportunityIconSvg({ name }: { name: OpportunityIcon }) {
   }
 }
 
-function ScoreRing({ score }: { score: number }) {
-  const radius = 36;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <div className="relative w-[92px] h-[92px] shrink-0">
-      <svg width="100%" height="100%" viewBox="0 0 92 92">
-        <circle cx="46" cy="46" r={radius} fill="none" stroke="var(--accent-soft)" strokeWidth="9" />
-        <circle
-          cx="46"
-          cy="46"
-          r={radius}
-          fill="none"
-          stroke={scoreColor(score)}
-          strokeWidth="9"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - score / 100)}
-          transform="rotate(-90 46 46)"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[24px] font-bold font-display leading-none">{score}</span>
-        <span className="text-[10px] font-bold text-ink-muted uppercase tracking-wide mt-0.5">/ 100</span>
-      </div>
-    </div>
-  );
-}
-
 function OpportunityRow({ opp }: { opp: Opportunity }) {
   const tone = TONE_STYLES[opp.tone];
   return (
@@ -136,12 +102,11 @@ export function BusinessPulseSkeleton() {
   return (
     <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3 animate-pulse">
       <div className="h-3 w-28 rounded bg-border" />
-      <div className="flex items-center gap-4">
-        <div className="w-[92px] h-[92px] rounded-full bg-border" />
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-border shrink-0" />
         <div className="flex-1 flex flex-col gap-2">
           <div className="h-2.5 rounded bg-border" />
           <div className="h-2.5 rounded bg-border w-4/5" />
-          <div className="h-2.5 rounded bg-border w-3/5" />
         </div>
       </div>
     </div>
@@ -156,7 +121,7 @@ export default async function BusinessPulseCard({ businessId }: { businessId: st
     const ds = await loadInsightsDataset(createAdminSupabaseClient(), businessId);
     pulse = buildPulse(ds);
   } catch (err) {
-    console.error("[dashboard] İşletme Nabzı hesaplanamadı:", err);
+    console.error("[dashboard] Fırsat Radarı hesaplanamadı:", err);
     return null;
   }
 
@@ -164,63 +129,38 @@ export default async function BusinessPulseCard({ businessId }: { businessId: st
   const rest = pulse.opportunities.slice(VISIBLE_OPPORTUNITIES);
 
   return (
-    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">İşletme Nabzı</p>
-        {pulse.score !== null && (
-          <span className="text-[11.5px] font-bold rounded-full px-2.5 py-1 bg-accent-soft text-accent">{pulse.verdict}</span>
-        )}
+    <div className="bg-surface border border-border rounded-2xl shadow-card p-4 lg:p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">Fırsat Radarı</p>
+        <span className="text-[11px] text-ink-muted text-right">Verilerinden çıkarıldı, tahminler varsayıma dayanır</span>
       </div>
 
-      {!pulse.hasEnoughData || pulse.score === null ? (
+      {!pulse.hasEnoughData ? (
         <p className="text-[13px] text-ink-muted leading-relaxed">
-          Sağlık skorunu ve fırsatları hesaplayabilmem için birkaç hafta daha randevu verisi birikmesi gerekiyor. Veri geldikçe burada
-          doluluk, büyüme, sadakat ve kârlılığını puanlayıp somut fırsatlar göstereceğim.
+          Fırsatları çıkarabilmem için birkaç hafta daha randevu verisi birikmesi gerekiyor. Veri geldikçe burada somut, sayılara dayalı
+          fırsatlar göstereceğim.
         </p>
+      ) : pulse.opportunities.length === 0 ? (
+        <p className="text-[13px] text-ink-muted leading-relaxed">Şu an öne çıkan bir fırsat ya da risk görünmüyor.</p>
       ) : (
         <>
-          <div className="flex items-center gap-5">
-            <ScoreRing score={pulse.score} />
-            <div className="flex-1 flex flex-col gap-2.5 min-w-0">
-              {pulse.components.map((c) => (
-                <div key={c.key} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-[11.5px]">
-                    <span className="font-semibold text-ink">{c.label}</span>
-                    <span className="text-ink-muted">{c.valueLabel}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-accent-soft overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${c.score}%`, background: scoreColor(c.score) }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-col divide-y divide-border">
+            {visible.map((opp) => (
+              <OpportunityRow key={opp.id} opp={opp} />
+            ))}
           </div>
-
-          {pulse.opportunities.length > 0 && (
-            <div className="flex flex-col gap-3 pt-3.5 border-t border-border">
-              <div className="flex items-center justify-between">
-                <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">Fırsat Radarı</p>
-                <span className="text-[11px] text-ink-muted">Verilerinden çıkarıldı, tahminler varsayıma dayanır</span>
-              </div>
-              <div className="flex flex-col divide-y divide-border">
-                {visible.map((opp) => (
+          {rest.length > 0 && (
+            <details className="group">
+              <summary className="cursor-pointer text-[12.5px] font-bold text-accent list-none flex items-center gap-1">
+                <span className="group-open:hidden">Diğer {rest.length} fırsatı gör</span>
+                <span className="hidden group-open:inline">Gizle</span>
+              </summary>
+              <div className="flex flex-col divide-y divide-border pt-3">
+                {rest.map((opp) => (
                   <OpportunityRow key={opp.id} opp={opp} />
                 ))}
               </div>
-              {rest.length > 0 && (
-                <details className="group">
-                  <summary className="cursor-pointer text-[12.5px] font-bold text-accent list-none flex items-center gap-1">
-                    <span className="group-open:hidden">Diğer {rest.length} fırsatı gör</span>
-                    <span className="hidden group-open:inline">Gizle</span>
-                  </summary>
-                  <div className="flex flex-col divide-y divide-border pt-3">
-                    {rest.map((opp) => (
-                      <OpportunityRow key={opp.id} opp={opp} />
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
+            </details>
           )}
         </>
       )}

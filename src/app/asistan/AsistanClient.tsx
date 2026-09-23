@@ -35,8 +35,20 @@ export default function AsistanClient({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [hintStage, setHintStage] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
+
+  // Uzun analizlerde (10-20 sn) ekran donmuş gibi durmasın diye ne yapıldığını kademeli gösterir.
+  useEffect(() => {
+    if (!sending) return;
+    const t1 = setTimeout(() => setHintStage(1), 4000);
+    const t2 = setTimeout(() => setHintStage(2), 14000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [sending]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,6 +66,7 @@ export default function AsistanClient({
     const nextMessages: Message[] = [...messages, { role: "user", text: question }];
     setMessages(nextMessages);
     setInput("");
+    setHintStage(0);
     setSending(true);
     try {
       const res = await fetch("/api/assistant", {
@@ -121,6 +134,11 @@ export default function AsistanClient({
               <span className="w-1.5 h-1.5 rounded-full bg-accent2-ink/60 animate-bounce [animation-delay:150ms] [animation-duration:0.9s]" />
               <span className="w-1.5 h-1.5 rounded-full bg-accent2-ink/60 animate-bounce [animation-delay:300ms] [animation-duration:0.9s]" />
             </div>
+            {hintStage > 0 && (
+              <span className="text-[11.5px] text-ink-muted">
+                {hintStage === 1 ? "Verilerini inceliyorum…" : "Analiz biraz uzun sürdü, yanıtı hazırlıyorum…"}
+              </span>
+            )}
           </div>
         )}
         <div ref={bottomRef} />

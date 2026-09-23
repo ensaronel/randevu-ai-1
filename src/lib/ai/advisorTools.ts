@@ -43,8 +43,8 @@ export const ADVISOR_TOOLS: FunctionDeclaration[] = [
   {
     name: "get_business_pulse",
     description:
-      "İşletmenin genel sağlık skorunu (doluluk, büyüme, sadakat, iptal kontrolü, kârlılık), ay sonu ciro tahminini " +
-      "ve verilerden otomatik çıkan en değerli FIRSATLARI (tahmini TL etkisiyle) döner. Stratejik/beyin fırtınası " +
+      "Son 28 günün doluluğunu, ay sonu ciro tahminini ve verilerden otomatik çıkan en değerli FIRSATLARI/RİSKLERİ " +
+      "(tahmini TL etkisiyle) döner. Stratejik/beyin fırtınası " +
       "sorularında (\"işletmemi nasıl büyütürüm\", \"ne yapmalıyım\", \"durum nasıl\") HER ZAMAN ilk çağıracağın araç.",
     parametersJsonSchema: { type: "object", properties: {} },
   },
@@ -228,10 +228,11 @@ function businessPulse(ds: InsightDataset) {
   const yesterday = addDaysToKey(ds.todayKey, -1);
   const occ = computeOccupancy(ds, addDaysToKey(ds.todayKey, -28), yesterday);
   return {
-    ...pulse,
+    hasEnoughData: pulse.hasEnoughData,
+    opportunities: pulse.opportunities,
     occupancyLast28Days: occ,
     monthPace: computeRunRate(ds),
-    note: "Skor 0-100; bileşenler doluluk, büyüme, sadakat, iptal kontrolü, kârlılık. Fırsatların impactTL değerleri AYLIK tahmindir ve impactNote'taki varsayıma dayanır.",
+    note: "Fırsatların impactTL değerleri AYLIK tahmindir ve impactNote'taki varsayıma dayanır.",
   };
 }
 
