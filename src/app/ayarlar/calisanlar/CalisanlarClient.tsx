@@ -12,21 +12,28 @@ export interface StaffItem {
   commission_rate: number;
   leave_dates: string[];
   working_hours: WorkingHours;
+  serviceIds: string[];
   revenue: number;
   commission: number;
   occupancyPercent: number;
   cancellationRatePercent: number;
 }
 
+export interface ServiceOption {
+  id: string;
+  name: string;
+}
+
 const DEFAULT_HOURS: WorkingHours = Object.fromEntries(
   ["mon", "tue", "wed", "thu", "fri", "sat"].map((d) => [d, ["09:00", "19:00"]])
 ) as WorkingHours;
 
-export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
+export default function CalisanlarClient({ staff, serviceList }: { staff: StaffItem[]; serviceList: ServiceOption[] }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [commissionRate, setCommissionRate] = useState("20");
   const [workingHours, setWorkingHours] = useState<WorkingHours>(DEFAULT_HOURS);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -45,9 +52,18 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
         body: JSON.stringify({ full_name: name.trim(), commission_rate: Number(commissionRate), working_hours: workingHours }),
       });
       if (res.ok) {
+        const { data: newStaff } = await res.json();
+        if (selectedServiceIds.length > 0 && newStaff?.id) {
+          await fetch(`/api/staff/${newStaff.id}/expertise`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ service_ids: selectedServiceIds }),
+          }).catch(() => {});
+        }
         setName("");
         setCommissionRate("20");
         setWorkingHours(DEFAULT_HOURS);
+        setSelectedServiceIds([]);
         setShowAddForm(false);
         router.refresh();
       } else {
@@ -73,6 +89,27 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
       else setError("Güncellenemedi, lütfen tekrar dene.");
     } catch {
       setError("Güncellenemedi, lütfen tekrar dene.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleExpertise(member: StaffItem, serviceId: string) {
+    const next = member.serviceIds.includes(serviceId)
+      ? member.serviceIds.filter((id) => id !== serviceId)
+      : [...member.serviceIds, serviceId];
+    setBusyId(member.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/staff/${member.id}/expertise`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service_ids: next }),
+      });
+      if (res.ok) router.refresh();
+      else setError("Hizmet ataması kaydedilemedi, lütfen tekrar dene.");
+    } catch {
+      setError("Hizmet ataması kaydedilemedi, lütfen tekrar dene.");
     } finally {
       setBusyId(null);
     }
@@ -104,6 +141,34 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
             className="border border-border rounded-lg px-3 py-2 text-sm"
           />
           <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Verdiği Hizmetler</p>
+            {serviceList.length === 0 ? (
+              <p className="text-[12px] text-ink-muted">Önce Hizmetler sayfasından hizmet ekle.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {serviceList.map((service) => {
+                  const active = selectedServiceIds.includes(service.id);
+                  return (
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedServiceIds((prev) =>
+                          prev.includes(service.id) ? prev.filter((id) => id !== service.id) : [...prev, service.id]
+                        )
+                      }
+                      className={`px-2.5 py-1.5 rounded-full text-[12px] font-semibold border ${
+                        active ? "bg-accent text-white border-accent" : "border-border text-ink-muted"
+                      }`}
+                    >
+                      {service.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={addStaff}
@@ -170,7 +235,31 @@ export default function CalisanlarClient({ staff }: { staff: StaffItem[] }) {
 
               {expanded && (
                 <div className="flex flex-col gap-2 pt-2 border-t border-border">
-                  <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">İzin Günleri</p>
+                  <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Verdiği Hizmetler</p>
+                  {serviceList.length === 0 ? (
+                    <p className="text-[12px] text-ink-muted">Önce Hizmetler sayfasından hizmet ekle.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {serviceList.map((service) => {
+                        const active = member.serviceIds.includes(service.id);
+                        return (
+                          <button
+                            key={service.id}
+                            type="button"
+                            disabled={busyId === member.id}
+                            onClick={() => toggleExpertise(member, service.id)}
+                            className={`px-2.5 py-1.5 rounded-full text-[12px] font-semibold border disabled:opacity-50 ${
+                              active ? "bg-accent text-white border-accent" : "border-border text-ink-muted"
+                            }`}
+                          >
+                            {service.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide pt-1">İzin Günleri</p>
                   {member.leave_dates.length === 0 && (
                     <p className="text-[12px] text-ink-muted">Tanımlı izin günü yok.</p>
                   )}

@@ -8,12 +8,20 @@ import type { Staff } from "@/types/database";
 export default async function CalisanlarPage() {
   const { business, supabase } = await getBusinessOwnerForPage();
 
-  const { data: staffData } = await supabase
-    .from("staff")
-    .select("*")
-    .eq("business_id", business.id)
-    .order("full_name", { ascending: true });
-  const staffList = (staffData ?? []) as Staff[];
+  const [{ data: staffData }, { data: servicesData }] = await Promise.all([
+    supabase
+      .from("staff")
+      .select("*, staff_service_expertise(service_id)")
+      .eq("business_id", business.id)
+      .order("full_name", { ascending: true }),
+    supabase
+      .from("services")
+      .select("id, name")
+      .eq("business_id", business.id)
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+  ]);
+  const staffList = (staffData ?? []) as unknown as (Staff & { staff_service_expertise: { service_id: string }[] })[];
 
   const metrics = await loadStaffMonthlyMetrics(supabase, business, staffList.filter((s) => s.status === "active"));
   const metricsByStaffId = new Map(metrics.map((m) => [m.staffId, m]));
@@ -27,6 +35,7 @@ export default async function CalisanlarPage() {
       commission_rate: Number(s.commission_rate),
       leave_dates: s.leave_dates ?? [],
       working_hours: s.working_hours ?? {},
+      serviceIds: s.staff_service_expertise.map((e) => e.service_id),
       revenue: m?.revenue ?? 0,
       commission: m?.commission ?? 0,
       occupancyPercent: m?.occupancyPercent ?? 0,
@@ -37,7 +46,7 @@ export default async function CalisanlarPage() {
   return (
     <AppShell businessName={business.name}>
         <PageHeader eyebrow={business.name} title="Çalışanlar" />
-        <CalisanlarClient staff={items} />
+        <CalisanlarClient staff={items} serviceList={servicesData ?? []} />
     </AppShell>
   );
 }
