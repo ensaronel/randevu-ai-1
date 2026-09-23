@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Mascot from "@/components/Mascot";
+import ChatMarkdown from "@/components/ChatMarkdown";
 
 interface Message {
   role: "user" | "model";
@@ -9,9 +10,12 @@ interface Message {
 }
 
 const SUGGESTIONS: { text: string; tone: "accentSoft" | "block2" | "accent2Soft" }[] = [
-  { text: "Bu ay ne kadar kazandım?", tone: "accentSoft" },
-  { text: "Yarın programım nasıl?", tone: "block2" },
-  { text: "Bu hafta en çok kim çalıştı?", tone: "accent2Soft" },
+  { text: "İşletmemi büyütmek için verilerime bakıp bana somut bir plan çıkar", tone: "accent2Soft" },
+  { text: "Kâr ediyor muyum? Giderlerim nasıl?", tone: "accentSoft" },
+  { text: "Hangi hizmetim en çok kazandırıyor, hangisi verimsiz?", tone: "block2" },
+  { text: "En boş saatlerim hangileri, nasıl doldururum?", tone: "accentSoft" },
+  { text: "Kaybettiğim müşterileri nasıl geri kazanırım?", tone: "block2" },
+  { text: "Bu ay ne kadar kazandım, ay sonu nereye varırım?", tone: "accent2Soft" },
 ];
 
 const SUGGESTION_TONES = {
@@ -20,15 +24,30 @@ const SUGGESTION_TONES = {
   accent2Soft: "bg-accent2-soft text-accent2-ink",
 } as const;
 
-export default function AsistanClient({ initialMessages }: { initialMessages: Message[] }) {
+export default function AsistanClient({
+  initialMessages,
+  initialQuestion,
+}: {
+  initialMessages: Message[];
+  /** Dashboard'daki Fırsat Radarı'ndan gelen, otomatik sorulacak soru. */
+  initialQuestion?: string;
+}) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!initialQuestion || autoSentRef.current) return;
+    autoSentRef.current = true;
+    void send(initialQuestion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuestion]);
 
   async function send(question: string) {
     if (!question.trim() || sending) return;
@@ -65,7 +84,9 @@ export default function AsistanClient({ initialMessages }: { initialMessages: Me
       <div className="flex-1 flex flex-col gap-3 overflow-y-auto">
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 mt-2">
-            <p className="text-sm text-ink-muted">Randevu, ciro ve personel verilerine dair soru sorabilirsin:</p>
+            <p className="text-sm text-ink-muted">
+              Verilerine bakıp analiz yaparım, fikir üretirim, &quot;şunu yapsam ne olur&quot; senaryolarını hesaplarım:
+            </p>
             {SUGGESTIONS.map((s) => (
               <button
                 key={s.text}
@@ -82,11 +103,11 @@ export default function AsistanClient({ initialMessages }: { initialMessages: Me
           <div key={i} className={`flex items-end gap-2 ${m.role === "user" ? "self-end" : "self-start"}`}>
             {m.role === "model" && <Mascot size={26} />}
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap ${
-                m.role === "user" ? "bg-accent text-white" : "bg-accent2-soft text-accent2-ink"
+              className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
+                m.role === "user" ? "bg-accent text-white whitespace-pre-wrap" : "bg-accent2-soft text-accent2-ink"
               }`}
             >
-              {m.text}
+              {m.role === "model" ? <ChatMarkdown text={m.text} /> : m.text}
             </div>
           </div>
         ))}

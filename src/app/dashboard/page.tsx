@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { getBusinessOwnerForPage } from "@/lib/auth";
 import { dayRangeUtcISO, weekdayKeyTR, dateKeyTR, dateKeyFromIso, formatTL } from "@/lib/date";
@@ -6,6 +7,8 @@ import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
+import FinanceBrief from "@/app/dashboard/FinanceBrief";
+import BusinessPulseCard, { BusinessPulseSkeleton } from "@/app/dashboard/BusinessPulse";
 import type { Staff } from "@/types/database";
 
 async function loadPendingSuggestions(
@@ -267,13 +270,14 @@ export default async function DashboardPage() {
 
         <WeekRevenueChartSection data={weekChart} />
 
-        {financeNote && (
-          <div className="flex flex-col gap-1.5 pt-3.5 border-t border-border">
-            <p className="text-[12.5px] font-bold text-accent uppercase tracking-wide">AI Finans Notu</p>
-            <p className="text-[13.5px] text-ink leading-relaxed">{financeNote}</p>
-          </div>
-        )}
+        {financeNote && <FinanceBrief note={financeNote} />}
       </div>
+
+      {/* Ağır analiz (tüm geçmiş veriyi tarar) sayfanın geri kalanını bekletmesin diye
+          Suspense içinde akıtılıyor: önce özet kartı görünür, nabız/fırsatlar hazır olunca gelir. */}
+      <Suspense fallback={<BusinessPulseSkeleton />}>
+        <BusinessPulseCard businessId={business.id} />
+      </Suspense>
 
       {/* Danışman sahnesi — referans 3'teki buyuk illustrasyonlu "start your
           day" karti gibi gercek bir sahne: buyuk maskot, zemin/gokyuzu

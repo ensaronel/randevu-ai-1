@@ -8,6 +8,9 @@ import type { Business } from "@/types/database";
 
 const HISTORY_LIMIT = 20;
 
+// Derin analiz birkaç araç turu + uzun bir cevap üretebilir, varsayılan süre yetmeyebilir.
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   return handleRoute(async () => {
     const { owner, supabase } = await requireBusinessOwner();

@@ -4,6 +4,7 @@ import { parseTimeToMinutes } from "@/lib/capacity";
 import { isRealizedRevenue } from "@/lib/revenue";
 import { formatDateTR, formatTimeTR, dayRangeUtcISO, dateKeyTR } from "@/lib/date";
 import { findAvailableSlots } from "@/lib/ai/availability";
+import { ADVISOR_TOOLS, executeAdvisorTool } from "@/lib/ai/advisorTools";
 import { loadBusinessContext } from "@/lib/ai/context";
 import { matchWaitlistForCancelledAppointment, hasUpcomingAppointment } from "@/lib/proactive";
 import { sanitizeSearchTerm } from "@/lib/validation";
@@ -264,6 +265,7 @@ export const ASSISTANT_TOOLS: FunctionDeclaration[] = [
       required: ["customer_query", "message"],
     },
   },
+  ...ADVISOR_TOOLS,
 ];
 
 interface ToolContext {
@@ -287,6 +289,8 @@ export async function executeAssistantTool(name: string, input: Record<string, u
   if (name === "get_pending_suggestions") return getPendingSuggestions(input, ctx);
   if (name === "compare_periods") return comparePeriods(input, ctx);
   if (name === "send_whatsapp_message_to_customer") return sendWhatsappMessageToCustomer(input, ctx);
+  const advisorResult = await executeAdvisorTool(name, input, ctx);
+  if (advisorResult !== null) return advisorResult;
   return JSON.stringify({ error: `Bilinmeyen araç: ${name}` });
 }
 
