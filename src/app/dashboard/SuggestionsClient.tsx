@@ -179,7 +179,7 @@ export default function SuggestionsClient({
                 </IconCircle>
                 <div>
                   <p className="text-[14px] font-bold font-display text-ink">Günlük Değerlendirme Anketi</p>
-                  <p className="text-[11.5px] text-ink-muted">Bugün gelen müşterilere WhatsApp&apos;tan gönderilir</p>
+                  <p className="text-[11.5px] text-ink-muted">Bugün gelen müşterilere WhatsApp&apos;tan gönderilir · gece 12&apos;ye kadar</p>
                 </div>
               </div>
               <p className="text-[13px] text-ink-muted leading-relaxed">{dailySurvey.suggestion}</p>

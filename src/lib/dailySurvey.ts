@@ -27,6 +27,17 @@ export async function runDailySurveyForBusiness(businessId: string): Promise<{ c
   const admin = createAdminSupabaseClient();
   const { startUtc, endUtc } = dayRangeUtcISO(0);
 
+  // Önceki günlerden kalan, gönderilmemiş anketler kapatılır: ertesi gün gönderilirse çoğu müşteri
+  // WhatsApp'ın 24 saatlik serbest mesaj penceresinin dışında kalır. Böylece Danışman'ın "bekleyen
+  // öneriler" listesinde de eski anketler görünmez.
+  await admin
+    .from("action_objects")
+    .update({ status: "rejected", outcome: "süresi doldu — gece 12'ye kadar gönderilmedi", resolved_at: new Date().toISOString() })
+    .eq("business_id", businessId)
+    .eq("type", "daily_survey")
+    .eq("status", "pending")
+    .lt("created_at", startUtc);
+
   const { data: existing } = await admin
     .from("action_objects")
     .select("id")

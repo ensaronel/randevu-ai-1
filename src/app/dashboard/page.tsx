@@ -57,6 +57,9 @@ async function loadPendingDailySurvey(
     .eq("business_id", businessId)
     .eq("type", "daily_survey")
     .eq("status", "pending")
+    // Anket sadece üretildiği gün (gece 12'ye kadar) gösterilir: ertesi gün gönderilirse çoğu müşteri
+    // WhatsApp'ın 24 saatlik serbest mesaj penceresinin dışında kalıp mesaj alamıyor.
+    .gte("created_at", dayRangeUtcISO(0).startUtc)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

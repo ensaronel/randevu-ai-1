@@ -3,7 +3,7 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { actionObjectUpdateSchema } from "@/lib/validation";
 import { sendWhatsappTextMessage, sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
-import { dateKeyFromIso, dateKeyRangeUtcISO } from "@/lib/date";
+import { dateKeyFromIso, dateKeyRangeUtcISO, dateKeyTR } from "@/lib/date";
 import { DAILY_SURVEY_SENT_LOG_BODY } from "@/lib/dailySurvey";
 
 /** Meta gönderim hatasını owner'ın anlayacağı kısa bir sebebe çevirir. */
@@ -47,6 +47,21 @@ export async function PATCH(
       // "0 müşteriye gönderildi" oluyordu (22-23 Eylül kayıtlarında görüldü). Artık anketin KENDİ günü
       // (kartın üretildiği gün) esas alınır.
       const surveyDayKey = dateKeyFromIso(actionObject.created_at);
+
+      // Anket sadece üretildiği gün (gece 12'ye kadar) gönderilebilir; sonrasında 24 saatlik WhatsApp
+      // penceresi dolduğu için mesajlar gitmez. Eski bir kart yine de onaylanırsa gönderilmeden kapatılır.
+      if (surveyDayKey !== dateKeyTR(0)) {
+        const { data: expired, error: expireError } = await supabase
+          .from("action_objects")
+          .update({ status: "rejected", outcome: "süresi doldu — anket gece 12'ye kadar gönderilmedi", resolved_at: new Date().toISOString() })
+          .eq("business_id", owner.business_id)
+          .eq("id", id)
+          .select()
+          .single();
+        if (expireError) throw expireError;
+        return NextResponse.json({ data: expired });
+      }
+
       const { startUtc, endUtc } = dateKeyRangeUtcISO(surveyDayKey, surveyDayKey);
       const { data: todaysAppts } = await supabase
         .from("appointments")
