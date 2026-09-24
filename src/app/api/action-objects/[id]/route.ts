@@ -3,8 +3,21 @@ import { requireBusinessOwner } from "@/lib/auth";
 import { handleRoute } from "@/lib/api-response";
 import { actionObjectUpdateSchema } from "@/lib/validation";
 import { sendWhatsappTextMessage, sendWhatsappTemplateMessage } from "@/lib/whatsapp/client";
-import { dayRangeUtcISO } from "@/lib/date";
+import { dateKeyFromIso, dateKeyRangeUtcISO } from "@/lib/date";
 import { DAILY_SURVEY_SENT_LOG_BODY } from "@/lib/dailySurvey";
+
+/** Meta gönderim hatasını owner'ın anlayacağı kısa bir sebebe çevirir. */
+function describeSendFailure(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (/131047|re-engagement|24 hour|24-hour/i.test(message)) {
+    return "müşteri son 24 saatte yazmadığı için serbest mesaj gönderilemedi, onaylı şablon gerekir";
+  }
+  if (/131030|not in allowed list|allowed list/i.test(message)) {
+    return "test numarası yalnızca izinli alıcılara gönderebilir";
+  }
+  if (/access token|OAuthException|190/i.test(message)) return "WhatsApp erişim anahtarı geçersiz veya süresi dolmuş";
+  return message.slice(0, 120);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -29,19 +42,27 @@ export async function PATCH(
     // related_customer_id burada null (bkz. dailySurvey.ts), bu yuzden asagidaki
     // tekli-musteri gonderim mantigindan tamamen ayri, kendi fan-out'una sahip.
     if (body.status === "approved" && actionObject.type === "daily_survey") {
-      const { startUtc, endUtc } = dayRangeUtcISO(0);
+      // Anket kartı akşam (20:00) üretilir ama owner çoğu zaman ertesi gün onaylar. Önceden burada
+      // "BUGÜN" (onay günü) randevularına bakılıyordu: ertesi gün onaylanınca hiç randevu bulunamayıp
+      // "0 müşteriye gönderildi" oluyordu (22-23 Eylül kayıtlarında görüldü). Artık anketin KENDİ günü
+      // (kartın üretildiği gün) esas alınır.
+      const surveyDayKey = dateKeyFromIso(actionObject.created_at);
+      const { startUtc, endUtc } = dateKeyRangeUtcISO(surveyDayKey, surveyDayKey);
       const { data: todaysAppts } = await supabase
         .from("appointments")
         .select("customer_id, customer:customers(phone, full_name)")
         .eq("business_id", owner.business_id)
         .neq("status", "cancelled")
+        // Gelmeyen (no-show) müşteriye "ziyaretiniz nasıldı" denmez; attendance boşsa (işaretlenmemiş) gelmiş sayılır.
+        .or("attendance.is.null,attendance.eq.came")
         .gte("starts_at", startUtc)
-        .lt("starts_at", endUtc)
+        .lte("starts_at", endUtc)
         .lt("starts_at", new Date().toISOString());
 
       const seen = new Set<string>();
       let sent = 0;
       let failed = 0;
+      let firstFailureReason: string | null = null;
       for (const row of todaysAppts ?? []) {
         if (seen.has(row.customer_id)) continue;
         seen.add(row.customer_id);
@@ -63,9 +84,13 @@ export async function PATCH(
         } catch (err) {
           failed++;
           console.error("anket mesajı gönderilemedi", customer.phone, err);
+          firstFailureReason ??= describeSendFailure(err);
         }
       }
-      outcome = `${sent} müşteriye anket mesajı gönderildi${failed > 0 ? `, ${failed} başarısız` : ""}`;
+      outcome =
+        seen.size === 0
+          ? "Bu anketin gününde gelen müşteri bulunamadı, mesaj gönderilmedi"
+          : `${sent} müşteriye anket mesajı gönderildi${failed > 0 ? `, ${failed} başarısız${firstFailureReason ? ` (${firstFailureReason})` : ""}` : ""}`;
 
       const { data, error } = await supabase
         .from("action_objects")

@@ -47,15 +47,21 @@ export default function SuggestionsClient({
   const [busy, setBusy] = useState<"risk" | "survey" | null>(null);
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
   const [surveyResolved, setSurveyResolved] = useState(false);
+  const [surveyOutcome, setSurveyOutcome] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function resolveOne(id: string, status: "approved" | "rejected") {
+  async function patchStatus(id: string, status: "approved" | "rejected") {
     const res = await fetch(`/api/action-objects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error("failed");
+    return (await res.json()) as { data?: { outcome?: string | null } };
+  }
+
+  async function resolveOne(id: string, status: "approved" | "rejected") {
+    await patchStatus(id, status);
     return id;
   }
 
@@ -84,7 +90,11 @@ export default function SuggestionsClient({
     setBusy("survey");
     setError(null);
     try {
-      await resolveOne(dailySurvey.id, status);
+      const result = await patchStatus(dailySurvey.id, status);
+      // Kart onaydan sonra sayfa yenilenince kaybolur; gönderimin sonucunu (kaç kişiye gitti / neden gitmedi)
+      // owner görebilsin diye ayrıca gösteriyoruz — önceden hiçbir geri bildirim yoktu, "basıyorum ama
+      // göndermiyor" gibi görünüyordu.
+      if (status === "approved") setSurveyOutcome(result.data?.outcome ?? "Anket işlendi");
       setSurveyResolved(true);
       router.refresh();
     } catch {
@@ -103,7 +113,14 @@ export default function SuggestionsClient({
       <p className="text-[12.5px] font-bold text-ink-muted uppercase tracking-wide">Öneriler</p>
       {error && <p className="text-[12px] text-bad">{error}</p>}
 
-      {!hasAny && (
+      {surveyOutcome && (
+        <div className="bg-accent-soft text-accent rounded-2xl px-4 py-3 flex flex-col gap-0.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide">Anket sonucu</p>
+          <p className="text-[13px] font-semibold leading-snug">{surveyOutcome}</p>
+        </div>
+      )}
+
+      {!hasAny && !surveyOutcome && (
         <p className="text-[13px] text-ink-muted bg-surface border border-border rounded-2xl shadow-card p-4">
           Şu an bekleyen öneri yok — AI, uzun süredir gelmeyen bir müşteri fark ettiğinde ya da gün
           sonunda anket önerisi hazırladığında burada çıkacak.
