@@ -388,9 +388,13 @@ async function checkAvailabilityForOwner(input: Record<string, unknown>, ctx: To
   }
 
   const bizCtx = await loadBusinessContext(ctx.businessId);
-  const normalized = serviceNames.map((n) => n.trim().toLowerCase());
-  const requestedServices = bizCtx.services.filter((s) => normalized.includes(s.name.trim().toLowerCase()));
-  if (requestedServices.length !== serviceNames.length) {
+  // Her istenen ad TEK hizmete çözülür (kesin eşleşme öncelikli); benzer adlı iki hizmet sayıyı bozmasın.
+  const resolvedServices = serviceNames.map((n) => {
+    const t = n.trim();
+    return bizCtx.services.find((s) => s.name.trim() === t) ?? bizCtx.services.find((s) => s.name.trim().toLowerCase() === t.toLowerCase());
+  });
+  const requestedServices = [...new Map(resolvedServices.filter((s) => s).map((s) => [s!.id, s!])).values()];
+  if (resolvedServices.some((s) => !s)) {
     return JSON.stringify({ error: `Bazı hizmet adları tanınmadı. Sistemdeki hizmetler: ${bizCtx.services.map((s) => s.name).join(", ")}` });
   }
 

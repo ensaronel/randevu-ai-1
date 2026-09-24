@@ -288,19 +288,29 @@ async function findSlotsForDate(
   });
 }
 
+/** Ada göre hizmet bulur: önce birebir (büyük/küçük harf dahil), yoksa büyük/küçük harf duyarsız. */
+function findServiceByName<T extends { name: string }>(services: T[], name: string): T | undefined {
+  const trimmed = name.trim();
+  return services.find((s) => s.name.trim() === trimmed) ?? services.find((s) => s.name.trim().toLowerCase() === trimmed.toLowerCase());
+}
+
 async function runCheckAvailability(input: Record<string, unknown>, exec: ToolExecContext): Promise<string> {
   const serviceNames = (input.service_names as string[] | undefined) ?? [];
   const requestedDateKey = String(input.date ?? "");
   const preferredStartMinutes = parseTimeToMinutesOrUndefined(input.preferred_time);
   const staffName = typeof input.staff_name === "string" && input.staff_name.trim() ? input.staff_name.trim() : undefined;
 
-  const normalizedRequested = serviceNames.map((n) => n.trim().toLowerCase());
-  const requestedServices = exec.ctx.services.filter((s) => normalizedRequested.includes(s.name.trim().toLowerCase()));
-
-  if (requestedServices.length !== serviceNames.length) {
+  // Her istenen ad TEK bir hizmete çözülür (kesin eşleşme öncelikli). Önceden büyük/küçük harf duyarsız
+  // bir FİLTRE kullanılıyordu: "Saç Kesimi" ve "Saç kesimi" adında iki hizmet olan bir işletmede tek bir ad
+  // iki hizmete birden eşleşip sayı tutmadığı için "hizmet tanınmadı" hatası veriyor, bot aynı aracı tekrar
+  // tekrar deneyip müşteriye saçma sorular soruyordu (2026-09-24'te canlı testte yakalandı).
+  const resolvedServices = serviceNames.map((n) => findServiceByName(exec.ctx.services, n));
+  if (resolvedServices.some((s) => !s)) {
     const known = exec.ctx.services.map((s) => s.name).join(", ");
     return JSON.stringify({ error: `Bazı hizmet adları tanınmadı. Sistemdeki hizmetler: ${known}` });
   }
+  // Aynı hizmet iki kez istenmişse tekilleştir.
+  const requestedServices = [...new Map(resolvedServices.map((s) => [s!.id, s!])).values()];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDateKey)) {
     return JSON.stringify({ error: "Tarih YYYY-MM-DD formatında olmalı." });
   }
@@ -394,7 +404,7 @@ async function runCreateAppointment(input: Record<string, unknown>, exec: ToolEx
   const rawAssignments = parseAssignmentsArg(input.assignments);
 
   const resolved = rawAssignments.map((a) => {
-    const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === a.serviceName.trim().toLowerCase());
+    const service = findServiceByName(exec.ctx.services, a.serviceName);
     const staff = exec.ctx.staff.find((s) => s.full_name.trim().toLowerCase() === a.staffName.trim().toLowerCase());
     return { service, staff };
   });
@@ -743,7 +753,7 @@ async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecCon
       ? input.linked_appointment_id.trim()
       : null;
 
-  const service = exec.ctx.services.find((s) => s.name.trim().toLowerCase() === serviceName.trim().toLowerCase());
+  const service = findServiceByName(exec.ctx.services, serviceName);
   if (!service) {
     const known = exec.ctx.services.map((s) => s.name).join(", ");
     return JSON.stringify({ error: `Hizmet tanınmadı. Sistemdeki hizmetler: ${known}` });
