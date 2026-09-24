@@ -222,7 +222,7 @@ export function buildPulse(ds: InsightDataset): BusinessPulse {
   if (cancel90.lossRatePercent !== null && cancel90.totalBookings >= 12) {
     const worstDay = cancel90.byWeekday.find((r) => r.total >= 6);
     const overallHigh = cancel90.lossRatePercent >= 12;
-    const dayHigh = worstDay && worstDay.ratePercent >= 25;
+    const dayHigh = worstDay && worstDay.ratePercent >= 18 && worstDay.ratePercent >= cancel90.lossRatePercent * 1.5;
     if (overallHigh || dayHigh) {
       const monthlyLost = cancel90.lostRevenue / 3;
       const impact = Math.round(monthlyLost * 0.3);

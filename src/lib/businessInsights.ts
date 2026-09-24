@@ -1031,8 +1031,11 @@ export function findPackageCandidates(ds: InsightDataset): PackageOpportunityPai
       .map((p) => `${p.customer_id}|${p.service_id}`)
   );
 
+  const listPrice = new Map(ds.services.map((s) => [s.id, num(s.price)]));
+
   return [...counts.entries()]
-    .filter(([key, v]) => v.visits >= 3 && !hasPackage.has(key))
+    // Paket, pahalı (1.000 TL+) ve sık alınan hizmetlerde mantıklı; 300-500 TL'lik kaş/oje gibi hizmetlerde değil.
+    .filter(([key, v]) => v.visits >= 3 && (listPrice.get(v.serviceId) ?? 0) >= 1000 && !hasPackage.has(key))
     .map(([, v]) => ({
       customerName: customerName.get(v.customerId) ?? "Müşteri",
       serviceName: serviceName.get(v.serviceId) ?? "Hizmet",

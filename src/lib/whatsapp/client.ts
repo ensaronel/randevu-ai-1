@@ -1,12 +1,26 @@
 const GRAPH_API_VERSION = "v21.0";
 
 /**
+ * Demo/tanıtım verisindeki SAHTE müşteri numaraları (bkz. scripts/demo). "9000000" ile başlayan
+ * numaralar gerçek bir hat OLAMAZ (Türkiye numaralarında abone numarası 0 ile başlamaz), bu yüzden
+ * Meta'ya hiç gönderilmez: demoda "Hepsini Onayla" / anket / hatırlatma akışları hata vermeden
+ * çalışıyor gibi görünür ve gerçek kimseye ulaşmaz. Gerçek numaralara hiçbir etkisi yok.
+ */
+export function isDemoPhone(phone: string): boolean {
+  return /^9000000\d{5}$/.test(phone.replace(/\D/g, ""));
+}
+
+/**
  * WhatsApp Cloud API'ye serbest metin mesajı gönderir. 24 saatlik müşteri-
  * başlatımlı pencere dışında (örn. hatırlatma) bunun yerine onaylı bir şablon
  * göndermek gerekir — Hafta 6/9'da eklenecek, bu fonksiyon şimdilik sadece
  * webhook'a gelen mesajlara serbest metinle yanıt için kullanılıyor.
  */
 export async function sendWhatsappTextMessage(to: string, body: string) {
+  if (isDemoPhone(to)) {
+    console.log("[whatsapp] demo numarası, Meta'ya gönderilmedi (metin)");
+    return { demo: true };
+  }
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -48,6 +62,10 @@ export async function sendWhatsappTemplateMessage(
   languageCode: string,
   bodyParams: string[]
 ) {
+  if (isDemoPhone(to)) {
+    console.log(`[whatsapp] demo numarası, Meta'ya gönderilmedi (şablon: ${templateName})`);
+    return { demo: true };
+  }
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
