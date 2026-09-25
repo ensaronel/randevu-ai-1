@@ -7,6 +7,7 @@ import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
+import AutoRefresh from "@/components/AutoRefresh";
 import BusinessPulseCard, { BusinessPulseSkeleton } from "@/app/dashboard/BusinessPulse";
 import type { Staff } from "@/types/database";
 
@@ -178,6 +179,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell businessName={business.name}>
+      <AutoRefresh everySeconds={60} />
       <div className="flex items-center gap-3">
         <Mascot size={52} waving />
         <div>

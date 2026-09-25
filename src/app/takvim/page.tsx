@@ -6,6 +6,7 @@ import { parseTimeToMinutes } from "@/lib/capacity";
 import { attachRemainingSessions } from "@/lib/packages";
 import AppShell from "@/components/AppShell";
 import EmptyState from "@/components/EmptyState";
+import AutoRefresh from "@/components/AutoRefresh";
 import TakvimAppointmentBlocks from "@/app/takvim/TakvimAppointmentBlocks";
 import type { Staff, CustomerPackage } from "@/types/database";
 
@@ -150,6 +151,7 @@ export default async function TakvimPage({
 
   return (
     <AppShell businessName={business.name}>
+        <AutoRefresh everySeconds={20} />
         <div className="flex items-center gap-2.5">
           <Link
             href={`/takvim?date=${shiftDateKey(dateKey, -1)}`}
