@@ -146,14 +146,38 @@ KURALLAR:
 - Randevu dışı sohbete (hava durumu vb.) girme, nazikçe konuyu randevuya getir.`;
 }
 
-function buildWaitlistOfferSentence(requestedDateKey: string): string {
+type WaitlistOfferKind = "alternative_offered" | "nothing_available" | "after_booking";
+
+/**
+ * Müşteriyi kafa karıştırmamak için her durumda NE olacağını açıkça anlatır: bekleme listesi ne demek,
+ * ne zaman haber verilecek, alternatif randevuyla ilişkisi ne. Sonda net bir evet/hayır sorusu var.
+ */
+function buildWaitlistOfferSentence(requestedDateKey: string, kind: WaitlistOfferKind): string {
   const dayLabel =
     requestedDateKey === dateKeyTR(0)
       ? "bugün"
       : requestedDateKey === dateKeyTR(1)
         ? "yarın"
         : formatDateTR(`${requestedDateKey}T12:00:00+03:00`);
-  return `Bu arada, ${dayLabel} için de sizi bekleme listesine alalım mı? Boşluk çıkarsa hemen haber veririz.`;
+
+  if (kind === "alternative_offered") {
+    return (
+      `📌 Bilgi: ${dayLabel} için şu an boş yer yok, yukarıdaki alternatifi önerdim. İsterseniz sizi ${dayLabel} için ` +
+      `ayrıca BEKLEME LİSTESİNE de ekleyebilirim: ${dayLabel} için bir iptal olup yer açılırsa size hemen WhatsApp'tan ` +
+      `haber veririm, siz de isterseniz randevunuzu o güne alırım. Bekleme listesine eklememi ister misiniz?`
+    );
+  }
+  if (kind === "nothing_available") {
+    return (
+      `📌 ${dayLabel} için şu an boş yer yok. İsterseniz sizi BEKLEME LİSTESİNE ekleyebilirim: uygun bir yer açılırsa ` +
+      `(örneğin başka bir müşteri iptal ederse) size hemen WhatsApp'tan haber veririm. Bekleme listesine eklememi ister misiniz?`
+    );
+  }
+  return (
+    `📌 Ayrıca ilk istediğiniz gün olan ${dayLabel} için şu an yer yoktu. İsterseniz sizi o gün için BEKLEME LİSTESİNE ` +
+    `ekleyebilirim: yer açılırsa size haber veririm, siz kabul ederseniz randevunuz o güne taşınır ve şu an aldığınız ` +
+    `randevu otomatik iptal olur. Bekleme listesine eklememi ister misiniz?`
+  );
 }
 
 async function loadHistory(customerId: string, beforeCreatedAt?: string): Promise<Content[]> {
@@ -211,7 +235,7 @@ export async function generateAiReply(
   let pendingBusyOffer = customer.pending_busy_offer;
   let waitlistOfferDateKey: string | null = null;
   // Alternatif gün önerildiği (ya da hiç yer bulunamadığı) ANDA yapılan teklif — randevu alınmasını beklemez.
-  let immediateOfferDateKey: string | null = null;
+  let immediateOffer: { dateKey: string; kind: "alternative_offered" | "nothing_available" } | null = null;
   const admin = createAdminSupabaseClient();
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -225,8 +249,10 @@ export async function generateAiReply(
       // Bekleme listesi teklifini modelin kendi metnine bırakmıyoruz (bkz. yukarıdaki
       // pendingBusyOffer yorumu) — waitlistOfferDateKey bu döngüde bir create_appointment
       // tam da bunu gerektirdiğinde set edildiyse, cümle KOD tarafından, garantili ekleniyor.
-      const offerDateKey = waitlistOfferDateKey ?? immediateOfferDateKey;
-      const replyText = offerDateKey ? `${baseReply}\n\n${buildWaitlistOfferSentence(offerDateKey)}` : baseReply;
+      const offer = waitlistOfferDateKey
+        ? { dateKey: waitlistOfferDateKey, kind: "after_booking" as const }
+        : immediateOffer;
+      const replyText = offer ? `${baseReply}\n\n${buildWaitlistOfferSentence(offer.dateKey, offer.kind)}` : baseReply;
       return {
         replyText,
         escalated: false,
@@ -302,14 +328,18 @@ export async function generateAiReply(
 
         // 2026-09-25: müşteri "yarın lazer" sordu, yer yoktu, bot Pazartesi'yi önerdi ama bekleme listesini
         // teklif etmedi — teklif sadece alternatif güne randevu alındıktan sonra ekleniyordu. Artık alternatif
-        // önerildiği ya da hiç yer bulunamadığı anda, aynı cevaba kod tarafından eklenir (bir istek için bir kez).
+        // önerildiği ya da hiç yer bulunamadığı anda, aynı cevaba kod tarafından (açıklayıcı bir cümleyle) eklenir;
+        // bir istek için bir kez — randevu sonrası aynı teklif tekrarlanmaz (waitlist_offered).
         const noSlotAtAll = Array.isArray(parsedAvailability.slots) && parsedAvailability.slots.length === 0;
         const alreadyOffered =
           pendingBusyOffer?.requested_date === requestedDateKey &&
           pendingBusyOffer.waitlist_offered === true &&
           Date.now() - Date.parse(pendingBusyOffer.set_at) < PENDING_BUSY_OFFER_WINDOW_MS;
         if (validDate && isBusy && (parsedAvailability.is_alternate_date === true || noSlotAtAll) && !alreadyOffered) {
-          immediateOfferDateKey = requestedDateKey;
+          immediateOffer = {
+            dateKey: requestedDateKey,
+            kind: parsedAvailability.is_alternate_date === true ? "alternative_offered" : "nothing_available",
+          };
         }
 
         if (validDate && isBusy && parsedAvailability.is_alternate_date === true) {
@@ -317,7 +347,7 @@ export async function generateAiReply(
             requested_date: requestedDateKey,
             service_names: (args.service_names as string[] | undefined) ?? [],
             set_at: new Date().toISOString(),
-            waitlist_offered: alreadyOffered || immediateOfferDateKey === requestedDateKey,
+            waitlist_offered: alreadyOffered || immediateOffer?.dateKey === requestedDateKey,
           };
           void admin
             .from("customers")
