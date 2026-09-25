@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
-import { AI_MODEL } from "@/lib/ai/model";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { generateContentResilient } from "@/lib/ai/gemini";
 
 export interface TransformationCaptionInput {
   businessName: string;
@@ -66,13 +63,15 @@ zaten çok kullanıldı. Gerçekten YARATICI ve akılda kalıcı bir şey bul.
 HEADLINE: <başlık>
 CAPTION: <paylaşım metni>`;
 
-  const response = await ai.models.generateContent({
-    model: AI_MODEL,
+  const response = await generateContentResilient({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: { temperature: 1.15 },
+  }).catch((err) => {
+    console.error("[transformationCaption] AI metni üretilemedi, yedek metin kullanılıyor:", err);
+    return null;
   });
 
-  const text = (response.text ?? "").trim();
+  const text = (response?.text ?? "").trim();
   const headlineMatch = text.match(/HEADLINE:\s*([\s\S]*?)(?:\nCAPTION:|$)/);
   const captionMatch = text.match(/CAPTION:\s*([\s\S]*)$/);
 

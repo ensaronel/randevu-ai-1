@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
-import { AI_MODEL } from "@/lib/ai/model";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { generateContentResilient } from "@/lib/ai/gemini";
 
 export interface SocialProofCandidate {
   id: string;
@@ -49,13 +46,15 @@ ID: <seçilen id>
 QUOTE: <alıntı>
 CAPTION: <paylaşım metni>`;
 
-  const response = await ai.models.generateContent({
-    model: AI_MODEL,
+  const response = await generateContentResilient({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: { temperature: 0.7 },
+  }).catch((err) => {
+    console.error("[socialProofCaption] AI metni üretilemedi, yedek metin kullanılıyor:", err);
+    return null;
   });
 
-  const text = (response.text ?? "").trim();
+  const text = (response?.text ?? "").trim();
   if (!text || /^NONE\b/i.test(text)) return null;
 
   const idMatch = text.match(/ID:\s*([\s\S]*?)(?:\nQUOTE:|$)/);

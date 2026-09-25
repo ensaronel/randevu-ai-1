@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
-import { AI_MODEL } from "@/lib/ai/model";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { generateContentResilient } from "@/lib/ai/gemini";
 
 export interface CampaignSuggestionInput {
   businessName: string;
@@ -39,12 +36,14 @@ hedef kitle önerisi yaz (ör. "uzun süredir gelmeyen müşteriler" ya da "tüm
 MESAJ: <mesaj taslağı>
 HEDEF: <hedef kitle önerisi>`;
 
-  const response = await ai.models.generateContent({
-    model: AI_MODEL,
+  const response = await generateContentResilient({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
+  }).catch((err) => {
+    console.error("[campaignSuggestion] AI metni üretilemedi, yedek metin kullanılıyor:", err);
+    return null;
   });
 
-  const text = (response.text ?? "").trim();
+  const text = (response?.text ?? "").trim();
   const messageMatch = text.match(/MESAJ:\s*([\s\S]*?)(?:\nHEDEF:|$)/);
   const targetMatch = text.match(/HEDEF:\s*([\s\S]*)$/);
 

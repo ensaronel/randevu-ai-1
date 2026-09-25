@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
-import { AI_MODEL } from "@/lib/ai/model";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { generateContentResilient } from "@/lib/ai/gemini";
 
 export interface AvailableSlotsCaptionInput {
   businessName: string;
@@ -40,12 +37,14 @@ fırsatı" gibi AŞIRI kullanılmış klişelerden KAÇIN, özgün bir cümle bu
 TEK cümle, en fazla 14 kelime, saatlerden en az birini doğal şekilde geçir ve randevuya nazikçe davet et.
 SADECE bu cümleyi yaz, başka hiçbir şey ekleme (tırnak işareti de ekleme).`;
 
-  const response = await ai.models.generateContent({
-    model: AI_MODEL,
+  const response = await generateContentResilient({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: { temperature: 1.1 },
+  }).catch((err) => {
+    console.error("[availableSlotsCaption] AI metni üretilemedi, yedek metin kullanılıyor:", err);
+    return null;
   });
 
-  const text = (response.text ?? "").trim().replace(/^["']|["']$/g, "");
+  const text = (response?.text ?? "").trim().replace(/^["']|["']$/g, "");
   return text || FALLBACK(input);
 }
