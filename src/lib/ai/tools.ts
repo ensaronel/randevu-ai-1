@@ -773,6 +773,34 @@ async function runJoinWaitlist(input: Record<string, unknown>, exec: ToolExecCon
   }
 
   const admin = createAdminSupabaseClient();
+
+  // Müşteri aynı hizmet için tercihini değiştirirse (ör. önce 11-12, sonra 10-15) yeni kayıt açmak yerine
+  // mevcut açık kaydı GÜNCELLE — aksi halde aynı müşteri için çift kayıt oluşup aynı boşluk için iki teklif gidebilir
+  // (2026-09-25 testte yakalandı: bot "güncelledim" dedi ama gerçekte ikinci bir kayıt eklenmişti).
+  const { data: existing } = await admin
+    .from("waitlist_entries")
+    .select("id")
+    .eq("business_id", exec.ctx.business.id)
+    .eq("customer_id", exec.customerId)
+    .eq("desired_service_id", service.id)
+    .eq("status", "open")
+    .is("offered_slot", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    const { error: updateError } = await admin
+      .from("waitlist_entries")
+      .update({
+        desired_time_range: { from, to, days },
+        ...(linkedAppointmentId ? { linked_appointment_id: linkedAppointmentId } : {}),
+      })
+      .eq("id", existing.id);
+    if (updateError) return JSON.stringify({ error: "Bekleme listesi kaydı güncellenemedi, lütfen tekrar dene." });
+    return JSON.stringify({ success: true, updated_existing_entry: true });
+  }
+
   const { error } = await admin.from("waitlist_entries").insert({
     business_id: exec.ctx.business.id,
     customer_id: exec.customerId,

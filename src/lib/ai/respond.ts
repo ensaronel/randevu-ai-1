@@ -26,6 +26,13 @@ const HISTORY_LIMIT = 20;
 // alakasız/şaşırtıcı kaçar, bu yüzden sadece bu pencere içinde tetiklenir.
 const PENDING_BUSY_OFFER_WINDOW_MS = 6 * 60 * 60 * 1000;
 
+// Müşterinin bir saat/gün dilimi söylediğini gösteren ifadeler (rakam, "sabah", "öğleden sonra", "fark etmez" vb.).
+const WAITLIST_RANGE_PATTERN =
+  /\d|sabah|öğle|ogle|akşam|aksam|gün boyu|gun boyu|fark etmez|herhangi|her saat|farketmez|müsait olduğum|musait oldugum/i;
+const WAITLIST_RANGE_MISSING_ERROR =
+  "Müşteri henüz hangi saat aralığını istediğini söylemedi. Aralığı TAHMİN ETME — müşteriye tek bir kısa " +
+  "soruyla sor (ör. \"Hangi saatler arası uygun olur?\"), cevabını aldıktan sonra join_waitlist'i çağır.";
+
 export interface AiReplyResult {
   replyText: string;
   escalated: boolean;
@@ -126,7 +133,11 @@ KURALLAR:
   teklif olur), sadece alternatifi/durumu anlat. Müşteri o teklife "evet" derse (sonraki mesajında) hangi
   gün(ler) ve saat aralığını istediğini netleştirip join_waitlist'i çağır (henüz randevu almadıysa
   linked_appointment_id verme). Müşteri hiçbir seçeneği kabul etmeden vazgeçerse ve "haber verin" derse
-  de aynı şekilde join_waitlist'i çağır.
+  de aynı şekilde join_waitlist'i çağır. join_waitlist'i çağırmadan ÖNCE müşteri hangi gün(ler) VE saat
+  aralığını (ör. "10:00-15:00 arası") KENDİ AĞZIYLA söylemiş olmalı — söylemediyse ÖNCE tek bir kısa soruyla
+  sor ("Hangi saatler arası uygun olur?"), aralığı KENDİN TAHMİN ETME (ör. "11 gibi" diye sorduysa bile aralık
+  saymaz). Aralık sonradan değişirse join_waitlist'i yeni aralıkla tekrar çağırman yeterli, mevcut kayıt
+  güncellenir; sonuçta "updated_existing_entry" görürsen "güncelledim" de, yoksa "ekledim" de.
 - ÇOK ÖNEMLİ — create_appointment/cancel_appointment/reschedule_appointment "error" ALANIYLA
   dönerse (ör. "Son söylediğiniz net anlaşılamadı..."): bu bir TEKNİK HATA DEĞİL, güvenlik amaçlı
   bir engelleme — AYNI aracı hemen tekrar ÇAĞIRMA ve bu yüzden escalate ETME. Bunun yerine
@@ -276,6 +287,21 @@ export async function generateAiReply(
         console.warn(`[whatsapp] GÜVENLİK: check_availability engellendi - istenen hizmet(ler) (${JSON.stringify(args.service_names)}) müşterinin söylediği hiçbir şeyde geçmiyor`);
         functionResponseParts!.push({
           functionResponse: { name, response: { result: JSON.stringify({ error: NO_SERVICE_MENTIONED_ERROR }) }, id: call.id },
+        });
+        continue;
+      }
+
+      // Bekleme listesine yazmadan önce müşteri saat aralığını KENDİ SÖYLEMİŞ olmalı — model "evet" ya da "sadece
+      // bekleme listesine alın" gibi bir cevaptan aralığı uydurup ("11:00-11:00") kaydediyordu (2026-09-25 testte
+      // yakalandı). Son mesajda saat/gün dilimi yoksa çağrıyı engelle, model müşteriye sorsun.
+      if (name === "join_waitlist" && !WAITLIST_RANGE_PATTERN.test(incomingText)) {
+        console.warn(`[whatsapp] GÜVENLİK: join_waitlist engellendi - müşteri saat aralığını söylemedi (${JSON.stringify(incomingText)})`);
+        functionResponseParts!.push({
+          functionResponse: {
+            name,
+            response: { result: JSON.stringify({ error: WAITLIST_RANGE_MISSING_ERROR }) },
+            id: call.id,
+          },
         });
         continue;
       }

@@ -7,7 +7,7 @@
  * yeni eklenen işletmeler yeni fiyatı alır.
  */
 export const PACKAGE_PRICES_TL: Record<"whatsapp_only" | "whatsapp_and_voice", number> = {
-  whatsapp_only: 1500,
+  whatsapp_only: 2000,
   whatsapp_and_voice: 2500,
 };
 
