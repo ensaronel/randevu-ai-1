@@ -7,7 +7,6 @@ import AppShell from "@/components/AppShell";
 import Mascot from "@/components/Mascot";
 import BadgeStat from "@/components/BadgeStat";
 import SuggestionsClient from "@/app/dashboard/SuggestionsClient";
-import FinanceBrief from "@/app/dashboard/FinanceBrief";
 import BusinessPulseCard, { BusinessPulseSkeleton } from "@/app/dashboard/BusinessPulse";
 import type { Staff } from "@/types/database";
 
@@ -27,24 +26,6 @@ async function loadPendingSuggestions(
     const customerName = customer ? (Array.isArray(customer) ? customer[0]?.full_name : customer.full_name) : null;
     return { ...row, customer_name: customerName ?? null };
   });
-}
-
-async function loadTodaysFinanceNote(
-  supabase: Awaited<ReturnType<typeof getBusinessOwnerForPage>>["supabase"],
-  businessId: string
-) {
-  const { startUtc, endUtc } = dayRangeUtcISO(0);
-  const { data } = await supabase
-    .from("action_objects")
-    .select("suggestion")
-    .eq("business_id", businessId)
-    .eq("type", "finance_note")
-    .gte("created_at", startUtc)
-    .lt("created_at", endUtc)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.suggestion ?? null;
 }
 
 async function loadPendingDailySurvey(
@@ -152,9 +133,8 @@ export default async function DashboardPage() {
   const mondayOffset = -((todayWeekdayIndex + 6) % 7);
   const weekOffsets = Array.from({ length: 7 }, (_, i) => mondayOffset + i);
 
-  const [weekTotalsByDate, financeNote, dailySurvey, suggestions] = await Promise.all([
+  const [weekTotalsByDate, dailySurvey, suggestions] = await Promise.all([
     loadWeekTotalsByDate(supabase, business.id, mondayOffset),
-    loadTodaysFinanceNote(supabase, business.id),
     loadPendingDailySurvey(supabase, business.id),
     loadPendingSuggestions(supabase, business.id),
   ]);
@@ -273,7 +253,6 @@ export default async function DashboardPage() {
 
         <WeekRevenueChartSection data={weekChart} />
 
-        {financeNote && <FinanceBrief note={financeNote} />}
       </div>
 
       {/* Ağır analiz (tüm geçmiş veriyi tarar) sayfanın geri kalanını bekletmesin diye

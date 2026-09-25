@@ -6,8 +6,8 @@ import type { Business, CustomerPackage, Service, Staff } from "@/types/database
 
 /**
  * İşletmenin tüm verisini TEK seferde yükleyip (loadInsightsDataset) saf fonksiyonlarla
- * analiz eden ortak katman. Danışman araçları, dashboard'daki İşletme Nabzı/Fırsat Radarı
- * ve günlük finans özeti HEP buradaki rakamları kullanır — AI rakam üretmez, sadece bu
+ * analiz eden ortak katman. Danışman araçları ve dashboard'daki Fırsat Radarı
+ * HEP buradaki rakamları kullanır — AI rakam üretmez, sadece bu
  * (kodla hesaplanmış) gerçekleri yorumlar. Ciro kuralı uygulama genelindeki tek kuraldır
  * (bkz. revenue.ts): gerçekleşmiş randevular + ürün satışları + paket satışları (satış anında).
  */

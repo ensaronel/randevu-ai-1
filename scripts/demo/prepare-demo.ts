@@ -10,8 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { dateKeyRangeUtcISO, dayRangeUtcISO } from "@/lib/date";
-import { runNightlySummaryForBusiness } from "@/lib/nightlySummary";
+import { dateKeyRangeUtcISO } from "@/lib/date";
 import { SERVICE_BY_KEY, STAFF_BY_KEY, makeRng, todayKey, localIso, dayKeyOffset } from "./common";
 
 const admin = createAdminSupabaseClient();
@@ -304,20 +303,6 @@ async function main() {
       }
     }
   }
-
-  // ---------------------------------------------------------------- bugünün Günlük Finans Özeti
-  // Normalde her sabah 06:00 cron'u üretir; demo verisi silinip yeniden kurulduğunda (ya da cron o gün
-  // çalışmadığında) dashboard'da özet kartı görünmez. Bugünün özetini silip güncel veriyle yeniden üretir.
-  const { startUtc: dayStart, endUtc: dayEnd } = dayRangeUtcISO(0);
-  await admin
-    .from("action_objects")
-    .delete()
-    .eq("business_id", businessId)
-    .eq("type", "finance_note")
-    .gte("created_at", dayStart)
-    .lt("created_at", dayEnd);
-  const summary = await runNightlySummaryForBusiness(businessId);
-  console.log(`Günlük Finans Özeti: ${summary.created ? "oluşturuldu" : `oluşturulamadı (${summary.reason})`}`);
 
   // ---------------------------------------------------------------- 24 saat penceresi uyarısı
   const { data: lastInbound } = await admin

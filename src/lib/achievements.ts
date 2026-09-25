@@ -2,7 +2,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { dateKeyTR, dayRangeUtcISO, formatTL } from "@/lib/date";
 import { getBusinessName } from "@/lib/businessName";
 import { dedupeReasoning, hasDedupeFired } from "@/lib/dedupe";
-import { computeRevenueForRange } from "@/lib/nightlySummary";
+import { computeRevenueForRange } from "@/lib/revenueRange";
 import type { ShareImagePayload } from "@/lib/ai/shareImage";
 
 type AdminClient = ReturnType<typeof createAdminSupabaseClient>;
@@ -86,7 +86,7 @@ export async function runBusinessMilestoneCheckForBusiness(businessId: string): 
 /**
  * Dünün cirosu son `RECORD_DAY_LOOKBACK_DAYS` günün rekoruysa bir "Başarı Anı" üretir.
  * Ciro, uygulama genelindeki TEK ciro kuralıyla (bkz. `computeRevenueForRange`,
- * nightlySummary.ts'in finans notu için kullandığı gerçek/canlı hesaplama — final_price
+ * revenueRange.ts'teki gerçek/canlı hesaplama — final_price
  * varsa o, yoksa planned_price) doğrudan randevulardan hesaplanır. ÖNEMLİ: bu fonksiyon
  * önceden hiç var olmayan bir "Günü Kapat" özelliğine (`daily_financial_summaries`
  * tablosu, hiçbir yerde yazılmıyor — 2026-09-20'de doğrulandı) bağımlıydı, bu yüzden

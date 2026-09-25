@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runNightlySummaryForAllBusinesses } from "@/lib/nightlySummary";
 import { runProactiveInsightsForAllBusinesses } from "@/lib/proactive";
 import { runWeeklySummaryForAllBusinesses } from "@/lib/weeklySummary";
 import { runNightlyReklamContentForAllBusinesses } from "@/lib/reklamContent";
@@ -17,7 +16,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const financeResults = await runNightlySummaryForAllBusinesses();
     const proactiveResults = await runProactiveInsightsForAllBusinesses();
     const weeklyResults = await runWeeklySummaryForAllBusinesses();
     await runNightlyReklamContentForAllBusinesses();
@@ -27,7 +25,7 @@ export async function GET(request: NextRequest) {
     const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     await createAdminSupabaseClient().from("whatsapp_processed_messages").delete().lt("created_at", cutoff);
 
-    return NextResponse.json({ financeResults, proactiveResults, weeklyResults });
+    return NextResponse.json({ proactiveResults, weeklyResults });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
