@@ -35,6 +35,9 @@ VERİDEN ÇIKAN EN DEĞERLİ FIRSAT: ${input.topOpportunity ?? "yok"}
    TAM OLARAK BİRİne doğrudan dayanmalı: bugünün doluluğu düşükse o boşluğu doldurmaya yönelik bir hamle; iptal/gelmeme
    varsa bunu azaltmaya yönelik bir hamle; belirgin bir fırsat verildiyse o fırsat. Birbiriyle ilgisi olmayan olgular
    arasında bağ KURMA (ör. bir personelin yoğunluğunu bir boş saatle ilişkilendirme). Genel geçer tavsiye verme.
+   Öneride SADECE "VERİDEN ÇIKAN EN DEĞERLİ FIRSAT" metninde geçen hizmet adlarını, kişi sayılarını ve tutarları kullan;
+   RAKAMLAR bölümündeki başka bir hizmeti (ör. en çok kazandıran hizmeti) o fırsata karıştırma veya fırsatın kime/neye
+   ait olduğunu değiştirme.
 
 KURALLAR: Sebep tahmin etme (hava, tatil, sezon vb. deme). Verilmeyen rakam, yüzde veya indirim oranı UYDURMA. Para
 tutarlarını RAKAMLARDA verildiği biçimde (ör. ₺4.250) aynen yaz, "4250 lira" gibi yeniden biçimlendirme. Markdown, emoji

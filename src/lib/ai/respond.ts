@@ -121,9 +121,12 @@ KURALLAR:
   ile appointment_id'yi bul, check_availability ile yeni saati bul, müşteri onaylayınca reschedule_appointment'ı
   (appointment_id + yeni starts_at/ends_at) çağır. Bu TEK bir işlemdir; eski randevu SADECE yeni saat gerçekten
   ayrılabilirse değişir — asla önce iptal edip sonra yeniden oluşturma, bu müşteriyi randevusuz bırakabilir.
-- Hiçbir gün/saatte uygun yer bulunamazsa müşteriye başka bir gün/saat boşaldığında haber verilmesini
-  isteyip istemediğini sor; isterse hangi gün(ler) ve saat aralığını istediğini netleştirip join_waitlist'i
-  çağır.
+- BEKLEME LİSTESİ: istenen gün "busy" (dolu) çıktığında ister alternatif gün öner ister hiç yer bulunamasın,
+  "bekleme listesine alalım mı?" cümlesini SİSTEM cevabının sonuna KENDİSİ ekler — sen bunu yazma (çift
+  teklif olur), sadece alternatifi/durumu anlat. Müşteri o teklife "evet" derse (sonraki mesajında) hangi
+  gün(ler) ve saat aralığını istediğini netleştirip join_waitlist'i çağır (henüz randevu almadıysa
+  linked_appointment_id verme). Müşteri hiçbir seçeneği kabul etmeden vazgeçerse ve "haber verin" derse
+  de aynı şekilde join_waitlist'i çağır.
 - ÇOK ÖNEMLİ — create_appointment/cancel_appointment/reschedule_appointment "error" ALANIYLA
   dönerse (ör. "Son söylediğiniz net anlaşılamadı..."): bu bir TEKNİK HATA DEĞİL, güvenlik amaçlı
   bir engelleme — AYNI aracı hemen tekrar ÇAĞIRMA ve bu yüzden escalate ETME. Bunun yerine
@@ -145,7 +148,11 @@ KURALLAR:
 
 function buildWaitlistOfferSentence(requestedDateKey: string): string {
   const dayLabel =
-    requestedDateKey === dateKeyTR(0) ? "bugün" : formatDateTR(`${requestedDateKey}T12:00:00+03:00`);
+    requestedDateKey === dateKeyTR(0)
+      ? "bugün"
+      : requestedDateKey === dateKeyTR(1)
+        ? "yarın"
+        : formatDateTR(`${requestedDateKey}T12:00:00+03:00`);
   return `Bu arada, ${dayLabel} için de sizi bekleme listesine alalım mı? Boşluk çıkarsa hemen haber veririz.`;
 }
 
@@ -203,6 +210,8 @@ export async function generateAiReply(
   // TÜKETMEK için kullanılıyor (bkz. dosya başındaki PENDING_BUSY_OFFER_WINDOW_MS yorumu).
   let pendingBusyOffer = customer.pending_busy_offer;
   let waitlistOfferDateKey: string | null = null;
+  // Alternatif gün önerildiği (ya da hiç yer bulunamadığı) ANDA yapılan teklif — randevu alınmasını beklemez.
+  let immediateOfferDateKey: string | null = null;
   const admin = createAdminSupabaseClient();
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -216,9 +225,8 @@ export async function generateAiReply(
       // Bekleme listesi teklifini modelin kendi metnine bırakmıyoruz (bkz. yukarıdaki
       // pendingBusyOffer yorumu) — waitlistOfferDateKey bu döngüde bir create_appointment
       // tam da bunu gerektirdiğinde set edildiyse, cümle KOD tarafından, garantili ekleniyor.
-      const replyText = waitlistOfferDateKey
-        ? `${baseReply}\n\n${buildWaitlistOfferSentence(waitlistOfferDateKey)}`
-        : baseReply;
+      const offerDateKey = waitlistOfferDateKey ?? immediateOfferDateKey;
+      const replyText = offerDateKey ? `${baseReply}\n\n${buildWaitlistOfferSentence(offerDateKey)}` : baseReply;
       return {
         replyText,
         escalated: false,
@@ -283,17 +291,33 @@ export async function generateAiReply(
       if (name === "check_availability" && !result.includes('"error"')) {
         verifiedSlots.push(...parseVerifiedSlotsFromResult(result));
 
-        const parsedAvailability = JSON.parse(result) as { unavailable_reason?: string; is_alternate_date?: boolean };
+        const parsedAvailability = JSON.parse(result) as {
+          unavailable_reason?: string;
+          is_alternate_date?: boolean;
+          slots?: unknown[];
+        };
         const requestedDateKey = String(args.date ?? "");
-        if (
-          parsedAvailability.unavailable_reason === "busy" &&
-          parsedAvailability.is_alternate_date === true &&
-          /^\d{4}-\d{2}-\d{2}$/.test(requestedDateKey)
-        ) {
+        const validDate = /^\d{4}-\d{2}-\d{2}$/.test(requestedDateKey);
+        const isBusy = parsedAvailability.unavailable_reason === "busy";
+
+        // 2026-09-25: müşteri "yarın lazer" sordu, yer yoktu, bot Pazartesi'yi önerdi ama bekleme listesini
+        // teklif etmedi — teklif sadece alternatif güne randevu alındıktan sonra ekleniyordu. Artık alternatif
+        // önerildiği ya da hiç yer bulunamadığı anda, aynı cevaba kod tarafından eklenir (bir istek için bir kez).
+        const noSlotAtAll = Array.isArray(parsedAvailability.slots) && parsedAvailability.slots.length === 0;
+        const alreadyOffered =
+          pendingBusyOffer?.requested_date === requestedDateKey &&
+          pendingBusyOffer.waitlist_offered === true &&
+          Date.now() - Date.parse(pendingBusyOffer.set_at) < PENDING_BUSY_OFFER_WINDOW_MS;
+        if (validDate && isBusy && (parsedAvailability.is_alternate_date === true || noSlotAtAll) && !alreadyOffered) {
+          immediateOfferDateKey = requestedDateKey;
+        }
+
+        if (validDate && isBusy && parsedAvailability.is_alternate_date === true) {
           pendingBusyOffer = {
             requested_date: requestedDateKey,
             service_names: (args.service_names as string[] | undefined) ?? [],
             set_at: new Date().toISOString(),
+            waitlist_offered: alreadyOffered || immediateOfferDateKey === requestedDateKey,
           };
           void admin
             .from("customers")
@@ -308,7 +332,7 @@ export async function generateAiReply(
       if (name === "create_appointment" && !result.includes('"error"') && pendingBusyOffer) {
         const bookedDateKey = dateKeyFromIso(String(args.starts_at ?? ""));
         const isFresh = Date.now() - Date.parse(pendingBusyOffer.set_at) < PENDING_BUSY_OFFER_WINDOW_MS;
-        if (isFresh && bookedDateKey !== pendingBusyOffer.requested_date) {
+        if (isFresh && bookedDateKey !== pendingBusyOffer.requested_date && !pendingBusyOffer.waitlist_offered) {
           waitlistOfferDateKey = pendingBusyOffer.requested_date;
         }
         pendingBusyOffer = null;

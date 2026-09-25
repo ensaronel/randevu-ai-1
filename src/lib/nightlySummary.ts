@@ -62,7 +62,7 @@ export interface NightlySummaryResult {
 function signedPercent(value: number, baseline: number): string | null {
   if (baseline <= 0) return null;
   const pct = Math.round(((value - baseline) / baseline) * 100);
-  return `${pct >= 0 ? "+" : ""}%${pct}`;
+  return `${pct >= 0 ? "+" : "-"}%${Math.abs(pct)}`;
 }
 
 /**
@@ -161,7 +161,8 @@ export async function runNightlySummaryForBusiness(businessId: string): Promise<
     ? `Dün ciro ${formatTL(Math.round(day.revenue.total))} oldu; geçen haftanın aynı gününe göre ${vsLastWeek}.`
     : `Dün ciro ${formatTL(Math.round(day.revenue.total))} oldu.`;
   const headline = narrative?.headline ?? fallbackHeadline;
-  const recommendation = narrative?.recommendation ?? top?.title ?? null;
+  // Yapay zeka cevap veremezse (kota/yavaşlık) yedek: en değerli fırsata yönlendiren, eyleme dönük bir cümle.
+  const recommendation = narrative?.recommendation ?? (top ? `Fırsat Radarı'ndaki "${top.title}" fırsatına bugün göz atın.` : null);
 
   const suggestion = [headline, ...facts.map((f) => `• ${f}`), ...(recommendation ? [`Öneri: ${recommendation}`] : [])].join("\n");
 

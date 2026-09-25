@@ -81,7 +81,13 @@ export interface Customer {
   kvkk_consent_at: string | null;
   no_show_count: number;
   status: ActiveStatus;
-  pending_busy_offer: { requested_date: string; service_names: string[]; set_at: string } | null;
+  pending_busy_offer: {
+    requested_date: string;
+    service_names: string[];
+    set_at: string;
+    /** Bekleme listesi teklifi bu istek için zaten müşteriye yapıldı — randevu sonrası tekrar sorulmaz. */
+    waitlist_offered?: boolean;
+  } | null;
   created_at: string;
   updated_at: string;
 }

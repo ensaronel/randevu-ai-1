@@ -17,6 +17,9 @@ export interface DailySurveyItem {
   suggestion: string;
 }
 
+/** Risk kartında varsayılan olarak görünen müşteri sayısı; kalanı "daha gör" düğmesiyle açılır. */
+const RISK_PREVIEW_COUNT = 2;
+
 /** retention_risk/rhythm_invite'ın kısa özeti - grup kartında müşteri adının yanında görünür. */
 function shortReason(item: SuggestionItem): string {
   const match = item.reasoning.match(/(\d+) gün geçti|(\d+) gün içinde doluyor/);
@@ -48,6 +51,7 @@ export default function SuggestionsClient({
   const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
   const [surveyResolved, setSurveyResolved] = useState(false);
   const [surveyOutcome, setSurveyOutcome] = useState<string | null>(null);
+  const [showAllRisk, setShowAllRisk] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function patchStatus(id: string, status: "approved" | "rejected") {
@@ -105,6 +109,7 @@ export default function SuggestionsClient({
   }
 
   const visibleRisk = items.filter((item) => !resolvedIds.has(item.id));
+  const shownRisk = showAllRisk ? visibleRisk : visibleRisk.slice(0, RISK_PREVIEW_COUNT);
   const showSurvey = dailySurvey && !surveyResolved;
   const hasAny = visibleRisk.length > 0 || showSurvey;
 
@@ -145,20 +150,42 @@ export default function SuggestionsClient({
                 </div>
               </div>
               <div className="flex flex-col divide-y divide-border">
-                {visibleRisk.map((item) => (
+                {shownRisk.map((item) => (
                   <div key={item.id} className="flex items-center justify-between gap-2 text-[13px] py-2 first:pt-0 last:pb-0">
                     <span className="text-ink font-medium truncate">{item.customer_name ?? "Müşteri"}</span>
                     <span className="text-[12px] text-ink-muted shrink-0">{shortReason(item)}</span>
                   </div>
                 ))}
               </div>
+              {/* Kart birikince sayfa çok uzamasın: ilk 2 müşteri görünür, kalanı düğmeyle açılır. */}
+              {visibleRisk.length > RISK_PREVIEW_COUNT && (
+                <button
+                  onClick={() => setShowAllRisk((v) => !v)}
+                  className="self-start text-[12.5px] font-bold text-accent flex items-center gap-1"
+                >
+                  {showAllRisk ? "Daha az göster" : `${visibleRisk.length - RISK_PREVIEW_COUNT} müşteri daha gör`}
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={showAllRisk ? "rotate-180" : ""}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "approved")}
                   disabled={busy !== null}
                   className="flex-1 bg-block1-ink text-white rounded-lg py-2.5 text-[12.5px] font-semibold disabled:opacity-50"
                 >
-                  Hepsine Gönder
+                  {visibleRisk.length > 1 ? `Hepsine Gönder (${visibleRisk.length})` : "Gönder"}
                 </button>
                 <button
                   onClick={() => resolveRisk(visibleRisk.map((i) => i.id), "rejected")}
